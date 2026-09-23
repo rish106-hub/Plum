@@ -9,3 +9,14 @@ SPEC.md
 .env
 .env.*
 !.env.example
+.venv/
+.skills/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.pyc
+*.sqlite3
+uploads/
+eval_outputs/
+.DS_Store
