@@ -1,0 +1,23 @@
+name: Branch guard
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  branch-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate branch and title
+        env:
+          BRANCH_NAME: ${{ github.head_ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          case "$BRANCH_NAME" in
+            feat/*|fix/*|chore/*|refactor/*|docs/*|exp/*) ;;
+            *) echo "Branch must use a permitted type/scope name"; exit 1 ;;
+          esac
+          if printf '%s' "$BRANCH_NAME $PR_TITLE" | grep -Eiq 'codex|claude|cursor|copilot|generated with|co-authored-by'; then
+            echo "Branch or title contains disallowed attribution"
+            exit 1
+          fi

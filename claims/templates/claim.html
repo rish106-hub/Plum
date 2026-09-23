@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Claim review · Plum</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body data-page="claim" data-claim-id="{{ claim_id }}">
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="wordmark" href="/" aria-label="Plum claims home"><span class="wordmark__mark" aria-hidden="true">P</span><span>Plum <span class="wordmark__muted">Claims</span></span></a>
+      <a class="header-link" href="/">New claim <span aria-hidden="true">↗</span></a>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <nav class="breadcrumb" aria-label="Breadcrumb"><a href="/">Claims</a><span aria-hidden="true">/</span><span id="breadcrumb-id">Review</span></nav>
+    <div class="page-heading page-heading--review">
+      <div><p class="eyebrow">Decision record</p><h1 id="claim-title">Reviewing claim</h1><p class="intro" id="claim-subtitle">Checking documents and policy terms.</p></div>
+      <span id="state-badge" class="state-badge state-badge--processing" role="status">Processing</span>
+    </div>
+
+    <div id="loading-state" class="loading-state surface" role="status" aria-live="polite">
+      <div class="loading-mark" aria-hidden="true"></div>
+      <div><strong>Review in progress</strong><p>We are checking the submitted documents, then the applicable policy rules.</p></div>
+    </div>
+
+    <div id="failure-state" class="notice notice--error" role="alert" hidden>
+      <div><strong>Processing stopped</strong><p id="failure-message">The review could not finish. You can retry the claim.</p></div>
+      <button id="retry-button" class="button button--secondary" type="button">Retry review</button>
+    </div>
+
+    <div id="result-content" hidden>
+      <section id="decision-panel" class="decision-panel" aria-labelledby="decision-heading">
+        <div><p class="decision-panel__label">Outcome</p><h2 id="decision-heading">Decision</h2><p id="decision-reason" class="decision-panel__reason"></p></div>
+        <div class="decision-panel__amount"><span id="amount-label">Approved amount</span><strong id="approved-amount">—</strong><small id="confidence-value"></small></div>
+      </section>
+
+      <div id="correction-panel" class="notice notice--correction" hidden>
+        <div><strong>Documents need attention</strong><p>The claim has been paused before a coverage decision. Submit a new claim with the requested documents.</p><ul id="correction-list"></ul></div>
+      </div>
+
+      <div class="review-layout">
+        <div class="review-main">
+          <section class="surface detail-section" aria-labelledby="checks-heading">
+            <div class="section-heading"><div><span class="section-number">01</span><h2 id="checks-heading">Decision trace</h2></div><span class="section-hint">Checks in processing order</span></div>
+            <div id="trace-list" class="trace-list"></div>
+          </section>
+          <section class="surface detail-section" aria-labelledby="ledger-heading">
+            <div class="section-heading"><div><span class="section-number">02</span><h2 id="ledger-heading">Amount ledger</h2></div><span class="section-hint">How payable amount was calculated</span></div>
+            <div id="ledger-list" class="ledger-list"></div>
+          </section>
+        </div>
+
+        <aside class="review-aside">
+          <section class="aside-block aside-block--facts" aria-labelledby="details-heading"><h2 id="details-heading">Claim details</h2><dl id="claim-facts" class="facts"></dl></section>
+          <section class="aside-block aside-block--facts" aria-labelledby="files-heading"><h2 id="files-heading">Submitted files</h2><ul id="document-list" class="document-list"></ul></section>
+          <section class="aside-block aside-block--facts" aria-labelledby="events-heading"><h2 id="events-heading">Processing history</h2><ol id="event-list" class="event-list"></ol></section>
+        </aside>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

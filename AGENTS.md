@@ -49,28 +49,28 @@ This is the single highest-value section in the file. The one empirically-verifi
 Task
 Command
 Install
-TODO
+python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
 Dev server
-TODO
+.venv/bin/python -m uvicorn claims.web:app --reload
 Test (all)
-TODO
+.venv/bin/python -m pytest
 Test (single file)
-TODO
+.venv/bin/python -m pytest tests/test_core.py
 Lint
-TODO
+.venv/bin/python -m ruff check .
 Typecheck
-TODO
+.venv/bin/python -m mypy claims scripts tools
 Build
-TODO
+.venv/bin/python -m compileall -q claims scripts tools
 DB migrate
-TODO
+.venv/bin/python -c 'from claims.web import init_db; init_db()'
 DB reset / seed
-TODO
+rm -rf .data && .venv/bin/python -c 'from claims.web import init_db; init_db()' (local only; no seed data)
 
-Package manager: TODO - DO NOT use any other one.
-Runtime + version: TODO
-Env vars required for tests to pass: TODO
-Services that must be running locally: TODO
+Package manager: pip - DO NOT use any other one.
+Runtime + version: Python 3.14.2 locally; CI checks Python 3.12
+Env vars required for tests to pass: none
+Services that must be running locally: none for tests; SARVAM_API_KEY in ignored .env for live image/scanned-PDF OCR
 #3. DEFINITION OF DONE
 Code is not "ready" until, locally:
 Typecheck exits 0.

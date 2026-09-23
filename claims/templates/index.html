@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>New OPD claim · Plum</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body data-page="intake">
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="wordmark" href="/" aria-label="Plum claims home"><span class="wordmark__mark" aria-hidden="true">P</span><span>Plum <span class="wordmark__muted">Claims</span></span></a>
+      <span class="header-context">OPD review workspace</span>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <div class="page-heading">
+      <div>
+        <p class="eyebrow">Claim intake</p>
+        <h1>Submit an OPD claim</h1>
+        <p class="intro">Add the member details and original medical documents. The document check runs before any coverage decision.</p>
+      </div>
+    </div>
+
+    <div class="intake-layout">
+      <section class="surface intake-surface" aria-labelledby="claim-details-heading">
+        <div class="section-heading">
+          <div><span class="section-number">01</span><h2 id="claim-details-heading">Claim details</h2></div>
+          <span class="section-hint">Annual balance optional</span>
+        </div>
+        <form id="claim-form" novalidate>
+          <div class="field-grid">
+            <label class="field"><span>Member</span>
+              <select name="member_id" required>
+                <option value="">Select a policy member</option>
+                {% for member in members %}<option value="{{ member.id }}">{{ member.name }} · {{ member.id }}</option>{% endfor %}
+              </select>
+            </label>
+            <label class="field"><span>Claim category</span>
+              <select name="claim_category" required>
+                <option value="">Select a category</option>
+                {% for category in categories %}<option value="{{ category }}">{{ category.replace('_', ' ').title() }}</option>{% endfor %}
+              </select>
+            </label>
+            <label class="field"><span>Treatment date</span><input type="date" name="treatment_date" required></label>
+            <label class="field"><span>Claimed amount <span class="field__unit">INR</span></span><input type="number" name="claimed_amount" min="0.01" max="999999.99" step="0.01" placeholder="0.00" required></label>
+            <label class="field field--wide"><span>Already reimbursed this policy year <span class="field__unit">INR · OPTIONAL</span></span><input type="number" name="ytd_claims_amount" min="0" max="1000000" step="0.01" placeholder="Enter 0 if none"></label>
+          </div>
+          <p class="field-note">If this amount is unknown, leave it blank. The claim will be sent for manual review until the annual balance is confirmed.</p>
+
+          <div class="section-heading section-heading--documents">
+            <div><span class="section-number">02</span><h2>Documents</h2></div>
+            <span class="section-hint">PDF, JPG, PNG, or WebP</span>
+          </div>
+          <label class="upload-zone" for="claim-files">
+            <span class="upload-zone__symbol" aria-hidden="true">+</span>
+            <span class="upload-zone__title">Choose medical documents</span>
+            <span class="upload-zone__detail">Up to 6 files · 10 MB each · 30 MB total</span>
+            <input id="claim-files" name="files" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" multiple required>
+          </label>
+          <ul id="selected-files" class="selected-files" aria-live="polite"></ul>
+
+          <div id="form-error" class="form-error" role="alert" hidden></div>
+          <div class="form-actions">
+            <p class="form-note">The decision will include the policy checks and amount calculation.</p>
+            <button class="button button--primary" id="submit-button" type="submit">Check claim <span aria-hidden="true">→</span></button>
+          </div>
+        </form>
+      </section>
+
+      <aside class="intake-aside" aria-labelledby="how-it-works-heading">
+        <div class="aside-block">
+          <p class="eyebrow">Review sequence</p>
+          <h2 id="how-it-works-heading">What happens next</h2>
+          <ol class="sequence">
+            <li><strong>Document check</strong><span>Correct type, readable text, and matching patient.</span></li>
+            <li><strong>Policy review</strong><span>Coverage, waiting periods, exclusions, and limits.</span></li>
+            <li><strong>Clear result</strong><span>Decision, payable amount, and the full trace.</span></li>
+          </ol>
+        </div>
+        <div class="aside-callout"><strong>Need to correct a file?</strong><p>You will get a specific request before the claim is adjudicated.</p></div>
+      </aside>
+    </div>
+
+    <section class="recent-section" aria-labelledby="recent-heading">
+      <div class="recent-heading"><h2 id="recent-heading">Recent claims</h2><span>Stored locally in this workspace</span></div>
+      <div id="recent-claims" class="recent-list" aria-live="polite"><p class="muted">Loading recent claims…</p></div>
+    </section>
+  </main>
+</body>
+</html>
