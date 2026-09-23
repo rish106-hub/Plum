@@ -16,14 +16,15 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated, Any
 
-from claims.core import evaluate_claim
-from claims.documents import process_uploads
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
+
+from claims.core import evaluate_claim
+from claims.documents import process_uploads
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PACKAGE_ROOT = Path(__file__).resolve().parent
@@ -218,6 +219,36 @@ def _correction_result(issues: list[dict[str, Any]], metrics: dict[str, Any]) ->
     }
 
 
+def _provider_review_result(issues: list[dict[str, Any]], metrics: dict[str, Any]) -> dict[str, Any]:
+    """Keep provider outages separate from member document corrections."""
+    return {
+        "state": "MANUAL_REVIEW",
+        "decision": "MANUAL_REVIEW",
+        "approved_amount": 0,
+        "approved_amount_paise": 0,
+        "reasons": [
+            {
+                "code": "EXTRACTION_UNAVAILABLE",
+                "message": "Document extraction is unavailable. An operator must inspect the uploaded files.",
+            }
+        ],
+        "correction_requests": [],
+        "confidence_score": 0.2,
+        "ledger": [],
+        "trace": [
+            {
+                "stage": "document_extraction",
+                "status": "DEGRADED",
+                "rule_id": str(issue.get("code", "EXTRACTION_UNAVAILABLE")),
+                "evidence": {"file_name": issue.get("file_name")},
+                "reason": issue.get("message"),
+            }
+            for issue in issues
+        ],
+        "document_metrics": metrics,
+    }
+
+
 def process_claim(claim_id: str) -> None:
     """Run one persisted claim; safe to retry after process restart."""
     claim = _load_claim(claim_id)
@@ -249,8 +280,18 @@ def process_claim(claim_id: str) -> None:
         )
         issues = inspection.get("issues", [])
         if issues:
-            result = _correction_result(issues, inspection.get("metrics", {}))
-            _set_state(claim_id, "DOCUMENT_CORRECTION_REQUIRED", result=result, detail={"issue_count": len(issues)})
+            metrics = inspection.get("metrics", {})
+            if any(issue.get("code") == "EXTRACTION_UNAVAILABLE" for issue in issues):
+                result = _provider_review_result(issues, metrics)
+                _set_state(
+                    claim_id,
+                    "MANUAL_REVIEW",
+                    result=result,
+                    detail={"issue_count": len(issues), "provider_failures": metrics.get("provider_failures", 0)},
+                )
+            else:
+                result = _correction_result(issues, metrics)
+                _set_state(claim_id, "DOCUMENT_CORRECTION_REQUIRED", result=result, detail={"issue_count": len(issues)})
             return
         payload = dict(request_data)
         payload["documents"] = inspection.get("documents", [])

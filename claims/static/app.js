@@ -120,7 +120,7 @@
     const value = String(status || "").toUpperCase();
     if (["PASS", "PASSED", "OK", "APPROVED"].includes(value)) return "pass";
     if (["FAIL", "FAILED", "BLOCKED", "REJECTED"].includes(value)) return "fail";
-    if (["WARNING", "SKIPPED", "NOT_EVALUATED", "DEGRADED"].includes(value)) return "warning";
+    if (["WARNING", "NOT_EVALUATED", "DEGRADED", "ASSUMPTION"].includes(value) || value.startsWith("SKIPPED")) return "warning";
     return "neutral";
   }
 
@@ -137,9 +137,9 @@
       item.dataset.kind = traceKind(status);
       item.append(make("span", "trace-entry__mark"));
       const body = make("div");
-      body.append(make("p", "trace-entry__title", entry.rule_id || entry.stage || `Check ${index + 1}`));
+      body.append(make("p", "trace-entry__title", titleCase(entry.rule_id || entry.stage || `Check ${index + 1}`)));
       const reason = entry.reason || entry.message || entry.explanation || entry.details || entry.output;
-      if (reason) body.append(make("p", "trace-entry__reason", typeof reason === "string" ? reason : JSON.stringify(reason)));
+      if (reason && (!Array.isArray(reason) || reason.length)) body.append(make("p", "trace-entry__reason", typeof reason === "string" ? reason : JSON.stringify(reason)));
       const extra = Object.fromEntries(Object.entries(entry).filter(([key]) => !["rule_id", "stage", "status", "outcome", "reason", "message", "explanation", "details", "output"].includes(key)));
       if (Object.keys(extra).length) {
         const detail = make("details");

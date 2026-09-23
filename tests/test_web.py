@@ -145,3 +145,28 @@ def test_processing_failure_can_be_retried(tmp_path, monkeypatch):
         retried = client.post(f"/api/claims/{claim_id}/retry")
         assert retried.status_code == 202
         assert client.get(f"/api/claims/{claim_id}").json()["state"] == "DOCUMENT_CORRECTION_REQUIRED"
+
+
+def test_provider_outage_routes_to_review_without_member_reupload(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        web,
+        "process_uploads",
+        lambda *args, **kwargs: {
+            "documents": [],
+            "issues": [
+                {
+                    "code": "EXTRACTION_UNAVAILABLE",
+                    "file_name": "bill.png",
+                    "message": "Document extraction is unavailable; ask an operator to inspect it.",
+                }
+            ],
+            "metrics": {"provider_failures": 1},
+        },
+    )
+    with _client(tmp_path, monkeypatch) as client:
+        claim_id = _submit(client).json()["id"]
+        result = client.get(f"/api/claims/{claim_id}").json()["result"]
+        assert result["decision"] == "MANUAL_REVIEW"
+        assert result["correction_requests"] == []
+        assert result["confidence_score"] < 0.5
+        assert result["trace"][0]["status"] == "DEGRADED"

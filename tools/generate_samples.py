@@ -33,7 +33,7 @@ BILL = [
 
 
 def create_samples(directory: Path) -> list[Path]:
-    import fitz  # type: ignore[import-untyped]
+    import pymupdf as fitz
     from PIL import Image, ImageDraw, ImageFont
 
     directory.mkdir(parents=True, exist_ok=True)
@@ -44,6 +44,13 @@ def create_samples(directory: Path) -> list[Path]:
         page.insert_text((52, 65 + row * 30), line, fontsize=14)
     pdf.save(pdf_path)
     pdf.close()
+
+    bill_pdf = fitz.open()
+    bill_page = bill_pdf.new_page(width=595, height=842)
+    for row, line in enumerate(BILL):
+        bill_page.insert_text((52, 65 + row * 30), line, fontsize=14)
+    bill_pdf.save(directory / "synthetic_hospital_bill.pdf")
+    bill_pdf.close()
 
     image_path = directory / "synthetic_hospital_bill.png"
     image = Image.new("RGB", (1000, 1250), "white")
