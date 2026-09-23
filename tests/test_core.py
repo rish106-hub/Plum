@@ -1,0 +1,134 @@
+"""Behavioral tests for the deterministic policy reducer and fixture contract."""
+
+from __future__ import annotations
+
+import unittest
+from copy import deepcopy
+from pathlib import Path
+
+from claims.core import evaluate_claim
+from claims.fixtures import load_cases, load_policy, normalize_fixture
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class ClaimCoreTests(unittest.TestCase):
+    policy: dict
+    cases: dict
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.policy = load_policy(ROOT / "policy_terms.json")
+        cls.cases = {case["case_id"]: case for case in load_cases(ROOT / "test_cases.json")}
+
+    def evaluate(self, case_id: str) -> dict:
+        return evaluate_claim(normalize_fixture(self.cases[case_id]), self.policy)
+
+    def test_all_fixture_decisions_and_amounts(self) -> None:
+        for case_id, case in self.cases.items():
+            with self.subTest(case_id=case_id):
+                result = self.evaluate(case_id)
+                self.assertEqual(result["decision"], case["expected"]["decision"])
+                if "approved_amount" in case["expected"]:
+                    self.assertEqual(result["approved_amount"], case["expected"]["approved_amount"])
+                if "rejection_reasons" in case["expected"]:
+                    self.assertTrue(set(case["expected"]["rejection_reasons"]) <= {reason["code"] for reason in result["reasons"]})
+                self.assertTrue(result["trace"])
+
+    def test_wrong_document_names_uploaded_and_missing_types(self) -> None:
+        result = self.evaluate("TC001")
+        self.assertEqual(result["state"], "NEEDS_CORRECTION")
+        self.assertIsNone(result["approved_amount"])
+        message = result["correction_requests"][0]["message"]
+        self.assertIn("PRESCRIPTION", message)
+        self.assertIn("HOSPITAL_BILL", message)
+
+    def test_unreadable_bill_and_patient_mismatch_stop_before_policy(self) -> None:
+        for case_id, code in (("TC002", "DOCUMENT_UNREADABLE"), ("TC003", "PATIENT_MISMATCH")):
+            with self.subTest(case_id=case_id):
+                result = self.evaluate(case_id)
+                self.assertIn(code, {entry["code"] for entry in result["correction_requests"]})
+                self.assertEqual([step["stage"] for step in result["trace"]], ["document_gate"])
+        self.assertIn("Rajesh Kumar", self.evaluate("TC003")["correction_requests"][0]["message"])
+        self.assertIn("Arjun Mehta", self.evaluate("TC003")["correction_requests"][0]["message"])
+
+    def test_waiting_period_uses_specific_condition_and_real_calendar(self) -> None:
+        result = self.evaluate("TC005")
+        waiting = next(step for step in result["trace"] if step["rule_id"] == "waiting_period")
+        self.assertEqual(waiting["evidence"]["eligible_from"], "2024-11-30")
+        self.assertEqual(waiting["policy_ref"], "waiting_periods.specific_conditions.diabetes")
+        mri = self.evaluate("TC007")
+        self.assertEqual(next(step for step in mri["trace"] if step["rule_id"] == "waiting_period")["status"], "PASS")
+        self.assertEqual(mri["trace"][-1]["evidence"]["primary_reason"], "PRE_AUTH_MISSING")
+
+    def test_dental_item_exclusion_and_assumptions_are_visible(self) -> None:
+        result = self.evaluate("TC006")
+        self.assertEqual(result["approved_amount_paise"], 800000)
+        self.assertEqual([entry["status"] for entry in result["ledger"] if entry["kind"] == "line_item"], ["ELIGIBLE", "EXCLUDED"])
+        self.assertTrue(any(step["status"] == "ASSUMPTION" and step["rule_id"] == "dental_report" for step in result["trace"]))
+        self.assertTrue(any(step["status"] == "ASSUMPTION" and step["rule_id"] == "per_claim_limit" for step in result["trace"]))
+
+    def test_discount_precedes_copay_and_uses_integer_paise(self) -> None:
+        result = self.evaluate("TC010")
+        pricing = next(step for step in result["trace"] if step["rule_id"] == "payable_amount")["evidence"]
+        self.assertEqual(pricing["eligible_paise"], 450000)
+        self.assertEqual(pricing["network_discount_paise"], 90000)
+        self.assertEqual(pricing["copay_paise"], 36000)
+        self.assertEqual(pricing["payable_paise"], 324000)
+
+    def test_optional_failure_is_visible_without_changing_supported_decision(self) -> None:
+        result = self.evaluate("TC011")
+        self.assertEqual(result["decision"], "APPROVED")
+        self.assertLess(result["confidence_score"], self.evaluate("TC004")["confidence_score"])
+        self.assertTrue(any(step["status"] == "SKIPPED_COMPONENT_FAILURE" for step in result["trace"]))
+        self.assertIn("manual review", " ".join(reason["message"] for reason in result["reasons"]).lower())
+
+    def test_real_upload_with_no_identity_requires_review(self) -> None:
+        claim = normalize_fixture(self.cases["TC009"])
+        claim["documents"] = [{**document, "source": "uploaded_file"} for document in claim["documents"]]
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "MANUAL_REVIEW")
+        self.assertIn("PATIENT_IDENTITY_UNKNOWN", {reason["code"] for reason in result["reasons"]})
+
+    def test_policy_values_are_read_from_input(self) -> None:
+        policy = deepcopy(self.policy)
+        policy["opd_categories"]["consultation"]["copay_percent"] = 0
+        result = evaluate_claim(normalize_fixture(self.cases["TC004"]), policy)
+        self.assertEqual(result["approved_amount"], 1500)
+
+    def test_patient_name_is_checked_against_member_roster(self) -> None:
+        claim = normalize_fixture(self.cases["TC004"])
+        for document in claim["documents"]:
+            document["patient_name"] = "Someone Else"
+            document["fields"]["patient_name"] = "Someone Else"
+        result = evaluate_claim(claim, self.policy)
+        self.assertIsNone(result["decision"])
+        self.assertEqual(result["correction_requests"][0]["code"], "PATIENT_NOT_COVERED")
+
+    def test_claim_bill_and_line_items_must_reconcile(self) -> None:
+        claim = normalize_fixture(self.cases["TC004"])
+        claim["claimed_amount"] = 1600
+        result = evaluate_claim(claim, self.policy)
+        self.assertIsNone(result["decision"])
+        self.assertEqual(result["correction_requests"][0]["code"], "AMOUNT_MISMATCH")
+        self.assertEqual(next(step for step in result["trace"] if step["rule_id"] == "bill_amount")["status"], "FAIL")
+
+    def test_real_upload_unknown_annual_usage_needs_review(self) -> None:
+        claim = normalize_fixture(self.cases["TC004"])
+        claim.pop("ytd_claims_amount")
+        claim["documents"] = [{**document, "source": "uploaded_file"} for document in claim["documents"]]
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "MANUAL_REVIEW")
+        self.assertIn("ANNUAL_USAGE_UNKNOWN", {reason["code"] for reason in result["reasons"]})
+
+    def test_malformed_line_amount_produces_review_trace(self) -> None:
+        claim = normalize_fixture(self.cases["TC004"])
+        claim["documents"][1]["fields"]["line_items"][0]["amount"] = "not a number"
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "MANUAL_REVIEW")
+        self.assertEqual(result["reasons"][0]["code"], "MALFORMED_EVIDENCE")
+        self.assertEqual(result["trace"][0]["status"], "FAIL")
+
+
+if __name__ == "__main__":
+    unittest.main()
