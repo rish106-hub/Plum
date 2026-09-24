@@ -120,7 +120,7 @@ def _pdf_text(data: bytes) -> tuple[str, int]:
     pages = len(reader.pages)
     if pages > MAX_PDF_PAGES:
         raise ValueError(f"PDF has {pages} pages; the limit is {MAX_PDF_PAGES}.")
-    return "\n".join(page.extract_text() or "" for page in reader.pages), pages
+    return "\f".join(page.extract_text() or "" for page in reader.pages), pages
 
 
 def _image_quality(data: bytes) -> tuple[bool, str | None]:
@@ -263,7 +263,7 @@ class SarvamDocumentProvider:
             documents = [entry for entry in result_zip.infolist() if entry.filename.lower().endswith(".md") and not entry.is_dir()]
             if not documents or sum(entry.file_size for entry in documents) > MAX_OCR_ZIP_BYTES:
                 raise ValueError("Sarvam OCR archive has no bounded Markdown result")
-            return "\n".join(result_zip.read(entry).decode("utf-8", errors="replace") for entry in documents)
+            return "\f".join(result_zip.read(entry).decode("utf-8", errors="replace") for entry in documents)
 
     def extract_fields(self, data: bytes, mime_type: str, document_type: str) -> dict[str, Any]:
         schema = {
@@ -352,6 +352,163 @@ def _needs_extract(kind: str, content: dict[str, Any]) -> bool:
     return False
 
 
+_DERIVED_ISSUE_CODES = {
+    "UNIDENTIFIED_DOCUMENT", "PARTIAL_DOCUMENT", "DETAILS_UNVERIFIED", "AMOUNT_UNVERIFIED",
+    "MISSING_DOCUMENT", "PATIENT_MISMATCH", "MEMBER_MISMATCH", "PATIENT_UNVERIFIED",
+    "MATERIAL_FIELD_UNVERIFIED", "BILL_ARITHMETIC_CONFLICT",
+}
+
+
+def revalidate_documents(
+    documents: list[dict[str, Any]],
+    existing_issues: list[dict[str, Any]],
+    claim_category: str,
+    member_name: str,
+    policy: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Rebuild evidence-dependent gates after OCR or accepted evidence correction."""
+    issues = [issue for issue in existing_issues if issue.get("code") not in _DERIVED_ISSUE_CODES]
+    requirements = policy.get("document_requirements", {}).get(claim_category, {})
+    actual_good: set[str] = set()
+    named: list[tuple[str, str]] = []
+    material_fields = {
+        "PRESCRIPTION": ("patient_name", "date", "diagnosis"),
+        "HOSPITAL_BILL": ("patient_name", "total", "line_items"),
+        "PHARMACY_BILL": ("patient_name", "total", "line_items"),
+        "LAB_REPORT": ("patient_name", "date", "test_name"),
+        "DIAGNOSTIC_REPORT": ("patient_name", "date", "test_name"),
+        "DENTAL_REPORT": ("patient_name", "date", "diagnosis"),
+    }
+    for doc in documents:
+        kind = str(doc.get("actual_type") or "UNKNOWN").upper()
+        quality = str(doc.get("quality") or "PARTIAL").upper()
+        fields = doc.get("content") or {}
+        name = str(doc.get("file_name") or doc.get("file_id") or "document")
+        if kind == "UNKNOWN":
+            issues.append(_issue("UNIDENTIFIED_DOCUMENT", name, f"Could not identify {name} as a medical document. Upload a clear photo or PDF showing the document heading."))
+        elif quality == "UNREADABLE":
+            issues.append(_issue("UNREADABLE_DOCUMENT", name, f"The {TYPE_NAMES.get(kind, 'document')} in {name} cannot be read. Re-upload a clear image of that document."))
+        elif quality == "PARTIAL":
+            issues.append(_issue("PARTIAL_DOCUMENT", name, f"The {TYPE_NAMES.get(kind, 'document')} in {name} is partly unreadable. Re-upload the full page with names and amounts visible."))
+        elif kind in VALID_TYPES:
+            actual_good.add(kind)
+        for field in material_fields.get(kind, ()):
+            present = bool(fields.get(field))
+            if field == "total":
+                present = fields.get(field) is not None and fields.get(field) != ""
+            if not present:
+                messages = {
+                    "patient_name": "patient name",
+                    "date": "document date",
+                    "diagnosis": "diagnosis",
+                    "total": "bill total",
+                    "line_items": "itemized charges",
+                    "test_name": "test name",
+                }
+                issues.append(_issue(
+                    "MATERIAL_FIELD_UNVERIFIED", name,
+                    f"The {messages[field]} on {name} could not be verified. Upload a clearer document showing it.",
+                    field=field,
+                ))
+        if kind in {"HOSPITAL_BILL", "PHARMACY_BILL"} and fields.get("total") is not None and fields.get("line_items"):
+            try:
+                total_paise = int(Decimal(str(fields["total"])) * 100)
+                items_paise = sum(int(Decimal(str(item.get("amount"))) * 100) for item in fields["line_items"])
+                conflict = total_paise != items_paise
+            except (InvalidOperation, TypeError, ValueError):
+                conflict = True
+            if conflict:
+                issues.append(_issue(
+                    "BILL_ARITHMETIC_CONFLICT", name,
+                    f"The total on {name} does not match its itemized charges. Upload a clearer itemized bill or ask an operator to review it.",
+                ))
+        patient_name = doc.get("patient_name_on_doc") or fields.get("patient_name")
+        if patient_name:
+            named.append((name, str(patient_name)))
+
+    for required_type in requirements.get("required", []):
+        kind = str(required_type).upper()
+        if kind not in actual_good:
+            wrong = next((doc for doc in documents if str(doc.get("actual_type") or "UNKNOWN").upper() not in {kind, "UNKNOWN"}), None)
+            if wrong:
+                wrong_type = str(wrong.get("actual_type") or "UNKNOWN").upper()
+                message = f"{wrong.get('file_name', 'The uploaded file')} is a {TYPE_NAMES.get(wrong_type, 'different document')}; this {claim_category.lower()} claim needs a {TYPE_NAMES.get(kind, kind.lower())}. Upload that document."
+                file_name = str(wrong.get("file_name") or "")
+            else:
+                message = f"This {claim_category.lower()} claim needs a {TYPE_NAMES.get(kind, kind.lower())}. Upload that document."
+                file_name = ""
+            issues.append(_issue("MISSING_DOCUMENT", file_name, message, required_type=kind))
+
+    if len({_normal_name(name) for _, name in named}) > 1:
+        detail = "; ".join(f"{filename}: {name}" for filename, name in named)
+        issues.append(_issue("PATIENT_MISMATCH", "", f"The uploaded documents name different patients ({detail}). Re-upload documents for {member_name}."))
+    elif named and member_name and _normal_name(named[0][1]) != _normal_name(member_name):
+        issues.append(_issue("MEMBER_MISMATCH", named[0][0], f"{named[0][0]} names {named[0][1]}, but this claim is for {member_name}. Upload the correct patient's document."))
+    elif not named:
+        issues.append(_issue("PATIENT_UNVERIFIED", "", "No readable patient name was found on the uploaded documents. Upload a document showing the patient's name or request manual review."))
+    return issues
+
+
+def apply_evidence_candidates(
+    documents: list[dict[str, Any]],
+    candidates: list[dict[str, Any]],
+    ocr_text_by_file_id: dict[str, str | list[str] | tuple[str, ...]],
+) -> list[dict[str, Any]]:
+    """Apply only prevalidated evidence candidates, preserving source provenance."""
+    import copy
+
+    updated = copy.deepcopy(documents)
+    by_id = {str(doc.get("file_id")): doc for doc in updated}
+    for candidate in candidates:
+        file_id = str(candidate.get("file_id") or "")
+        document = by_id.get(file_id)
+        fields = candidate.get("fields")
+        provenance = candidate.get("evidence")
+        if document is None or not isinstance(fields, dict) or not isinstance(provenance, list):
+            continue
+        content = document.setdefault("content", {})
+        kind = fields.get("document_type")
+        if kind in VALID_TYPES and kind != "UNKNOWN":
+            document["actual_type"] = kind
+            pages = ocr_text_by_file_id.get(file_id, "")
+            full_text = "\n".join(pages) if isinstance(pages, (list, tuple)) else str(pages).replace("\f", "\n")
+            parsed, parsed_evidence = _text_content(full_text, kind)
+            for key, value in parsed.items():
+                content.setdefault(key, value)
+            for item in parsed_evidence:
+                document.setdefault("evidence", []).append({**item, "source": "gemini_assisted_local_parse"})
+            if document.get("quality") == "PARTIAL":
+                document["quality"] = "GOOD"
+        safe_fields = {"patient_name", "date", "diagnosis", "hospital_name", "test_name", "total_paise", "line_items"}
+        for name, value in fields.items():
+            if name not in safe_fields:
+                continue
+            if name == "total_paise":
+                content["total"] = Decimal(int(value)) / Decimal(100)
+                evidence_field = "total"
+            elif name == "line_items":
+                content["line_items"] = [
+                    {"description": str(item["description"]), "amount": Decimal(int(item["amount_paise"])) / Decimal(100)}
+                    for item in value
+                ]
+                evidence_field = "line_items"
+            else:
+                content[name] = value
+                evidence_field = name
+            for proof in provenance:
+                if proof.get("field") == name:
+                    document.setdefault("evidence", []).append({
+                        "field": evidence_field,
+                        "source": "gemini_candidate",
+                        "page": int(proof["page"]),
+                        "snippet": str(proof["quote"]),
+                    })
+        document["patient_name_on_doc"] = content.get("patient_name")
+        document["extraction_source"] = f"{document.get('extraction_source', 'unknown')}+gemini_candidate"
+        document["confidence"] = min(float(document.get("confidence") or 0.35), 0.75)
+    return updated
+
+
 def process_uploads(
     files: list[Any],
     claim_category: str,
@@ -366,6 +523,7 @@ def process_uploads(
     """
     documents: list[dict[str, Any]] = []
     issues: list[dict[str, Any]] = []
+    ocr_text_by_file_id: dict[str, str] = {}
     metrics: dict[str, Any] = {
         "files": len(files), "pages": 0, "provider_calls": 0, "provider_failures": 0,
         "sarvam_digitise_calls": 0, "sarvam_digitise_pages": 0,
@@ -439,6 +597,7 @@ def process_uploads(
                 metrics["sarvam_digitise_calls"] += 1
                 metrics["sarvam_digitise_pages"] += pages
                 recognized = provider.digitise(data, mime)
+                text = recognized
                 if len(recognized.strip()) < 30:
                     kind, quality = "UNKNOWN", "UNREADABLE"
                     source = "sarvam_digitise"
@@ -522,26 +681,17 @@ def process_uploads(
             "pages": pages,
         }
         documents.append(doc)
+        if text.strip():
+            ocr_text_by_file_id[str(doc["file_id"])] = text
         if kind in {"HOSPITAL_BILL", "PHARMACY_BILL"} and "total" not in content and quality == "GOOD":
             issues.append(_issue("AMOUNT_UNVERIFIED", name, f"The total amount on {name} could not be verified. Upload a clearer bill showing its total."))
 
-    actual = {doc["actual_type"] for doc in documents if doc["quality"] == "GOOD"}
-    required = [str(x) for x in rules.get("required", [])]
-    for kind in required:
-        if kind not in actual:
-            wrong = next((doc for doc in documents if doc["actual_type"] not in {kind, "UNKNOWN"}), None)
-            if wrong:
-                message = f"{wrong['file_name']} is a {TYPE_NAMES[wrong['actual_type']]}; this {claim_category.lower()} claim needs a {TYPE_NAMES.get(kind, kind.lower())}. Upload that document."
-            else:
-                message = f"This {claim_category.lower()} claim needs a {TYPE_NAMES.get(kind, kind.lower())}. Upload that document."
-            issues.append(_issue("MISSING_DOCUMENT", wrong["file_name"] if wrong else "", message, required_type=kind))
-
-    named = [(doc["file_name"], str(doc["patient_name_on_doc"])) for doc in documents if doc.get("patient_name_on_doc")]
-    if len({_normal_name(name) for _, name in named}) > 1:
-        detail = "; ".join(f"{filename}: {name}" for filename, name in named)
-        issues.append(_issue("PATIENT_MISMATCH", "", f"The uploaded documents name different patients ({detail}). Re-upload the document for {member_name}."))
-    elif named and member_name and _normal_name(named[0][1]) != _normal_name(member_name):
-        issues.append(_issue("MEMBER_MISMATCH", named[0][0], f"{named[0][0]} names {named[0][1]}, but this claim is for {member_name}. Upload the correct patient's document."))
-    elif not named and not issues:
-        issues.append(_issue("PATIENT_UNVERIFIED", "", "No readable patient name was found on the uploaded documents. Upload a document showing the patient's name or request manual review."))
-    return {"documents": documents, "issues": issues, "metrics": metrics}
+    issues = revalidate_documents(documents, issues, claim_category, member_name, policy)
+    return {
+        "documents": documents,
+        "issues": issues,
+        "metrics": metrics,
+        # Ephemeral hand-off to the claim worker. The caller must remove this
+        # value before storing the inspection or serializing any event/result.
+        "ocr_text_by_file_id": ocr_text_by_file_id,
+    }

@@ -23,8 +23,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
+from claims.ai_review import resolve_evidence
 from claims.core import evaluate_claim
-from claims.documents import process_uploads
+from claims.documents import apply_evidence_candidates, process_uploads, revalidate_documents
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PACKAGE_ROOT = Path(__file__).resolve().parent
@@ -200,6 +201,28 @@ def _member_name(policy: dict[str, Any], member_id: str) -> str:
     return ""
 
 
+def _covered_member_names(policy: dict[str, Any], member_id: str) -> list[str]:
+    members = policy.get("members", [])
+    member = next((item for item in members if item.get("member_id") == member_id), None)
+    if member is None:
+        return []
+    owner_id = str(member.get("primary_member_id") or member_id)
+    owner = next((item for item in members if item.get("member_id") == owner_id), member)
+    covered_ids = {owner_id, *[str(value) for value in owner.get("dependents", [])]}
+    return [str(item.get("name")) for item in members if item.get("member_id") in covered_ids and item.get("name")]
+
+
+def _gemini_opt_in() -> bool:
+    return os.getenv("GEMINI_EVIDENCE_REVIEW_ENABLED", "false").strip().casefold() in {"1", "true", "yes"}
+
+
+def _gemini_provider_failure(result: dict[str, Any]) -> bool:
+    return result.get("status") == "ABSTAINED" and any(
+        marker in str((result.get("trace") or {}).get("reason") or "")
+        for marker in ("timeout", "connection_error", "provider_error", "rate_limited", "provider_unavailable", "provider_not_configured", "provider_dependency_unavailable")
+    )
+
+
 def _media_type(data: bytes) -> str | None:
     if data.startswith(b"%PDF-"):
         return "application/pdf"
@@ -233,7 +256,9 @@ async def _read_upload(upload: UploadFile) -> tuple[str, str, bytes]:
     return _safe_name(upload.filename), actual_type, data
 
 
-def _correction_result(issues: list[dict[str, Any]], metrics: dict[str, Any]) -> dict[str, Any]:
+def _correction_result(
+    issues: list[dict[str, Any]], metrics: dict[str, Any], extra_trace: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
     correction_requests = [str(issue.get("message") or "Upload a clearer or correct document.") for issue in issues]
     return {
         "state": "DOCUMENT_CORRECTION_REQUIRED",
@@ -253,7 +278,7 @@ def _correction_result(issues: list[dict[str, Any]], metrics: dict[str, Any]) ->
                 "reason": issue.get("message"),
             }
             for issue in issues
-        ],
+        ] + (extra_trace or []),
         "metrics": metrics,
     }
 
@@ -394,11 +419,80 @@ def process_claim(claim_id: str) -> None:
             _member_name(policy, request_data["member_id"]),
             policy,
         )
+        # OCR page text is available only during this worker call. It is removed
+        # from the inspection before metrics, events, or results are persisted.
+        ocr_text_by_file_id = inspection.pop("ocr_text_by_file_id", {})
         issues = inspection.get("issues", [])
+
+        ai_result: dict[str, Any] | None = None
+        if _gemini_opt_in():
+            files_by_id = {
+                f"UPLOAD-{index}": {
+                    "data": item["data"],
+                    "mime_type": item.get("content_type"),
+                }
+                for index, item in enumerate(files, 1)
+            }
+            ai_result = resolve_evidence(
+                inspection.get("documents", []),
+                files_by_id,
+                ocr_text_by_file_id,
+                allowed_patient_names=_covered_member_names(policy, request_data["member_id"]),
+            )
+            inspection.setdefault("metrics", {})["gemini"] = {
+                **ai_result.get("metrics", {}),
+                "status": ai_result.get("status"),
+            }
+            if ai_result.get("status") == "CANDIDATES_VALIDATED":
+                inspection["documents"] = apply_evidence_candidates(
+                    inspection.get("documents", []),
+                    ai_result.get("candidates", []),
+                    ocr_text_by_file_id,
+                )
+                issues = revalidate_documents(
+                    inspection["documents"],
+                    issues,
+                    request_data["claim_category"],
+                    _member_name(policy, request_data["member_id"]),
+                    policy,
+                )
+                inspection["issues"] = issues
+        else:
+            inspection.setdefault("metrics", {})["gemini"] = {"status": "DISABLED", "calls": 0, "pages": 0}
+
+        gemini_trace: list[dict[str, Any]] = []
+        if ai_result:
+            trace = dict(ai_result.get("trace") or {})
+            if ai_result.get("status") == "CANDIDATES_VALIDATED":
+                trace["status"] = "CANDIDATES_APPLIED"
+                trace["candidate_evidence"] = [
+                    {
+                        "file_id": candidate.get("file_id"),
+                        "fields": sorted((candidate.get("fields") or {}).keys()),
+                        "sources": [
+                            {"field": entry.get("field"), "page": entry.get("page"), "quote": entry.get("quote")}
+                            for entry in candidate.get("evidence", [])
+                        ],
+                    }
+                    for candidate in ai_result.get("candidates", [])
+                ]
+            gemini_trace.append(trace)
+
+        if ai_result and _gemini_provider_failure(ai_result) and issues:
+            result = _provider_review_result(issues, inspection.get("metrics", {}))
+            result["trace"].extend(gemini_trace)
+            _set_state(
+                claim_id,
+                "MANUAL_REVIEW",
+                result=result,
+                detail={"issue_count": len(issues), "gemini_status": ai_result.get("status")},
+            )
+            return
         if issues:
             metrics = inspection.get("metrics", {})
             if any(issue.get("code") == "EXTRACTION_UNAVAILABLE" for issue in issues):
                 result = _provider_review_result(issues, metrics)
+                result["trace"].extend(gemini_trace)
                 _set_state(
                     claim_id,
                     "MANUAL_REVIEW",
@@ -406,7 +500,7 @@ def process_claim(claim_id: str) -> None:
                     detail={"issue_count": len(issues), "provider_failures": metrics.get("provider_failures", 0)},
                 )
             else:
-                result = _correction_result(issues, metrics)
+                result = _correction_result(issues, metrics, gemini_trace)
                 _set_state(claim_id, "DOCUMENT_CORRECTION_REQUIRED", result=result, detail={"issue_count": len(issues)})
             return
         duplicate_hits = _duplicate_bill_hits(claim_id, inspection.get("documents", []))
@@ -428,6 +522,7 @@ def process_claim(claim_id: str) -> None:
         payload["ytd_claims_source"] = "database_approved_decisions"
         result = evaluate_claim(payload, policy)
         result.setdefault("document_metrics", inspection.get("metrics", {}))
+        result.setdefault("trace", []).extend(gemini_trace)
         final_state = str(result.get("state") or result.get("decision") or "MANUAL_REVIEW")
         _set_state(claim_id, final_state, result=result, detail={"decision": result.get("decision")})
     except Exception as exc:  # noqa: BLE001 - isolate all provider and parser failures at the job boundary
