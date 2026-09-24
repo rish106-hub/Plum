@@ -15,7 +15,7 @@ Live Gemini smoke results supplied by the root operator: the first synthetic req
 | 5. Pre-policy treatment reason | **Fixed** | PR #6 adds a policy coverage-period rule ahead of waiting-period reasons. Invalid or absent policy dates remain unevaluated and require conservative handling. |
 | 6. Empty bill-line description | **Fixed** | PR #6 keeps blank descriptions `UNKNOWN` and routes the claim to review instead of matching an exclusion. |
 | 7. Network hospital aliases | **Partial** | PR #6 supports an explicit alias list and the reported Apollo Bengaluru spelling. Unlisted name variants do not receive the discount. |
-| 8. Simulated component failure | **Open** | `claims/core.py` still reads `simulate_component_failure` from the claim payload; actual fault injection and containment are not implemented. |
+| 8. Simulated component failure | **In progress (PR #10 open)** | `fix/optional-enrichment-fallback` replaces payload-controlled simulation with evaluator-only fault injection and an internal optional-risk boundary. Local checks are green; GitHub CI and branch guard are still running. Until PR #10 passes and merges, current `main` remains open on this finding. |
 | 9. Hardcoded fixture policy | **Partial** | PR #6 moves the dental and consultation compatibility assumptions into explicit fixture-only configuration. TC006/TC010 still encode assumptions because the fixture expectation conflicts with supplied policy terms; insurer clarification remains necessary. |
 | 10. YTD and manual review | **Partial** | PR #2 calculates frequency and approved-decision history from local SQLite, grouped across the covered family. It is an adjudication proxy, not remittance history; reversals and claims from outside this local app are absent. |
 | 11. Intake and pre-auth details | **Partial** | PR #8 prevents unknown pre-auth status from being treated as explicit denial. The form still has no separate patient selector, pre-auth evidence/status field, hospital/provider field, or submission date. Dependents represented as members can be selected, but there is no independent patient field. |
@@ -99,6 +99,10 @@ The Gemini work was merged in PR #7 (`3f4606c`); the validation follow-up was me
 | Reviewer/escalation boundary | Gemini cannot return a policy interpretation or payable/approved amount; duplicate/fraud/known identity mismatch/policy conflicts remain outside the model route. Timeouts and invalid evidence abstain/fail closed. | No independent multi-agent orchestration was added; this is one grouped evidence pass, with one bounded transient retry. Do not claim model corrections reduce human escalation until a labeled set measures accuracy, wrongful decisions, abstention, cost, and reviewer minutes. |
 
 PRs #6–#9 are integrated on main. A second live synthetic Gemini request produced one accepted evidence candidate after the PR #9 validation fix; the earlier request abstained on `unsolicited_field`. Browser E2E after integration remains outstanding, as does evaluation across representative document types and difficult OCR cases.
+
+## TC011 follow-up (PR #10 open)
+
+The open branch `fix/optional-enrichment-fallback` implements evaluator-only fault injection and an internal optional-risk boundary for TC011. Its local checks are green; GitHub CI and the branch-guard check are in progress. This is not yet part of `main`, so finding 8 remains unresolved on the merged baseline until the PR checks pass and it merges. Do not count this work as shipped or verified on the integrated application yet.
 
 ## Verification boundary
 
