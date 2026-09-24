@@ -20,9 +20,16 @@ python3 -m venv .venv
 
 Open a second terminal for the claim submission. The app uses local SQLite and private upload files under `.data/`.
 
+Generate the synthetic documents once in that second terminal. They are local demo files and are intentionally not stored in Git:
+
+```bash
+cd /Users/somilthakur/Desktop/Project
+.venv/bin/python -m tools.generate_samples sample_documents
+```
+
 ## 2. Submit a synthetic scan from Terminal
 
-The repository sample is a synthetic scanned bill image and a selectable-text prescription. This request sends the image through Sarvam OCR and parses the prescription locally. It can incur a small Sarvam charge. Use synthetic/sample files here, not real health documents.
+The generated sample set includes a synthetic bill image and a selectable-text prescription. This request sends the image through Sarvam OCR and parses the prescription locally. It can incur a small Sarvam charge. Use synthetic/sample files here, not real health documents.
 
 ```bash
 cd /Users/somilthakur/Desktop/Project
