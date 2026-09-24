@@ -83,6 +83,18 @@ class ClaimCoreTests(unittest.TestCase):
         self.assertTrue(any(step["status"] == "SKIPPED_COMPONENT_FAILURE" for step in result["trace"]))
         self.assertIn("manual review", " ".join(reason["message"] for reason in result["reasons"]).lower())
 
+    def test_same_day_and_monthly_history_route_to_review(self) -> None:
+        base = normalize_fixture(self.cases["TC004"])
+        base["claims_history"] = [{"date": "2024-11-01"}, {"date": "2024-11-01"}]
+        same_day = evaluate_claim(base, self.policy)
+        self.assertEqual(same_day["decision"], "MANUAL_REVIEW")
+        self.assertIn("SAME_DAY_CLAIMS", {reason["code"] for reason in same_day["reasons"]})
+
+        base["claims_history"] = [{"date": f"2024-11-{day:02d}"} for day in range(2, 8)]
+        monthly = evaluate_claim(base, self.policy)
+        self.assertEqual(monthly["decision"], "MANUAL_REVIEW")
+        self.assertIn("MONTHLY_CLAIMS", {reason["code"] for reason in monthly["reasons"]})
+
     def test_real_upload_with_no_identity_requires_review(self) -> None:
         claim = normalize_fixture(self.cases["TC009"])
         claim["documents"] = [{**document, "source": "uploaded_file"} for document in claim["documents"]]

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import sqlite3
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -16,15 +19,13 @@ def _client(tmp_path: Path, monkeypatch) -> TestClient:
     return TestClient(web.app)
 
 
-def _submit(client: TestClient, data: bytes = PDF, content_type: str = "application/pdf", ytd: str | None = None):
+def _submit(client: TestClient, data: bytes = PDF, content_type: str = "application/pdf"):
     fields = {
         "member_id": "EMP001",
         "claim_category": "CONSULTATION",
         "treatment_date": "2024-11-01",
         "claimed_amount": "1500.00",
     }
-    if ytd is not None:
-        fields["ytd_claims_amount"] = ytd
     return client.post(
         "/api/claims",
         data=fields,
@@ -74,6 +75,8 @@ def test_upload_decision_and_trace_are_persisted(tmp_path, monkeypatch):
         assert payload["claim_category"] == "CONSULTATION"
         assert payload["claimed_amount"] == 1500
         assert payload["documents"][0]["actual_type"] == "HOSPITAL_BILL"
+        captured["ytd_claims_amount"] = payload["ytd_claims_amount"]
+        captured["ytd_claims_source"] = payload["ytd_claims_source"]
         return {
             "state": "DECIDED",
             "decision": "APPROVED",
@@ -89,17 +92,119 @@ def test_upload_decision_and_trace_are_persisted(tmp_path, monkeypatch):
     monkeypatch.setattr(web, "process_uploads", inspect)
     monkeypatch.setattr(web, "evaluate_claim", decide)
     with _client(tmp_path, monkeypatch) as client:
-        response = _submit(client, ytd="0")
+        response = _submit(client)
         assert response.status_code == 202
         claim_id = response.json()["id"]
         saved = client.get(f"/api/claims/{claim_id}").json()
-        assert captured == {"bytes": PDF, "name": "Rajesh Kumar"}
+        assert captured == {
+            "bytes": PDF,
+            "name": "Rajesh Kumar",
+            "ytd_claims_amount": 0.0,
+            "ytd_claims_source": "database_approved_decisions",
+        }
         assert saved["state"] == "DECIDED"
-        assert saved["request"]["ytd_claims_amount"] == 0
+        assert "ytd_claims_amount" not in saved["request"]
+        assert captured["ytd_claims_amount"] == 0
+        assert captured["ytd_claims_source"] == "database_approved_decisions"
         assert saved["result"]["decision"] == "APPROVED"
         assert saved["result"]["trace"][0]["rule_id"] == "CONSULTATION"
         assert saved["result"]["ledger"][0]["amount_paise"] == -15000
         assert client.get("/api/claims").json()["claims"][0]["id"] == claim_id
+
+
+def test_identical_bill_on_another_claim_routes_to_review(tmp_path, monkeypatch):
+    calls = {"adjudications": 0}
+
+    def inspect(files, *_args, **_kwargs):
+        return {
+            "documents": [{
+                "file_id": "UPLOAD-1",
+                "sha256": hashlib.sha256(files[0]["data"]).hexdigest(),
+                "actual_type": "HOSPITAL_BILL",
+                "quality": "GOOD",
+                "content": {"total": 1500, "line_items": [{"description": "Consultation", "amount": 1500}]},
+            }],
+            "issues": [],
+            "metrics": {},
+        }
+
+    def decide(*_args):
+        calls["adjudications"] += 1
+        return {"state": "DECIDED", "decision": "APPROVED", "approved_amount": 1350, "approved_amount_paise": 135000, "reasons": [], "trace": [], "ledger": []}
+
+    monkeypatch.setattr(web, "process_uploads", inspect)
+    monkeypatch.setattr(web, "evaluate_claim", decide)
+    with _client(tmp_path, monkeypatch) as client:
+        first = _submit(client).json()
+        assert client.get(f"/api/claims/{first['id']}").json()["result"]["decision"] == "APPROVED"
+        second = _submit(client).json()
+        saved = client.get(f"/api/claims/{second['id']}").json()
+        assert saved["state"] == "MANUAL_REVIEW"
+        assert saved["result"]["decision"] == "MANUAL_REVIEW"
+        assert saved["result"]["reasons"][0]["code"] == "DUPLICATE_BILL"
+        assert saved["result"]["trace"][0]["evidence"]["matching_claim_ids"] == [first["id"]]
+        assert calls["adjudications"] == 1
+
+
+def test_history_is_loaded_from_local_claims_for_annual_and_frequency_limits(tmp_path, monkeypatch):
+    observed = []
+
+    def inspect(files, *_args, **_kwargs):
+        return {
+            "documents": [{
+                "file_id": "UPLOAD-1",
+                "sha256": hashlib.sha256(files[0]["data"]).hexdigest(),
+                "actual_type": "HOSPITAL_BILL",
+                "quality": "GOOD",
+                "content": {"total": 1500, "line_items": [{"description": "Consultation", "amount": 1500}]},
+            }],
+            "issues": [],
+            "metrics": {},
+        }
+
+    def decide(payload, _policy):
+        observed.append(payload)
+        return {"state": "DECIDED", "decision": "APPROVED", "approved_amount": 1350, "approved_amount_paise": 135000, "reasons": [], "trace": [], "ledger": []}
+
+    monkeypatch.setattr(web, "process_uploads", inspect)
+    monkeypatch.setattr(web, "evaluate_claim", decide)
+    with _client(tmp_path, monkeypatch) as client:
+        first = _submit(client, data=PDF + b" first").json()
+        assert client.get(f"/api/claims/{first['id']}").json()["result"]["decision"] == "APPROVED"
+        second = _submit(client, data=PDF + b" second").json()
+        assert client.get(f"/api/claims/{second['id']}").json()["result"]["decision"] == "APPROVED"
+
+    assert observed[1]["ytd_claims_amount"] == 1350
+    assert observed[1]["ytd_claims_source"] == "database_approved_decisions"
+    assert observed[1]["claims_history"] == [{"date": "2024-11-01"}]
+
+
+def test_older_local_database_is_migrated_and_history_is_backfilled(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLUM_DATA_DIR", str(tmp_path))
+    database = tmp_path / "claims.sqlite3"
+    connection = sqlite3.connect(database)
+    connection.execute(
+        "CREATE TABLE claims (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, state TEXT NOT NULL, request_json TEXT NOT NULL, result_json TEXT, error_message TEXT)"
+    )
+    connection.execute(
+        "INSERT INTO claims VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            "prior",
+            "2024-11-02T00:00:00+00:00",
+            "2024-11-02T00:00:00+00:00",
+            "DECIDED",
+            json.dumps({"member_id": "EMP001", "treatment_date": "2024-11-01"}),
+            json.dumps({"decision": "PARTIAL", "approved_amount_paise": 75000}),
+            None,
+        ),
+    )
+    connection.commit()
+    connection.close()
+
+    web.init_db()
+    with web._connect() as migrated:
+        row = migrated.execute("SELECT member_id, treatment_date, decision, approved_amount_paise FROM claims WHERE id='prior'").fetchone()
+    assert tuple(row) == ("EMP001", "2024-11-01", "PARTIAL", 75000)
 
 
 def test_invalid_file_is_rejected_before_storage(tmp_path, monkeypatch):

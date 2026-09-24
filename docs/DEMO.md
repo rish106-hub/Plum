@@ -1,6 +1,6 @@
 # Demo recording guide (target: 9–10 minutes)
 
-The assignment asks for an 8–12 minute recording. Use the synthetic files created with `.venv/bin/python -m tools.generate_samples sample_documents`. Keep the reviewer screen at normal browser zoom so the trace and ledger are readable. The [approval screenshot](screenshots/approval.png) and [correction screenshot](screenshots/correction.png) show the expected states.
+The assignment asks for an 8–12 minute recording. Use the synthetic files created with `.venv/bin/python -m tools.generate_samples sample_documents`. Keep the reviewer screen at normal browser zoom so the trace and ledger are readable. The [approval screenshot](screenshots/approval.png), [correction screenshot](screenshots/correction.png), and [duplicate-bill review screenshot](screenshots/duplicate-review.png) show the expected states.
 
 ## 0:00–1:00 — What the system does
 
@@ -8,11 +8,11 @@ Show the submission page and the two routes into one claim model: real PDF/image
 
 ## 1:00–3:00 — Document problem stops early
 
-Select EMP001, Consultation, 2024-11-01, ₹1,500, and known year-to-date reimbursed amount ₹0. Upload `synthetic_prescription.pdf` twice and submit. Show the correction screen: `decision` remains null, and the message names the uploaded prescription and required hospital/clinic bill. Expand the document-gate trace. Explain why no policy calculation ran.
+Select EMP001, Consultation, 2024-11-01, and ₹1,500. Upload `synthetic_prescription.pdf` twice and submit. Show the correction screen: `decision` remains null, and the message names the uploaded prescription and required hospital/clinic bill. Expand the document-gate trace. Explain why no policy calculation ran.
 
 ## 3:00–5:30 — Successful claim and full trace
 
-Submit a new claim with the same details, now uploading `synthetic_prescription.pdf` and `synthetic_hospital_bill.pdf`. Show APPROVED ₹1,350. Scroll through document requirements, identity and bill-total checks, waiting period, exclusions, pre-authorization, annual/per-claim limits, and the line-item ledger. Explain that ₹1,500 less the 10% consultation co-pay is ₹1,350. Show `NOT_EVALUATED` on submission deadline because the fixture has no submission timestamp, and `ASSUMPTION` on the consultation fee interpretation.
+Submit a new claim with the same details, now uploading `synthetic_prescription.pdf` and `synthetic_hospital_bill.pdf`. Show APPROVED ₹1,350. Scroll through document requirements, identity and bill-total checks, waiting period, exclusions, pre-authorization, annual/per-claim limits, and the line-item ledger. Explain that ₹1,500 less the 10% consultation co-pay is ₹1,350. Show `NOT_EVALUATED` on submission deadline because the fixture has no submission timestamp, and `ASSUMPTION` on the consultation fee interpretation. Submit the identical bill again and show that the system sends it to manual review before adjudication.
 
 ## 5:30–7:00 — Design decision worth keeping
 

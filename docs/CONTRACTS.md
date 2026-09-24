@@ -6,13 +6,13 @@ All amounts in external claim inputs and `approved_amount` are INR rupees. Inter
 
 | Operation | Input | Output | Errors |
 | --- | --- | --- | --- |
-| `POST /api/claims` | Multipart `member_id`, `claim_category`, `treatment_date`, `claimed_amount`, optional `ytd_claims_amount`, and 1–6 PDF/JPEG/PNG/WebP `files` | HTTP 202 `{id,state:"QUEUED",url}`; files saved under private local storage; claim and event rows committed | HTTP 422 for invalid category/member/date/money/media, empty file, per-file 10 MB or total 30 MB excess; storage/database failures surface as server errors |
+| `POST /api/claims` | Multipart `member_id`, `claim_category`, `treatment_date`, `claimed_amount`, and 1–6 PDF/JPEG/PNG/WebP `files` | HTTP 202 `{id,state:"QUEUED",url}`; files saved under private local storage; claim and event rows committed | HTTP 422 for invalid category/member/date/money/media, empty file, per-file 10 MB or total 30 MB excess; storage/database failures surface as server errors |
 | `GET /api/claims/{id}` | Claim ID | Stored claim request, state, result, file metadata and ordered events | 404 unknown ID |
 | `GET /api/claims` | Optional `limit` 1–100 | Recent claim summaries | 422 invalid limit |
 | `POST /api/claims/{id}/retry` | Failed claim ID | HTTP 202 queued retry | 404 unknown ID; 409 unless state is `PROCESSING_FAILED` |
 | `GET /`, `GET /claims/{id}` | Browser navigation | Submission or reviewer HTML | 404 unknown claim ID |
 
-`process_claim(id)` changes `QUEUED → PROCESSING → DOCUMENT_CORRECTION_REQUIRED | MANUAL_REVIEW | DECIDED | PROCESSING_FAILED`. It records immutable claim events and resumes `QUEUED`/`PROCESSING` records on app startup. FastAPI background tasks execute work in the app process; this is a durable *record* with recovery, not a separate managed queue. Provider exceptions are stored by exception type only to avoid putting document text in error messages. A provider outage without usable evidence routes to `MANUAL_REVIEW`; it does not instruct a member to replace an otherwise valid file.
+`process_claim(id)` changes `QUEUED → PROCESSING → DOCUMENT_CORRECTION_REQUIRED | MANUAL_REVIEW | DECIDED | PROCESSING_FAILED`. It records immutable claim events and resumes `QUEUED`/`PROCESSING` records on app startup. FastAPI background tasks execute work in the app process; this is a durable *record* with recovery, not a separate managed queue. Provider exceptions are stored by exception type only to avoid putting document text in error messages. Before adjudication, exact bill-file hashes are checked against other claims; a match routes to manual review. Same-day/month counts and policy-year approved totals are derived from local history for the employee and dependents. Since the prototype has no insurer remittance feed, approved amounts are the available annual-benefit consumption proxy, explicitly identified in the trace.
 
 ## Document adapter (`claims.documents`)
 
@@ -84,7 +84,7 @@ class DocumentProvider(Protocol):
 evaluate_claim(payload: dict, policy: dict) -> dict
 ```
 
-Input requires member and policy IDs, claim category, treatment date, claimed amount and normalized documents. It may include known year-to-date reimbursed amount, same-day claim history, hospital name and pre-authorization evidence. The evaluator reads the policy structure dynamically. It returns:
+Input requires member and policy IDs, claim category, treatment date, claimed amount and normalized documents. It may include year-to-date approved amount, same-day/month claim history, hospital name and pre-authorization evidence. Production web inputs are populated from local claim history; fixture inputs carry their supplied history. The evaluator reads the policy structure dynamically. It returns:
 
 ```json
 {
@@ -100,6 +100,6 @@ Input requires member and policy IDs, claim category, treatment date, claimed am
 }
 ```
 
-Decision is `APPROVED`, `PARTIAL`, `REJECTED`, `MANUAL_REVIEW`, or `null` while documents need correction. Financial adjustments are rounded to paise using decimal arithmetic. Trace entries distinguish `PASS`, `FAIL`, `ASSUMPTION`, `NOT_EVALUATED`, `FLAG`, and degraded/skipped stages. Missing material identity or annual usage on a real upload leads to review. Malformed claim/policy evidence is returned as a traced review or correction result, rather than an unhandled exception. Confidence is an evidence-quality rubric, not a calibrated probability.
+Decision is `APPROVED`, `PARTIAL`, `REJECTED`, `MANUAL_REVIEW`, or `null` while documents need correction. Financial adjustments are rounded to paise using decimal arithmetic. Trace entries distinguish `PASS`, `FAIL`, `ASSUMPTION`, `NOT_EVALUATED`, `FLAG`, and degraded/skipped stages. Missing material identity on a real upload leads to review. Malformed claim/policy evidence is returned as a traced review or correction result, rather than an unhandled exception. Confidence is an evidence-quality rubric, not a calibrated probability.
 
 The fixture-specific dental and consultation interpretations are recorded in `PLAN.md` and in the output trace. They are not general legal policy advice.

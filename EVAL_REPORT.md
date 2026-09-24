@@ -341,7 +341,20 @@ Match: **Yes**. No discrepancies.
       "policy_ref": "fraud_thresholds.same_day_claims_limit",
       "evidence": {
         "same_day_claim_count_including_current": 1,
-        "limit": 2
+        "limit": 2,
+        "history_source": "fixture_or_supplied_history"
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "monthly_claims",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.monthly_claims_limit",
+      "evidence": {
+        "monthly_claim_count_including_current": 1,
+        "limit": 6,
+        "month": "2024-11",
+        "history_source": "fixture_or_supplied_history"
       }
     },
     {
@@ -369,6 +382,7 @@ Match: **Yes**. No discrepancies.
       "evidence": {
         "annual_limit": 50000,
         "ytd_claims_amount": 5000,
+        "ytd_source": "fixture_or_supplied_history",
         "remaining": 45000
       }
     },
@@ -587,7 +601,20 @@ Match: **Yes**. No discrepancies.
       "policy_ref": "fraud_thresholds.same_day_claims_limit",
       "evidence": {
         "same_day_claim_count_including_current": 1,
-        "limit": 2
+        "limit": 2,
+        "history_source": "fixture_or_supplied_history"
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "monthly_claims",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.monthly_claims_limit",
+      "evidence": {
+        "monthly_claim_count_including_current": 1,
+        "limit": 6,
+        "month": "2024-10",
+        "history_source": "fixture_or_supplied_history"
       }
     },
     {
@@ -615,6 +642,7 @@ Match: **Yes**. No discrepancies.
       "evidence": {
         "annual_limit": 50000,
         "ytd_claims_amount": null,
+        "ytd_source": "fixture_or_supplied_history",
         "remaining": null
       }
     },
@@ -812,7 +840,20 @@ Match: **Yes**. No discrepancies.
       "policy_ref": "fraud_thresholds.same_day_claims_limit",
       "evidence": {
         "same_day_claim_count_including_current": 1,
-        "limit": 2
+        "limit": 2,
+        "history_source": "fixture_or_supplied_history"
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "monthly_claims",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.monthly_claims_limit",
+      "evidence": {
+        "monthly_claim_count_including_current": 1,
+        "limit": 6,
+        "month": "2024-10",
+        "history_source": "fixture_or_supplied_history"
       }
     },
     {
@@ -840,6 +881,7 @@ Match: **Yes**. No discrepancies.
       "evidence": {
         "annual_limit": 50000,
         "ytd_claims_amount": null,
+        "ytd_source": "fixture_or_supplied_history",
         "remaining": null
       }
     },
@@ -1071,7 +1113,20 @@ Match: **Yes**. No discrepancies.
       "policy_ref": "fraud_thresholds.same_day_claims_limit",
       "evidence": {
         "same_day_claim_count_including_current": 1,
-        "limit": 2
+        "limit": 2,
+        "history_source": "fixture_or_supplied_history"
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "monthly_claims",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.monthly_claims_limit",
+      "evidence": {
+        "monthly_claim_count_including_current": 1,
+        "limit": 6,
+        "month": "2024-11",
+        "history_source": "fixture_or_supplied_history"
       }
     },
     {
@@ -1099,6 +1154,7 @@ Match: **Yes**. No discrepancies.
       "evidence": {
         "annual_limit": 50000,
         "ytd_claims_amount": null,
+        "ytd_source": "fixture_or_supplied_history",
         "remaining": null
       }
     },
@@ -1305,7 +1361,20 @@ Match: **Yes**. No discrepancies.
       "policy_ref": "fraud_thresholds.same_day_claims_limit",
       "evidence": {
         "same_day_claim_count_including_current": 1,
-        "limit": 2
+        "limit": 2,
+        "history_source": "fixture_or_supplied_history"
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "monthly_claims",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.monthly_claims_limit",
+      "evidence": {
+        "monthly_claim_count_including_current": 1,
+        "limit": 6,
+        "month": "2024-10",
+        "history_source": "fixture_or_supplied_history"
       }
     },
     {
@@ -1333,6 +1402,7 @@ Match: **Yes**. No discrepancies.
       "evidence": {
         "annual_limit": 50000,
         "ytd_claims_amount": 10000,
+        "ytd_source": "fixture_or_supplied_history",
         "remaining": 40000
       }
     },
@@ -1543,7 +1613,20 @@ Match: **Yes**. No discrepancies.
       "policy_ref": "fraud_thresholds.same_day_claims_limit",
       "evidence": {
         "same_day_claim_count_including_current": 4,
-        "limit": 2
+        "limit": 2,
+        "history_source": "fixture_or_supplied_history"
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "monthly_claims",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.monthly_claims_limit",
+      "evidence": {
+        "monthly_claim_count_including_current": 4,
+        "limit": 6,
+        "month": "2024-10",
+        "history_source": "fixture_or_supplied_history"
       }
     },
     {
@@ -1571,6 +1654,7 @@ Match: **Yes**. No discrepancies.
       "evidence": {
         "annual_limit": 50000,
         "ytd_claims_amount": null,
+        "ytd_source": "fixture_or_supplied_history",
         "remaining": null
       }
     },
@@ -1775,7 +1859,20 @@ Match: **Yes**. No discrepancies.
       "policy_ref": "fraud_thresholds.same_day_claims_limit",
       "evidence": {
         "same_day_claim_count_including_current": 1,
-        "limit": 2
+        "limit": 2,
+        "history_source": "fixture_or_supplied_history"
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "monthly_claims",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.monthly_claims_limit",
+      "evidence": {
+        "monthly_claim_count_including_current": 1,
+        "limit": 6,
+        "month": "2024-11",
+        "history_source": "fixture_or_supplied_history"
       }
     },
     {
@@ -1803,6 +1900,7 @@ Match: **Yes**. No discrepancies.
       "evidence": {
         "annual_limit": 50000,
         "ytd_claims_amount": 8000,
+        "ytd_source": "fixture_or_supplied_history",
         "remaining": 42000
       }
     },
@@ -2013,7 +2111,20 @@ Match: **Yes**. No discrepancies.
       "policy_ref": "fraud_thresholds.same_day_claims_limit",
       "evidence": {
         "same_day_claim_count_including_current": 1,
-        "limit": 2
+        "limit": 2,
+        "history_source": "fixture_or_supplied_history"
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "monthly_claims",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.monthly_claims_limit",
+      "evidence": {
+        "monthly_claim_count_including_current": 1,
+        "limit": 6,
+        "month": "2024-10",
+        "history_source": "fixture_or_supplied_history"
       }
     },
     {
@@ -2042,6 +2153,7 @@ Match: **Yes**. No discrepancies.
       "evidence": {
         "annual_limit": 50000,
         "ytd_claims_amount": null,
+        "ytd_source": "fixture_or_supplied_history",
         "remaining": null
       }
     },
@@ -2258,7 +2370,20 @@ Match: **Yes**. No discrepancies.
       "policy_ref": "fraud_thresholds.same_day_claims_limit",
       "evidence": {
         "same_day_claim_count_including_current": 1,
-        "limit": 2
+        "limit": 2,
+        "history_source": "fixture_or_supplied_history"
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "monthly_claims",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.monthly_claims_limit",
+      "evidence": {
+        "monthly_claim_count_including_current": 1,
+        "limit": 6,
+        "month": "2024-10",
+        "history_source": "fixture_or_supplied_history"
       }
     },
     {
@@ -2286,6 +2411,7 @@ Match: **Yes**. No discrepancies.
       "evidence": {
         "annual_limit": 50000,
         "ytd_claims_amount": null,
+        "ytd_source": "fixture_or_supplied_history",
         "remaining": null
       }
     },

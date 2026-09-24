@@ -15,7 +15,7 @@ cp .env.example .env
 .venv/bin/python -m uvicorn claims.web:app --reload
 ```
 
-Open <http://127.0.0.1:8000>. Local SQLite data and private uploads are stored under ignored `.data/`. Digital PDFs with selectable text can be processed locally; images and scanned PDFs require the Sarvam key. Use synthetic documents for this demonstration.
+Open <http://127.0.0.1:8000>. Local SQLite data and private uploads are stored under ignored `.data/`. Digital PDFs with selectable text can be processed locally; images and scanned PDFs require the Sarvam key. Exact repeats of an uploaded bill route to manual review, and the app derives claim frequency and prior approved benefit usage from its local history. Use synthetic documents for this demonstration.
 
 ## Verification
 
@@ -44,7 +44,7 @@ tests/                component and HTTP behavior checks
 docs/                 architecture, contracts and eval outputs
 ```
 
-Document problems produce an actionable correction request with `decision: null`. Accepted evidence passes to deterministic code reading `policy_terms.json`; the output contains a decision, payable amount, reason codes, confidence, line-item ledger and trace. The supplied policy conflicts with TC006 and TC010 expected outcomes. Those fixture-compatible interpretations are explicitly recorded in the [architecture](docs/ARCHITECTURE.md) and [evaluation](EVAL_REPORT.md); they are not insurer approval authority.
+Document problems produce an actionable correction request with `decision: null`. Accepted evidence passes to deterministic code reading `policy_terms.json`; the output contains a decision, payable amount, reason codes, confidence, line-item ledger and trace. Prior approved amounts are the local prototype's annual benefit consumption proxy; there is no insurer remittance feed to distinguish approval from actual payment. The supplied policy conflicts with TC006 and TC010 expected outcomes. Those fixture-compatible interpretations are explicitly recorded in the [architecture](docs/ARCHITECTURE.md) and [evaluation](EVAL_REPORT.md); they are not insurer approval authority.
 
 Selectable PDF text is extracted locally. Sarvam digitisation is used for images/scans; schema extraction is reserved for accepted documents missing material fields. Its [published list prices](https://www.sarvam.ai/api-pricing) are ₹0.50/page for digitisation and ₹1/page for extraction. A three-page scan is therefore ₹1.50 for OCR alone or ₹4.50 if every page also needs schema extraction, before retries, storage, compute or review. These are scenarios, not measured spend.
 

@@ -270,9 +270,17 @@ def _evaluate_claim(payload: dict[str, Any], policy: dict[str, Any]) -> dict[str
     same_day = sum(1 for item in history if item.get("date") == payload.get("treatment_date")) + 1
     same_day_limit = int(policy.get("fraud_thresholds", {}).get("same_day_claims_limit", 999999))
     fraud_flag = same_day > same_day_limit
-    trace.append({"stage": "risk", "rule_id": "same_day_claims", "status": "FLAG" if fraud_flag else "PASS", "policy_ref": "fraud_thresholds.same_day_claims_limit", "evidence": {"same_day_claim_count_including_current": same_day, "limit": same_day_limit}})
+    trace.append({"stage": "risk", "rule_id": "same_day_claims", "status": "FLAG" if fraud_flag else "PASS", "policy_ref": "fraud_thresholds.same_day_claims_limit", "evidence": {"same_day_claim_count_including_current": same_day, "limit": same_day_limit, "history_source": payload.get("claims_history_source", "fixture_or_supplied_history")}})
     if fraud_flag:
         reasons.append({"code": "SAME_DAY_CLAIMS", "message": f"This is claim {same_day} on the same treatment date; policy review threshold is {same_day_limit}. Manual review is required."})
+
+    month = str(payload.get("treatment_date", ""))[:7]
+    monthly_count = sum(1 for item in history if str(item.get("date", ""))[:7] == month) + 1
+    monthly_limit = int(policy.get("fraud_thresholds", {}).get("monthly_claims_limit", 999999))
+    monthly_flag = bool(month and monthly_count > monthly_limit)
+    trace.append({"stage": "risk", "rule_id": "monthly_claims", "status": "FLAG" if monthly_flag else "PASS", "policy_ref": "fraud_thresholds.monthly_claims_limit", "evidence": {"monthly_claim_count_including_current": monthly_count, "limit": monthly_limit, "month": month or None, "history_source": payload.get("claims_history_source", "fixture_or_supplied_history")}})
+    if monthly_flag:
+        reasons.append({"code": "MONTHLY_CLAIMS", "message": f"This is claim {monthly_count} in the treatment month; policy review threshold is {monthly_limit}. Manual review is required."})
 
     if payload.get("simulate_component_failure"):
         trace.append({"stage": "optional_risk_enrichment", "rule_id": "risk_enrichment", "status": "SKIPPED_COMPONENT_FAILURE", "degraded": True, "details": "Optional enrichment failed; mandatory document and policy checks completed."})
@@ -291,7 +299,7 @@ def _evaluate_claim(payload: dict[str, Any], policy: dict[str, Any]) -> dict[str
     annual_limit = _paise(policy.get("coverage", {}).get("annual_opd_limit", 0))
     ytd = payload.get("ytd_claims_amount")
     annual_remaining = None if ytd is None else max(0, annual_limit - _paise(ytd))
-    trace.append({"stage": "policy", "rule_id": "annual_opd_limit", "status": "NOT_EVALUATED" if annual_remaining is None else "PASS" if annual_remaining >= claimed else "LIMITED", "policy_ref": "coverage.annual_opd_limit", "evidence": {"annual_limit": _rupees(annual_limit), "ytd_claims_amount": ytd, "remaining": None if annual_remaining is None else _rupees(annual_remaining)}})
+    trace.append({"stage": "policy", "rule_id": "annual_opd_limit", "status": "NOT_EVALUATED" if annual_remaining is None else "PASS" if annual_remaining >= claimed else "LIMITED", "policy_ref": "coverage.annual_opd_limit", "evidence": {"annual_limit": _rupees(annual_limit), "ytd_claims_amount": ytd, "ytd_source": payload.get("ytd_claims_source", "fixture_or_supplied_history"), "remaining": None if annual_remaining is None else _rupees(annual_remaining)}})
     annual_usage_unknown = annual_remaining is None and not fixture_evidence
     if annual_usage_unknown:
         reasons.append({"code": "ANNUAL_USAGE_UNKNOWN", "message": "Annual OPD usage is unavailable. A reviewer must verify the remaining benefit before payment."})
@@ -354,7 +362,7 @@ def _evaluate_claim(payload: dict[str, Any], policy: dict[str, Any]) -> dict[str
     primary = next((code for code in reject_priority if code in codes), None)
     if primary:
         decision, approved = "REJECTED", 0
-    elif fraud_flag or (dental_report_missing and not fixture_evidence) or annual_usage_unknown:
+    elif fraud_flag or monthly_flag or (dental_report_missing and not fixture_evidence) or annual_usage_unknown:
         decision, approved = "MANUAL_REVIEW", 0
     elif payable < claimed and any(item["status"] == "EXCLUDED" for item in ledger if item["kind"] == "line_item"):
         decision, approved = "PARTIAL", payable
@@ -365,7 +373,7 @@ def _evaluate_claim(payload: dict[str, Any], policy: dict[str, Any]) -> dict[str
         decision, approved = "APPROVED", payable
     if not reasons:
         reasons.append({"code": "COVERED", "message": "Claim passed the evaluated document and policy checks."})
-    trace.append({"stage": "decision", "rule_id": "outcome", "status": decision, "evidence": {"primary_reason": primary or ("SAME_DAY_CLAIMS" if fraud_flag else None), "approved_amount_paise": approved}})
+    trace.append({"stage": "decision", "rule_id": "outcome", "status": decision, "evidence": {"primary_reason": primary or ("SAME_DAY_CLAIMS" if fraud_flag else "MONTHLY_CLAIMS" if monthly_flag else None), "approved_amount_paise": approved}})
     result.update(state="DECIDED" if decision != "MANUAL_REVIEW" else "MANUAL_REVIEW", decision=decision, approved_amount=_rupees(approved), approved_amount_paise=approved)
     return result
 

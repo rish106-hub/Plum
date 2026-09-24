@@ -208,7 +208,8 @@
     appendFact(facts, "Category", titleCase(claim.request.claim_category));
     appendFact(facts, "Treatment date", claim.request.treatment_date);
     appendFact(facts, "Claimed", formatMoney(claim.request.claimed_amount));
-    appendFact(facts, "OPD already reimbursed", claim.request.ytd_claims_amount === undefined ? "Unknown" : formatMoney(claim.request.ytd_claims_amount));
+    const annualLimit = (claim.result?.trace || []).find((entry) => entry.rule_id === "annual_opd_limit")?.evidence;
+    appendFact(facts, "YTD approved", annualLimit?.ytd_claims_amount === undefined ? "Unknown" : formatMoney(annualLimit.ytd_claims_amount));
     appendFact(facts, "Policy", claim.request.policy_id || "—");
 
     const documents = byId("document-list");
