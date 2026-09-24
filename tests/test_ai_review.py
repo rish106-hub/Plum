@@ -141,6 +141,36 @@ def test_unknown_type_is_grouped_and_quote_validated() -> None:
     assert "payable" not in str(fake.calls[0][2]).lower()
 
 
+def test_known_type_quote_is_validated_but_not_returned_as_candidate() -> None:
+    doc = _claim_doc(
+        kind="HOSPITAL_BILL",
+        content={"patient_name": "Rajesh Kumar", "date": "2024-11-01"},
+    )
+    raw = _model_doc("UPLOAD-1", kind="HOSPITAL_BILL")
+    raw.update({
+        "document_type_page": 1,
+        "document_type_quote": "HOSPITAL BILL",
+        "total_paise": 10000,
+        "total_paise_quote": "Grand Total: Rs 100.00",
+        "line_items": [{"description": "Consultation Fee", "amount_paise": 10000, "page": 1, "quote": "Consultation Fee 100.00"}],
+    })
+    fake = FakeTransport([{"abstain": False, "documents": [raw]}])
+
+    result = resolve_evidence(
+        [doc],
+        {"UPLOAD-1": _file()},
+        {"UPLOAD-1": ["HOSPITAL BILL Patient: Rajesh Kumar Consultation Fee 100.00 Grand Total: Rs 100.00"]},
+        transport=fake,
+    )
+
+    assert result["status"] == "CANDIDATES_VALIDATED"
+    assert result["candidates"][0]["fields"] == {
+        "total_paise": 10000,
+        "line_items": [{"description": "Consultation Fee", "amount_paise": 10000}],
+    }
+    assert all(proof["field"] != "document_type" for proof in result["candidates"][0]["evidence"])
+
+
 def test_missing_bill_fields_require_quotes_and_exact_arithmetic() -> None:
     doc = _claim_doc(kind="HOSPITAL_BILL", content={"patient_name": "Rajesh Kumar", "date": "2024-11-01"})
     raw = _model_doc("UPLOAD-1", kind="HOSPITAL_BILL")

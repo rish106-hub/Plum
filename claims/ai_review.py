@@ -480,18 +480,24 @@ def _validate_document(
         candidate["evidence"].append({"field": evidence_key or name, "page": value[f"{name}_page"], "quote": quote})
 
     kind = str(value["document_type"]).upper()
-    if "document_type" in requested_fields and kind != "UNKNOWN":
-        quote = _quote(page_texts, value["document_type_page"], value["document_type_quote"], page_count)
-        _type_supported(kind, quote)
-        candidate["fields"]["document_type"] = kind
-        candidate["evidence"].append({"field": "document_type", "page": value["document_type_page"], "quote": quote})
-    elif "document_type" not in requested_fields and kind != current_type:
-        # A known document type is not within scope for this extraction pass.
-        raise ValueError("unsolicited_document_type")
-    elif value["document_type_quote"] and "document_type" not in requested_fields:
-        raise ValueError("unknown_type_has_quote")
-    elif "document_type" in requested_fields and value["document_type_quote"]:
-        raise ValueError("unknown_type_has_quote")
+    if "document_type" in requested_fields:
+        if kind == "UNKNOWN":
+            if value["document_type_quote"]:
+                raise ValueError("unknown_type_has_quote")
+        else:
+            quote = _quote(page_texts, value["document_type_page"], value["document_type_quote"], page_count)
+            _type_supported(kind, quote)
+            candidate["fields"]["document_type"] = kind
+            candidate["evidence"].append({"field": "document_type", "page": value["document_type_page"], "quote": quote})
+    else:
+        if kind != current_type:
+            # A known document type is not within scope for this extraction pass.
+            raise ValueError("unsolicited_document_type")
+        if value["document_type_quote"]:
+            # The schema requires this field even when type is already known.
+            # Validate any model-cited quote, but don't turn it into a new fact.
+            quote = _quote(page_texts, value["document_type_page"], value["document_type_quote"], page_count)
+            _type_supported(kind, quote)
 
     for name in ("patient_name", "date", "diagnosis", "hospital_name", "test_name"):
         if name not in requested_fields and value[name]:
