@@ -162,12 +162,73 @@
     }
     ledger.forEach((entry) => {
       const row = make("div", "ledger-row");
-      row.append(make("span", "", entry.description || entry.label || entry.rule_id || entry.stage || "Adjustment"));
+      const label = entry.description || entry.label || entry.rule_id || entry.stage || "Adjustment";
+      const detail = make("span", "ledger-row__label", label);
+      const context = [entry.status && titleCase(entry.status), entry.reason_code && titleCase(entry.reason_code), entry.source_document && `Source ${entry.source_document}`, entry.policy_ref && `Policy: ${entry.policy_ref}`].filter(Boolean).join(" · ");
+      if (context) detail.append(make("small", "ledger-row__context", context));
+      row.append(detail);
       const paise = entry.amount_paise ?? entry.value_paise ?? entry.approved_amount_paise;
       const rupees = paise !== undefined && paise !== null ? Number(paise) / 100 : (entry.amount ?? entry.value);
       row.append(make("strong", "", formatMoney(rupees)));
       list.append(row);
     });
+  }
+
+  function renderEvidence(result, documents) {
+    const list = byId("evidence-list");
+    list.replaceChildren();
+    const trace = Array.isArray(result.trace) ? result.trace : [];
+    const candidates = trace.flatMap((entry) => Array.isArray(entry.candidate_evidence) ? entry.candidate_evidence : []);
+    const namesByUpload = new Map((documents || []).map((document, index) => [`UPLOAD-${index + 1}`, document.original_name]));
+    const evidence = candidates.flatMap((candidate) => (candidate.sources || []).map((source) => ({
+      file: namesByUpload.get(candidate.file_id) || candidate.file_id || "Submitted document",
+      field: source.field,
+      page: source.page,
+      quote: source.quote,
+    })).filter((source) => source.quote));
+    if (!evidence.length) {
+      list.append(make("p", "empty-detail", "No AI-sourced correction was applied. See the decision trace for rule evidence and document checks."));
+      return;
+    }
+    evidence.forEach((source) => {
+      const item = make("article", "evidence-entry");
+      const meta = [titleCase(source.field), source.file, source.page ? `Page ${source.page}` : "Page not recorded"].filter(Boolean).join(" · ");
+      item.append(make("p", "evidence-entry__meta", meta));
+      item.append(make("blockquote", "", `“${source.quote}”`));
+      list.append(item);
+    });
+  }
+
+  function renderEscalation(result) {
+    const panel = byId("escalation-panel");
+    const reasons = Array.isArray(result.reasons) ? result.reasons : [];
+    const trace = Array.isArray(result.trace) ? result.trace : [];
+    const reviewSignals = trace.filter((entry) => ["FLAG", "DEGRADED", "NOT_EVALUATED", "ASSUMPTION"].includes(String(entry.status || "").toUpperCase()));
+    const isReview = result.decision === "MANUAL_REVIEW";
+    panel.hidden = !isReview;
+    if (!isReview) return;
+    const primary = reasons[0];
+    byId("escalation-reason").textContent = typeof primary === "string" ? primary : primary?.message || "A material fact could not be safely resolved automatically.";
+    const signals = byId("escalation-signals");
+    signals.replaceChildren();
+    const readable = reviewSignals.slice(0, 4).map((entry) => `${titleCase(entry.rule_id || entry.stage)}: ${entry.reason || entry.details || titleCase(entry.status)}`);
+    (readable.length ? readable : ["A policy or evidence gate requires human verification."]).forEach((signal) => signals.append(make("li", "", signal)));
+  }
+
+  function renderAiMetrics(result) {
+    const facts = byId("ai-facts");
+    facts.replaceChildren();
+    const metrics = result.document_metrics?.gemini || {};
+    const geminiTrace = (result.trace || []).find((entry) => entry.stage === "gemini_evidence") || {};
+    const usage = metrics.total_tokens || ((metrics.input_tokens || 0) + (metrics.output_tokens || 0));
+    appendFact(facts, "Resolver", metrics.status === "DISABLED" ? "Off" : titleCase(metrics.status || geminiTrace.status || "Not invoked"));
+    appendFact(facts, "Calls", `${Number(metrics.calls || 0)}${metrics.retries ? ` · ${metrics.retries} retry` : ""}`);
+    appendFact(facts, "Pages reviewed", String(metrics.pages || 0));
+    appendFact(facts, "Token usage", Number(usage).toLocaleString("en-IN"));
+    appendFact(facts, "Model", geminiTrace.model || "—");
+    byId("ai-cost-note").textContent = usage
+      ? "Token counts are shown as the cost proxy. Provider billing is not available in this local record."
+      : "No model usage was recorded for this claim.";
   }
 
   function renderClaim(claim) {
@@ -192,8 +253,9 @@
     const reasons = Array.isArray(result.reasons) ? result.reasons : (result.reason ? [result.reason] : []);
     const primaryReason = reasons[0];
     byId("decision-reason").textContent = isCorrection ? "The document check stopped this claim before adjudication." : (typeof primaryReason === "string" ? primaryReason : primaryReason?.message || "See the decision trace below.");
-    byId("amount-label").textContent = "Approved amount";
-    byId("approved-amount").textContent = result.approved_amount_paise === null || result.approved_amount === null || isCorrection ? "—" : formatMoney(result.approved_amount_paise !== undefined ? Number(result.approved_amount_paise) / 100 : result.approved_amount);
+    const amountPendingReview = result.decision === "MANUAL_REVIEW";
+    byId("amount-label").textContent = amountPendingReview ? "Amount pending review" : "Approved amount";
+    byId("approved-amount").textContent = result.approved_amount_paise === null || result.approved_amount === null || isCorrection || amountPendingReview ? "—" : formatMoney(result.approved_amount_paise !== undefined ? Number(result.approved_amount_paise) / 100 : result.approved_amount);
     byId("confidence-value").textContent = Number.isFinite(Number(result.confidence_score)) && result.confidence_score !== null ? `Evidence quality score ${Math.round(Number(result.confidence_score) * 100)}%` : "No confidence score yet";
 
     const corrections = byId("correction-list");
@@ -201,6 +263,12 @@
     (result.correction_requests || []).forEach((request) => corrections.append(make("li", "", typeof request === "string" ? request : request.message || JSON.stringify(request))));
     renderTrace(result.trace);
     renderLedger(result.ledger);
+    renderEvidence(result, claim.documents);
+    renderEscalation(result);
+    renderAiMetrics(result);
+    const payable = result.approved_amount_paise;
+    byId("ledger-total").hidden = payable === null || payable === undefined || amountPendingReview;
+    if (payable !== null && payable !== undefined) byId("ledger-payable").textContent = formatMoney(Number(payable) / 100);
 
     const facts = byId("claim-facts");
     facts.replaceChildren();

@@ -45,7 +45,34 @@ def main() -> None:
         assert approval["result"]["decision"] == "APPROVED", approval["result"]
         assert approval["result"]["approved_amount"] == 1350
         assert page.locator("#trace-list .trace-entry").count() >= 10
+        assert page.locator("#ledger-total").is_visible()
+        assert "₹" in page.locator("#ledger-payable").inner_text()
+        assert "1,350" in page.locator("#ledger-payable").inner_text()
+        assert "Off" in page.locator("#ai-facts").inner_text()
         page.screenshot(path=str(SCREENSHOTS / "approval.png"), full_page=True)
+
+        # UI-only fixture verifies the grounded-evidence presentation without making a paid model call.
+        approval_response = page.request.get(f"{BASE_URL}/api/claims/{approval['id']}").json()
+        approval_response["result"]["document_metrics"]["gemini"] = {
+            "status": "CANDIDATES_VALIDATED", "calls": 1, "retries": 0, "pages": 1,
+            "input_tokens": 120, "output_tokens": 40, "total_tokens": 160,
+        }
+        approval_response["result"]["trace"].append({
+            "stage": "gemini_evidence", "status": "CANDIDATES_APPLIED", "model": "synthetic-ui-fixture",
+            "candidate_evidence": [{"file_id": "UPLOAD-2", "fields": ["total_paise"], "sources": [
+                {"field": "total_paise", "page": 1, "quote": "Total amount: Rs. 1500"},
+            ]}],
+        })
+        def serve_grounded_evidence(route):
+            route.fulfill(json=approval_response)
+        page.route(f"{BASE_URL}/api/claims/{approval['id']}", serve_grounded_evidence)
+        page.goto(f"{BASE_URL}/claims/{approval['id']}", wait_until="networkidle")
+        page.locator("#result-content").wait_for(state="visible")
+        assert "Total amount: Rs. 1500" in page.locator("#evidence-list").inner_text()
+        assert "Page 1" in page.locator("#evidence-list").inner_text()
+        assert "160" in page.locator("#ai-facts").inner_text()
+        page.screenshot(path=str(SCREENSHOTS / "evidence-ledger.png"), full_page=True)
+        page.unroute(f"{BASE_URL}/api/claims/{approval['id']}", serve_grounded_evidence)
 
         correction = _fill(page, [rx, rx])
         assert correction["result"]["decision"] is None
@@ -58,6 +85,11 @@ def main() -> None:
         assert duplicate["result"]["decision"] == "MANUAL_REVIEW", duplicate["result"]
         assert duplicate["result"]["reasons"][0]["code"] == "DUPLICATE_BILL"
         assert page.locator("#result-content").is_visible()
+        assert page.locator("#escalation-panel").is_visible()
+        assert "identical bill" in page.locator("#escalation-reason").inner_text().lower()
+        assert page.locator("#amount-label").inner_text() == "Amount pending review"
+        assert page.locator("#approved-amount").inner_text() == "—"
+        assert page.locator("#ledger-total").is_hidden()
         page.screenshot(path=str(SCREENSHOTS / "duplicate-review.png"), full_page=True)
 
         assert not errors, errors
