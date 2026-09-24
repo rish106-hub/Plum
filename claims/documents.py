@@ -12,12 +12,15 @@ import io
 import json
 import os
 import re
+import ssl
 import time
 import urllib.request
 import zipfile
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol
+
+import certifi
 
 MAX_FILES = 10
 MAX_FILE_BYTES = 10 * 1024 * 1024
@@ -238,7 +241,11 @@ class SarvamDocumentProvider:
         link = self.client.doc_ai.get_download_url(job_id=job.job_id)
         if str(link.method).upper() != "GET" or not str(link.url).startswith("https://"):
             raise ValueError("Sarvam returned an unsupported download URL")
-        with urllib.request.urlopen(str(link.url), timeout=20) as response:
+        # Use a maintained CA bundle explicitly. Some macOS Python installs do
+        # not initialize the system roots for urllib, which can reject
+        # Sarvam's signed Azure Blob result URL after a job has completed.
+        tls_context = ssl.create_default_context(cafile=certifi.where())
+        with urllib.request.urlopen(str(link.url), timeout=20, context=tls_context) as response:
             archive = response.read(MAX_OCR_ZIP_BYTES + 1)
         if len(archive) > MAX_OCR_ZIP_BYTES:
             raise ValueError("Sarvam OCR archive is too large")
