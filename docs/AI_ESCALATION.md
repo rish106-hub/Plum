@@ -15,7 +15,7 @@ The resolver is disabled unless both `GEMINI_EVIDENCE_REVIEW_ENABLED=true` and `
 `claims.ai_review.build_trigger` is deterministic and pure. It returns no trigger for clear documents, so the caller makes zero Gemini calls for claims whose required facts are already present and reconciled. It asks for a single grouped evidence pass only when one or more uploaded documents:
 
 - have `UNKNOWN` type;
-- lack a rule-relevant field for their detected type (patient name/date/diagnosis for prescriptions, total/line items for bills, patient/date/test name for lab reports); or
+- lack a rule-relevant field for their detected type (patient name/diagnosis for prescriptions, total/line items for bills, patient/date/test name for lab reports); or
 - have a bill total that does not equal the extracted line-item sum.
 
 The trigger immediately abstains when known patient names disagree, a name fails the supplied member/dependent allowlist, source OCR text is absent, or an evidence field cannot be tied to a page using local text cues. It does not ask Gemini to resolve a roster mismatch. An absent required upload also cannot trigger Gemini because there are no bytes to inspect; the member must upload it.

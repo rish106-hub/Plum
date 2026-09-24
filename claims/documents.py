@@ -372,7 +372,7 @@ def revalidate_documents(
     actual_good: set[str] = set()
     named: list[tuple[str, str]] = []
     material_fields = {
-        "PRESCRIPTION": ("patient_name", "date", "diagnosis"),
+        "PRESCRIPTION": ("patient_name", "diagnosis"),
         "HOSPITAL_BILL": ("patient_name", "total", "line_items"),
         "PHARMACY_BILL": ("patient_name", "total", "line_items"),
         "LAB_REPORT": ("patient_name", "date", "test_name"),

@@ -43,7 +43,7 @@ _TYPE_MARKERS = {
     "DISCHARGE_SUMMARY": ("discharge summary", "discharged on"),
 }
 _FIELD_REQUIREMENTS = {
-    "PRESCRIPTION": ("patient_name", "date", "diagnosis"),
+    "PRESCRIPTION": ("patient_name", "diagnosis"),
     "HOSPITAL_BILL": ("patient_name", "total_paise", "line_items"),
     "PHARMACY_BILL": ("patient_name", "total_paise", "line_items"),
     "LAB_REPORT": ("patient_name", "date", "test_name"),

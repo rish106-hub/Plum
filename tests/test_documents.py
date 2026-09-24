@@ -98,6 +98,33 @@ def test_digital_pdf_local_extraction_and_dental_matrix() -> None:
     assert result["metrics"]["provider_calls"] == 0
 
 
+def test_pharmacy_claim_does_not_require_printed_prescription_date() -> None:
+    prescription = pdf_bytes([
+        "PRESCRIPTION",
+        "Dr. Meena Rao",
+        "Patient: Rajesh Kumar",
+        "Diagnosis: Viral Fever",
+        "Medicines: Paracetamol 650mg",
+    ])
+    bill = pdf_bytes([
+        "PHARMACY BILL / RECEIPT",
+        "Patient: Rajesh Kumar",
+        "Paracetamol 650mg 120.00",
+        "Total Amount: 120.00",
+    ])
+    result = process_uploads(
+        [
+            {"file_name": "prescription.pdf", "data": prescription},
+            {"file_name": "pharmacy.pdf", "data": bill},
+        ],
+        "PHARMACY",
+        "Rajesh Kumar",
+        POLICY,
+    )
+    assert [doc["actual_type"] for doc in result["documents"]] == ["PRESCRIPTION", "PHARMACY_BILL"]
+    assert result["issues"] == []
+
+
 def test_image_provider_returns_typed_fields_and_mismatch() -> None:
     provider = StubProvider("HOSPITAL BILL / RECEIPT\nPatient: Arjun Mehta\nConsultation Fee 1500.00\nTotal Amount: 1500.00\nCity Clinic Bengaluru")
     result = process_uploads([{"file_name": "bill.png", "data": image_bytes()}], "DENTAL", "Rajesh Kumar", POLICY, provider)

@@ -71,11 +71,11 @@ def _file(pages: int = 1) -> dict[str, Any]:
     return {"data": output.getvalue(), "mime_type": "application/pdf"}
 
 
-def test_clear_documents_do_not_call_gemini() -> None:
-    doc = _claim_doc(kind="PRESCRIPTION", content={"patient_name": "Rajesh Kumar", "date": "2024-11-01", "diagnosis": "Viral Fever"})
+def test_prescription_without_printed_date_does_not_trigger_gemini() -> None:
+    doc = _claim_doc(kind="PRESCRIPTION", content={"patient_name": "Rajesh Kumar", "diagnosis": "Viral Fever"})
     fake = FakeTransport([])
 
-    result = resolve_evidence([doc], {"UPLOAD-1": _file()}, {"UPLOAD-1": ["Patient: Rajesh Kumar Date: 01-Nov-2024 Diagnosis: Viral Fever"]}, transport=fake)
+    result = resolve_evidence([doc], {"UPLOAD-1": _file()}, {"UPLOAD-1": ["Patient: Rajesh Kumar Diagnosis: Viral Fever"]}, transport=fake)
 
     assert result["status"] == "NOT_NEEDED"
     assert result["metrics"]["calls"] == 0
