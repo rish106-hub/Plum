@@ -171,6 +171,90 @@ def test_known_type_quote_is_validated_but_not_returned_as_candidate() -> None:
     assert all(proof["field"] != "document_type" for proof in result["candidates"][0]["evidence"])
 
 
+def test_provider_echoes_of_known_fields_are_checked_then_discarded() -> None:
+    doc = _claim_doc(
+        kind="PRESCRIPTION",
+        content={"patient_name": "Rajesh Kumar"},
+    )
+    raw = _model_doc("UPLOAD-1", kind="PRESCRIPTION")
+    raw.update({
+        "document_type_quote": "PRESCRIPTION",
+        "patient_name": "Rajesh Kumar",
+        "patient_name_quote": "Patient: Rajesh Kumar",
+        "date": "2024-11-01",
+        "date_quote": "Date: 01-Nov-2024",
+        "diagnosis": "Viral Fever",
+        "diagnosis_quote": "Diagnosis: Viral Fever",
+    })
+    fake = FakeTransport([{"abstain": False, "documents": [raw]}])
+
+    result = resolve_evidence(
+        [doc],
+        {"UPLOAD-1": _file()},
+        {"UPLOAD-1": ["PRESCRIPTION Patient: Rajesh Kumar Date: 01-Nov-2024 Diagnosis: Viral Fever"]},
+        allowed_patient_names=["Rajesh Kumar"],
+        transport=fake,
+    )
+
+    assert result["status"] == "CANDIDATES_VALIDATED"
+    assert result["candidates"][0]["fields"] == {"diagnosis": "Viral Fever"}
+    assert [proof["field"] for proof in result["candidates"][0]["evidence"]] == ["diagnosis"]
+    assert "For every schema field not listed in fields_to_resolve" in fake.calls[0][1][0]
+
+
+@pytest.mark.parametrize(
+    ("extra_values", "reason"),
+    [
+        ({"date": "2024-11-02"}, "unsolicited_field_conflict"),
+        ({"date": "2024-11-02", "date_quote": "Date: 01-Nov-2024"}, "unsolicited_field_conflict"),
+    ],
+)
+def test_conflicting_unsolicited_fields_abstain(extra_values: dict[str, str], reason: str) -> None:
+    doc = _claim_doc(
+        kind="PRESCRIPTION",
+        content={"patient_name": "Rajesh Kumar", "date": "2024-11-01"},
+    )
+    raw = _model_doc("UPLOAD-1", kind="PRESCRIPTION")
+    raw.update({
+        "document_type_quote": "PRESCRIPTION",
+        "diagnosis": "Viral Fever",
+        "diagnosis_quote": "Diagnosis: Viral Fever",
+        **extra_values,
+    })
+    result = resolve_evidence(
+        [doc],
+        {"UPLOAD-1": _file()},
+        {"UPLOAD-1": ["PRESCRIPTION Patient: Rajesh Kumar Date: 01-Nov-2024 Diagnosis: Viral Fever"]},
+        allowed_patient_names=["Rajesh Kumar"],
+        transport=FakeTransport([{"abstain": False, "documents": [raw]}]),
+    )
+
+    assert result["status"] == "ABSTAINED"
+    assert result["trace"]["reason"] == reason
+
+
+def test_unsupported_extra_field_abstains_even_when_it_is_not_locally_known() -> None:
+    doc = _claim_doc(kind="PRESCRIPTION", content={"patient_name": "Rajesh Kumar"})
+    raw = _model_doc("UPLOAD-1", kind="PRESCRIPTION")
+    raw.update({
+        "document_type_quote": "PRESCRIPTION",
+        "diagnosis": "Viral Fever",
+        "diagnosis_quote": "Diagnosis: Viral Fever",
+        "date": "2024-11-02",
+        "date_quote": "Date: 01-Nov-2024",
+    })
+    result = resolve_evidence(
+        [doc],
+        {"UPLOAD-1": _file()},
+        {"UPLOAD-1": ["PRESCRIPTION Patient: Rajesh Kumar Date: 01-Nov-2024 Diagnosis: Viral Fever"]},
+        allowed_patient_names=["Rajesh Kumar"],
+        transport=FakeTransport([{"abstain": False, "documents": [raw]}]),
+    )
+
+    assert result["status"] == "ABSTAINED"
+    assert result["trace"]["reason"] == "date_not_supported_by_quote"
+
+
 def test_missing_bill_fields_require_quotes_and_exact_arithmetic() -> None:
     doc = _claim_doc(kind="HOSPITAL_BILL", content={"patient_name": "Rajesh Kumar", "date": "2024-11-01"})
     raw = _model_doc("UPLOAD-1", kind="HOSPITAL_BILL")
