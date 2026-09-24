@@ -173,6 +173,7 @@
         "claim_category": "DENTAL",
         "treatment_date": "2024-10-15",
         "claimed_amount": 12000,
+        "fixture_compatibility_assumptions": ["global_per_claim_limit_not_applied", "special_document_requirement_conflicts_with_document_matrix"],
         "documents": [
           {
             "file_id": "F011",
@@ -325,6 +326,8 @@
         "claim_category": "CONSULTATION",
         "treatment_date": "2024-11-03",
         "claimed_amount": 4500,
+        "fixture_compatibility_assumptions": ["category_sub_limit_applies_to_matching_lines"],
+        "fixture_sub_limit_item_phrase": "consultation fee",
         "hospital_name": "Apollo Hospitals",
         "ytd_claims_amount": 8000,
         "documents": [

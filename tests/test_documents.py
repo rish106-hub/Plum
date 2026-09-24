@@ -148,6 +148,40 @@ def test_sarvam_extract_only_when_ocr_lacks_material_bill_fields() -> None:
     assert result["documents"][0]["content"]["total"] == 1500
 
 
+def test_pharmacy_brand_status_is_extracted_only_with_matching_printed_evidence() -> None:
+    bill = pdf_bytes([
+        "PHARMACY BILL",
+        "Patient: Rajesh Kumar",
+        "Brand: Medicine 1500.00",
+        "Total Amount: 1500.00",
+    ])
+    prescription = pdf_bytes([
+        "PRESCRIPTION", "Dr. Arun Sharma", "Patient: Rajesh Kumar", "Diagnosis: Viral Fever",
+        "Medicines: Paracetamol 650mg and oral rehydration solution as directed by physician.",
+    ])
+    provider = StubProvider(
+        "",
+        {
+            "total": 1500,
+            "line_items": [{
+                "description": "Brand: Medicine",
+                "amount": 1500,
+                "brand_status": "BRANDED",
+                "brand_evidence": "Brand",
+            }],
+        },
+    )
+    result = process_uploads(
+        [{"file_name": "bill.pdf", "data": bill}, {"file_name": "prescription.pdf", "data": prescription}],
+        "PHARMACY", "Rajesh Kumar", POLICY, provider,
+    )
+    assert result["issues"] == []
+    pharmacy_bill = next(doc for doc in result["documents"] if doc["actual_type"] == "PHARMACY_BILL")
+    assert pharmacy_bill["content"]["line_items"][0]["brand_status"] == "BRANDED"
+    assert pharmacy_bill["content"]["line_items"][0]["brand_evidence"] == "Brand"
+    assert provider.extract_calls == 1
+
+
 def test_sarvam_extract_recovers_patient_name_before_identity_gate() -> None:
     provider = StubProvider(
         "HOSPITAL BILL / RECEIPT\nConsultation Fee 1500.00\nTotal Amount: 1500.00\nCity Clinic Bengaluru",
