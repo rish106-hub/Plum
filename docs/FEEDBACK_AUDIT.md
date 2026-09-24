@@ -4,7 +4,7 @@ Current merged target: `origin/main` at `0e7bd8b` (PR #10, 2026-09-24). The curr
 
 Live Gemini smoke results supplied by the root operator: the first synthetic request reached the API (1,346 input and 347 output tokens) but validation abstained with `unsolicited_field`. After PR #9's validation fix, a second synthetic request was accepted with candidate fields `line_items` and `total_paise` (one call, 1,429 input and 333 output tokens, no retry). This proves one candidate-validation path, not broad extraction accuracy or fewer human escalations. PR #9 also includes low-thinking and known-type quote handling. Browser end-to-end verification after the integration remains outstanding.
 
-## Current disposition after PR #9
+## Current disposition after PR #10
 
 | Finding | Current status | Current evidence / remaining risk |
 |---|---|---|
@@ -27,7 +27,7 @@ The PR #7 Gemini implementation is behind explicit opt-in and returns evidence c
 
 ## Historical snapshot: attached report against `origin/main@4ed92b2`
 
-The following numbered table preserves the prior audit state for traceability. Its **Open** labels describe that old snapshot; consult “Current disposition after PR #9” above for today's status.
+The following numbered table preserves the prior audit state for traceability. Its **Open** labels describe that old snapshot; consult “Current disposition after PR #10” above for today's status.
 
 ## Numbered findings
 
