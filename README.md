@@ -29,6 +29,8 @@ Open <http://127.0.0.1:8000>. Local SQLite data and private uploads are stored u
 
 The eval command writes [EVAL_REPORT.md](EVAL_REPORT.md) and [complete JSON outputs](docs/eval_outputs.json). Its pass count measures fixture behavior, not OCR accuracy.
 
+For a terminal-based synthetic PDF/image upload, OCR expectations, and decision-trace guide, see the [local runbook](docs/LOCAL_RUNBOOK.md).
+
 ## Module map
 
 ```text
