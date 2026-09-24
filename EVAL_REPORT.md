@@ -2353,6 +2353,7 @@ Match: **Yes**. No discrepancies.
       "rule_id": "risk_enrichment",
       "status": "SKIPPED_COMPONENT_FAILURE",
       "degraded": true,
+      "error_type": "RuntimeError",
       "details": "Optional enrichment failed; mandatory document and policy checks completed."
     },
     {

@@ -12,6 +12,10 @@ from claims.fixtures import load_cases, load_policy, normalize_fixture
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _raise_optional_enrichment_failure(_: dict) -> None:
+    raise RuntimeError("synthetic optional component failure")
+
+
 class ClaimCoreTests(unittest.TestCase):
     policy: dict
     cases: dict
@@ -22,7 +26,11 @@ class ClaimCoreTests(unittest.TestCase):
         cls.cases = {case["case_id"]: case for case in load_cases(ROOT / "test_cases.json")}
 
     def evaluate(self, case_id: str) -> dict:
-        return evaluate_claim(normalize_fixture(self.cases[case_id]), self.policy)
+        case = self.cases[case_id]
+        options = {}
+        if case.get("input", {}).get("simulate_component_failure"):
+            options["optional_risk_enricher"] = _raise_optional_enrichment_failure
+        return evaluate_claim(normalize_fixture(case), self.policy, **options)
 
     def test_all_fixture_decisions_and_amounts(self) -> None:
         for case_id, case in self.cases.items():
@@ -80,8 +88,18 @@ class ClaimCoreTests(unittest.TestCase):
         result = self.evaluate("TC011")
         self.assertEqual(result["decision"], "APPROVED")
         self.assertLess(result["confidence_score"], self.evaluate("TC004")["confidence_score"])
-        self.assertTrue(any(step["status"] == "SKIPPED_COMPONENT_FAILURE" for step in result["trace"]))
+        failure_step = next(step for step in result["trace"] if step["rule_id"] == "risk_enrichment")
+        self.assertEqual(failure_step["status"], "SKIPPED_COMPONENT_FAILURE")
+        self.assertEqual(failure_step["error_type"], "RuntimeError")
         self.assertIn("manual review", " ".join(reason["message"] for reason in result["reasons"]).lower())
+
+    def test_public_claim_flag_cannot_request_fault_injection(self) -> None:
+        claim = normalize_fixture(self.cases["TC011"])
+        claim["simulate_component_failure"] = True
+        result = evaluate_claim(claim, self.policy)
+        enrichment = next(step for step in result["trace"] if step["rule_id"] == "risk_enrichment")
+        self.assertEqual(enrichment["status"], "PASS")
+        self.assertNotIn("COMPONENT_DEGRADED", {reason["code"] for reason in result["reasons"]})
 
     def test_same_day_and_monthly_history_route_to_review(self) -> None:
         base = normalize_fixture(self.cases["TC004"])
