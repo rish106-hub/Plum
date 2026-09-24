@@ -11,6 +11,10 @@ from claims.fixtures import load_cases, load_policy, normalize_fixture
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _raise_optional_enrichment_failure(_: dict) -> None:
+    raise RuntimeError("synthetic optional component failure")
+
+
 def _matches(expected: dict, result: dict) -> tuple[bool, list[str]]:
     issues: list[str] = []
     if result["decision"] != expected.get("decision"):
@@ -36,7 +40,10 @@ def main() -> int:
     cases = load_cases(ROOT / "test_cases.json")
     records = []
     for case in cases:
-        result = evaluate_claim(normalize_fixture(case), policy)
+        options = {}
+        if case.get("input", {}).get("simulate_component_failure"):
+            options["optional_risk_enricher"] = _raise_optional_enrichment_failure
+        result = evaluate_claim(normalize_fixture(case), policy, **options)
         matched, issues = _matches(case["expected"], result)
         records.append(
             {

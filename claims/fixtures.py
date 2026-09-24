@@ -30,6 +30,9 @@ def normalize_fixture(case: dict[str, Any]) -> dict[str, Any]:
         }
         normalized.append(item)
     claim["documents"] = normalized
+    # Fault injection is an evaluator concern; never forward this fixture-only
+    # metadata into the normalized claim payload consumed by application code.
+    claim.pop("simulate_component_failure", None)
     claim.pop("case_id", None)
     claim.pop("expected", None)
     return claim

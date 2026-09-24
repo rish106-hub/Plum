@@ -9,7 +9,13 @@ from __future__ import annotations
 import re
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Callable
+
+OptionalRiskEnricher = Callable[[dict[str, Any]], None]
+
+
+def _optional_risk_enrichment(_: dict[str, Any]) -> None:
+    """Default optional hook; replace only with an internal risk component."""
 
 
 def _paise(value: Any) -> int:
@@ -134,7 +140,11 @@ def _document_gate(
     return corrections
 
 
-def _evaluate_claim(payload: dict[str, Any], policy: dict[str, Any]) -> dict[str, Any]:
+def _evaluate_claim(
+    payload: dict[str, Any],
+    policy: dict[str, Any],
+    optional_risk_enricher: OptionalRiskEnricher,
+) -> dict[str, Any]:
     """Apply document and policy rules to normalized evidence.
 
     Repairable document problems return decision=None. A fixture adapter may
@@ -354,8 +364,10 @@ def _evaluate_claim(payload: dict[str, Any], policy: dict[str, Any]) -> dict[str
     if monthly_flag:
         reasons.append({"code": "MONTHLY_CLAIMS", "message": f"This is claim {monthly_count} in the treatment month; policy review threshold is {monthly_limit}. Manual review is required."})
 
-    if payload.get("simulate_component_failure"):
-        trace.append({"stage": "optional_risk_enrichment", "rule_id": "risk_enrichment", "status": "SKIPPED_COMPONENT_FAILURE", "degraded": True, "details": "Optional enrichment failed; mandatory document and policy checks completed."})
+    try:
+        optional_risk_enricher(payload)
+    except Exception as exc:  # noqa: BLE001 - optional enrichment cannot block adjudication
+        trace.append({"stage": "optional_risk_enrichment", "rule_id": "risk_enrichment", "status": "SKIPPED_COMPONENT_FAILURE", "degraded": True, "error_type": type(exc).__name__, "details": "Optional enrichment failed; mandatory document and policy checks completed."})
         reasons.append({"code": "COMPONENT_DEGRADED", "message": "Optional risk enrichment failed and was skipped; manual review is recommended."})
         result["confidence_score"] = round(max(0.0, result["confidence_score"] - 0.23), 2)
     else:
@@ -499,10 +511,15 @@ def _evaluate_claim(payload: dict[str, Any], policy: dict[str, Any]) -> dict[str
     return result
 
 
-def evaluate_claim(payload: dict[str, Any], policy: dict[str, Any]) -> dict[str, Any]:
+def evaluate_claim(
+    payload: dict[str, Any],
+    policy: dict[str, Any],
+    *,
+    optional_risk_enricher: OptionalRiskEnricher = _optional_risk_enrichment,
+) -> dict[str, Any]:
     """Evaluate one claim, routing malformed evidence to review with a trace."""
     try:
-        return _evaluate_claim(payload, policy)
+        return _evaluate_claim(payload, policy, optional_risk_enricher)
     except (ValueError, TypeError, KeyError, AttributeError, OverflowError) as exc:
         return {
             "state": "MANUAL_REVIEW", "decision": "MANUAL_REVIEW",
