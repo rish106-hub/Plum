@@ -44,6 +44,8 @@ The supplied policy and expected fixtures disagree in material places. `PLAN.md`
 
 Each trace event records a stage, rule ID, status, policy reference and evidence or explanation. `NOT_EVALUATED` is distinct from `PASS`; for example, the 30-day submission deadline cannot be checked when a fixture has no submission timestamp. Exclusion and waiting period can dominate a financial cap as the primary reason while the trace still shows the other checks. Line items and adjustments use integer paise and explicit order: eligible items, caps, network discount, then co-pay. A separate confidence score records evidence quality and degraded processing. It is not a calibrated probability until measured against labelled outcomes.
 
+At intake, every uploaded document's SHA-256 is stored. After the document gate identifies bills, the workflow checks those exact file hashes against prior claims and routes matches to manual review before policy adjudication. A byte-identical bill is strong duplicate evidence but transformed scans can evade this check, so production should add normalized bill identifiers and amount/date/provider similarity with a human review threshold. Same-day and monthly counts use saved claims for the policy member and covered dependents. Policy-year usage sums prior `APPROVED` and `PARTIAL` decisions. Since this prototype has no insurer remittance event, approved amount is a disclosed proxy for consumed benefit, not proof of payment. Schema indexes support member/date and hash lookups, and startup backfills those fields from older local claim rows.
+
 ## Failure handling
 
 - Invalid or missing files: return a precise correction request and keep decision null.

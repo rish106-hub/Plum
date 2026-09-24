@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from playwright.sync_api import Page, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE_URL = "http://127.0.0.1:8000"
+BASE_URL = os.getenv("PLUM_BASE_URL", "http://127.0.0.1:8000")
 SAMPLES = ROOT / "sample_documents"
-SCREENSHOTS = ROOT / "docs" / "screenshots"
+SCREENSHOTS = Path(os.getenv("PLUM_SCREENSHOT_DIR", ROOT / "docs" / "screenshots"))
 
 
 def _fill(page: Page, documents: list[Path]) -> dict:
@@ -19,7 +20,6 @@ def _fill(page: Page, documents: list[Path]) -> dict:
     page.locator('select[name="claim_category"]').select_option("CONSULTATION")
     page.locator('input[name="treatment_date"]').fill("2024-11-01")
     page.locator('input[name="claimed_amount"]').fill("1500")
-    page.locator('input[name="ytd_claims_amount"]').fill("0")
     page.locator('input[name="files"]').set_input_files([str(path) for path in documents])
     page.locator('#submit-button').click()
     page.wait_for_url("**/claims/*")
@@ -54,6 +54,12 @@ def main() -> None:
         assert page.locator("#correction-panel").is_visible()
         page.screenshot(path=str(SCREENSHOTS / "correction.png"), full_page=True)
 
+        duplicate = _fill(page, [rx, bill])
+        assert duplicate["result"]["decision"] == "MANUAL_REVIEW", duplicate["result"]
+        assert duplicate["result"]["reasons"][0]["code"] == "DUPLICATE_BILL"
+        assert page.locator("#result-content").is_visible()
+        page.screenshot(path=str(SCREENSHOTS / "duplicate-review.png"), full_page=True)
+
         assert not errors, errors
         browser.close()
 
@@ -62,6 +68,7 @@ def main() -> None:
             {
                 "approval": {"id": approval["id"], "decision": approval["result"]["decision"], "approved_amount": approval["result"]["approved_amount"]},
                 "correction": {"id": correction["id"], "decision": correction["result"]["decision"], "state": correction["state"]},
+                "duplicate_bill": {"id": duplicate["id"], "decision": duplicate["result"]["decision"], "reason": duplicate["result"]["reasons"][0]["code"]},
                 "browser_errors": errors,
             },
             indent=2,

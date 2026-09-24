@@ -28,7 +28,7 @@
       <section class="surface intake-surface" aria-labelledby="claim-details-heading">
         <div class="section-heading">
           <div><span class="section-number">01</span><h2 id="claim-details-heading">Claim details</h2></div>
-          <span class="section-hint">Annual balance optional</span>
+          <span class="section-hint">History calculated automatically</span>
         </div>
         <form id="claim-form" novalidate>
           <div class="field-grid">
@@ -46,9 +46,8 @@
             </label>
             <label class="field"><span>Treatment date</span><input type="date" name="treatment_date" required></label>
             <label class="field"><span>Claimed amount <span class="field__unit">INR</span></span><input type="number" name="claimed_amount" min="0.01" max="999999.99" step="0.01" placeholder="0.00" required></label>
-            <label class="field field--wide"><span>Already reimbursed this policy year <span class="field__unit">INR · OPTIONAL</span></span><input type="number" name="ytd_claims_amount" min="0" max="1000000" step="0.01" placeholder="Enter 0 if none"></label>
           </div>
-          <p class="field-note">If this amount is unknown, leave it blank. The claim will be sent for manual review until the annual balance is confirmed.</p>
+          <p class="field-note">Prior claims for this policy year are included automatically from the claim history.</p>
 
           <div class="section-heading section-heading--documents">
             <div><span class="section-number">02</span><h2>Documents</h2></div>

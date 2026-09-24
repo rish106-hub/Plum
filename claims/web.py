@@ -72,6 +72,10 @@ def init_db() -> None:
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 state TEXT NOT NULL,
+                member_id TEXT,
+                treatment_date TEXT,
+                decision TEXT,
+                approved_amount_paise INTEGER NOT NULL DEFAULT 0,
                 request_json TEXT NOT NULL,
                 result_json TEXT,
                 error_message TEXT
@@ -95,6 +99,33 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_claim_events_claim ON claim_events(claim_id, id);
             """
         )
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(claims)")}
+        for name, definition in (
+            ("member_id", "TEXT"),
+            ("treatment_date", "TEXT"),
+            ("decision", "TEXT"),
+            ("approved_amount_paise", "INTEGER NOT NULL DEFAULT 0"),
+        ):
+            if name not in columns:
+                connection.execute(f"ALTER TABLE claims ADD COLUMN {name} {definition}")
+        # These indexed fields make duplicate checks and member benefit history
+        # a bounded lookup instead of reparsing every saved claim on each request.
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_claims_member_treatment ON claims(member_id, treatment_date, state)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_documents_hash_claim ON documents(sha256, claim_id)")
+        # Backfill rows created by earlier local app versions.
+        for row in connection.execute("SELECT id, request_json, result_json FROM claims WHERE member_id IS NULL OR treatment_date IS NULL OR decision IS NULL"):
+            request_data = json.loads(row["request_json"])
+            saved_result = json.loads(row["result_json"]) if row["result_json"] else {}
+            connection.execute(
+                "UPDATE claims SET member_id=COALESCE(member_id, ?), treatment_date=COALESCE(treatment_date, ?), decision=COALESCE(decision, ?), approved_amount_paise=CASE WHEN approved_amount_paise=0 THEN ? ELSE approved_amount_paise END WHERE id=?",
+                (
+                    request_data.get("member_id"),
+                    request_data.get("treatment_date"),
+                    saved_result.get("decision"),
+                    int(saved_result.get("approved_amount_paise") or 0),
+                    row["id"],
+                ),
+            )
 
 
 def _record_event(connection: sqlite3.Connection, claim_id: str, stage: str, detail: dict[str, Any]) -> None:
@@ -114,8 +145,16 @@ def _set_state(
 ) -> None:
     with _connect() as connection:
         connection.execute(
-            "UPDATE claims SET state=?, updated_at=?, result_json=?, error_message=? WHERE id=?",
-            (state, _now(), json.dumps(result, default=str) if result is not None else None, error, claim_id),
+            "UPDATE claims SET state=?, updated_at=?, result_json=?, error_message=?, decision=?, approved_amount_paise=? WHERE id=?",
+            (
+                state,
+                _now(),
+                json.dumps(result, default=str) if result is not None else None,
+                error,
+                result.get("decision") if result else None,
+                int(result.get("approved_amount_paise") or 0) if result else 0,
+                claim_id,
+            ),
         )
         _record_event(connection, claim_id, state, detail or {})
 
@@ -249,6 +288,77 @@ def _provider_review_result(issues: list[dict[str, Any]], metrics: dict[str, Any
     }
 
 
+def _member_claim_history(
+    claim_id: str, request_data: dict[str, Any], policy: dict[str, Any]
+) -> tuple[list[dict[str, str]], int]:
+    """Read the covered employee's policy-year claims for risk and limit checks."""
+    member_id = str(request_data["member_id"])
+    member = next((item for item in policy.get("members", []) if item.get("member_id") == member_id), None)
+    if member is None:
+        return [], 0
+    owner_id = str(member.get("primary_member_id") or member_id)
+    owner = next((item for item in policy.get("members", []) if item.get("member_id") == owner_id), member)
+    covered_ids = {owner_id, *[str(value) for value in owner.get("dependents", [])]}
+    start = str(policy.get("policy_holder", {}).get("policy_start_date", "0001-01-01"))
+    end = str(policy.get("policy_holder", {}).get("policy_end_date", "9999-12-31"))
+    marks = ",".join("?" for _ in covered_ids)
+    with _connect() as connection:
+        rows = connection.execute(
+            f"SELECT id, treatment_date, state, decision, approved_amount_paise FROM claims WHERE id<>? AND member_id IN ({marks}) AND treatment_date BETWEEN ? AND ? ORDER BY created_at",
+            (claim_id, *sorted(covered_ids), start, end),
+        ).fetchall()
+    history = [{"date": row["treatment_date"]} for row in rows if row["treatment_date"]]
+    # The prototype has adjudication records but no insurer remittance feed.
+    # Approved amounts are therefore the best available consumed-benefit proxy;
+    # the trace labels them as adjudicated amounts rather than paid reimbursements.
+    approved_ytd_paise = sum(
+        int(row["approved_amount_paise"] or 0)
+        for row in rows
+        if row["state"] == "DECIDED" and row["decision"] in {"APPROVED", "PARTIAL"}
+    )
+    return history, approved_ytd_paise
+
+
+def _duplicate_bill_hits(
+    claim_id: str, inspected_documents: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Find previously submitted byte-identical bills without treating reused prescriptions as duplicates."""
+    bill_hashes = {
+        str(document.get("sha256"))
+        for document in inspected_documents
+        if str(document.get("actual_type") or document.get("doc_type") or "").upper().endswith("BILL")
+        and document.get("sha256")
+    }
+    if not bill_hashes:
+        return []
+    hits: list[dict[str, Any]] = []
+    with _connect() as connection:
+        for digest in sorted(bill_hashes):
+            rows = connection.execute(
+                "SELECT DISTINCT claim_id FROM documents WHERE sha256=? AND claim_id<>? ORDER BY claim_id",
+                (digest, claim_id),
+            ).fetchall()
+            if rows:
+                hits.append({"previous_claim_ids": [row["claim_id"] for row in rows]})
+    return hits
+
+
+def _duplicate_review_result(hits: list[dict[str, Any]], metrics: dict[str, Any]) -> dict[str, Any]:
+    prior_ids = sorted({claim_id for hit in hits for claim_id in hit["previous_claim_ids"]})
+    return {
+        "state": "MANUAL_REVIEW",
+        "decision": "MANUAL_REVIEW",
+        "approved_amount": 0,
+        "approved_amount_paise": 0,
+        "reasons": [{"code": "DUPLICATE_BILL", "message": "An identical bill file was submitted on another claim. Verify that the same expense has not already been reimbursed."}],
+        "correction_requests": [],
+        "confidence_score": 0.2,
+        "ledger": [],
+        "trace": [{"stage": "duplicate_check", "rule_id": "previous_bill_hash", "status": "FLAG", "evidence": {"matching_claim_count": len(prior_ids), "matching_claim_ids": prior_ids}, "details": "Exact file match; a human must verify whether this is a repeat expense."}],
+        "document_metrics": metrics,
+    }
+
+
 def process_claim(claim_id: str) -> None:
     """Run one persisted claim; safe to retry after process restart."""
     claim = _load_claim(claim_id)
@@ -293,8 +403,23 @@ def process_claim(claim_id: str) -> None:
                 result = _correction_result(issues, metrics)
                 _set_state(claim_id, "DOCUMENT_CORRECTION_REQUIRED", result=result, detail={"issue_count": len(issues)})
             return
+        duplicate_hits = _duplicate_bill_hits(claim_id, inspection.get("documents", []))
+        if duplicate_hits:
+            result = _duplicate_review_result(duplicate_hits, inspection.get("metrics", {}))
+            _set_state(
+                claim_id,
+                "MANUAL_REVIEW",
+                result=result,
+                detail={"duplicate_bill_match_count": sum(len(hit["previous_claim_ids"]) for hit in duplicate_hits)},
+            )
+            return
         payload = dict(request_data)
         payload["documents"] = inspection.get("documents", [])
+        claims_history, approved_ytd_paise = _member_claim_history(claim_id, request_data, policy)
+        payload["claims_history"] = claims_history
+        payload["claims_history_source"] = "local_claim_database"
+        payload["ytd_claims_amount"] = approved_ytd_paise / 100
+        payload["ytd_claims_source"] = "database_approved_decisions"
         result = evaluate_claim(payload, policy)
         result.setdefault("document_metrics", inspection.get("metrics", {}))
         final_state = str(result.get("state") or result.get("decision") or "MANUAL_REVIEW")
@@ -349,7 +474,6 @@ async def submit_claim(
     claim_category: str = Form(...),
     treatment_date: str = Form(...),
     claimed_amount: str = Form(...),
-    ytd_claims_amount: str | None = Form(None),
 ) -> JSONResponse:
     member_id = member_id.strip().upper()
     claim_category = claim_category.strip().upper()
@@ -373,15 +497,6 @@ async def submit_claim(
         raise _input_error("Enter a valid claimed amount.") from exc
     if amount_paise <= 0 or amount_paise > 100_000_000:
         raise _input_error("Enter a claimed amount greater than zero and below ₹10 lakh.")
-    ytd_amount: float | None = None
-    if ytd_claims_amount is not None and ytd_claims_amount.strip():
-        try:
-            ytd_value = Decimal(ytd_claims_amount)
-            if not ytd_value.is_finite() or ytd_value < 0 or ytd_value > 1_000_000 or ytd_value * 100 != (ytd_value * 100).to_integral_value():
-                raise InvalidOperation
-            ytd_amount = float(ytd_value)
-        except (InvalidOperation, ValueError) as exc:
-            raise _input_error("Enter a valid amount already reimbursed this policy year, or leave it blank for review.") from exc
     if not 1 <= len(files) <= MAX_FILES:
         raise _input_error("Upload between one and six documents.")
     checked = [await _read_upload(file) for file in files]
@@ -408,12 +523,10 @@ async def submit_claim(
         "treatment_date": treatment_date,
         "claimed_amount": float(Decimal(amount_paise) / 100),
     }
-    if ytd_amount is not None:
-        request_data["ytd_claims_amount"] = ytd_amount
     with _connect() as connection:
         connection.execute(
-            "INSERT INTO claims (id, created_at, updated_at, state, request_json) VALUES (?, ?, ?, ?, ?)",
-            (claim_id, now, now, "QUEUED", json.dumps(request_data)),
+            "INSERT INTO claims (id, created_at, updated_at, state, member_id, treatment_date, request_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (claim_id, now, now, "QUEUED", member_id, treatment_date, json.dumps(request_data)),
         )
         connection.executemany(
             "INSERT INTO documents (id, claim_id, original_name, media_type, size_bytes, sha256, storage_path) VALUES (?, ?, ?, ?, ?, ?, ?)",
