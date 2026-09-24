@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import ssl
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -214,10 +215,21 @@ def test_sarvam_sdk_job_contract_and_bounded_download(monkeypatch: pytest.Monkey
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("output/document.md", "HOSPITAL BILL\nPatient: Rajesh Kumar\nTotal Amount: 1500.00")
-    monkeypatch.setattr("claims.documents.urllib.request.urlopen", lambda url, timeout: io.BytesIO(buffer.getvalue()))
+    captured: dict[str, object] = {}
+
+    def fake_urlopen(url: str, *, timeout: int, context: object) -> io.BytesIO:
+        captured.update(url=url, timeout=timeout, context=context)
+        return io.BytesIO(buffer.getvalue())
+
+    monkeypatch.setattr("claims.documents.urllib.request.urlopen", fake_urlopen)
     provider = SarvamDocumentProvider.__new__(SarvamDocumentProvider)
     api = FakeDocAI()
     provider.client = SimpleNamespace(doc_ai=api)
     text = provider.digitise(image_bytes(), "image/png")
     assert "Patient: Rajesh Kumar" in text
+    assert captured["url"] == "https://example.invalid/signed.zip"
+    assert captured["timeout"] == 20
+    context = captured["context"]
+    assert isinstance(context, ssl.SSLContext)
+    assert context.verify_mode == ssl.CERT_REQUIRED
     assert api.calls == ["digitise", "status", "download_url"]
