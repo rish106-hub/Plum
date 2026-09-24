@@ -19,9 +19,9 @@ def _client(tmp_path: Path, monkeypatch) -> TestClient:
     return TestClient(web.app)
 
 
-def _submit(client: TestClient, data: bytes = PDF, content_type: str = "application/pdf"):
+def _submit(client: TestClient, data: bytes = PDF, content_type: str = "application/pdf", member_id: str = "EMP001"):
     fields = {
-        "member_id": "EMP001",
+        "member_id": member_id,
         "claim_category": "CONSULTATION",
         "treatment_date": "2024-11-01",
         "claimed_amount": "1500.00",
@@ -146,6 +146,39 @@ def test_identical_bill_on_another_claim_routes_to_review(tmp_path, monkeypatch)
         assert calls["adjudications"] == 1
 
 
+def test_duplicate_hash_of_nonpayable_claim_does_not_block_later_claim(tmp_path, monkeypatch):
+    calls = {"count": 0}
+
+    def inspect(files, *_args, **_kwargs):
+        return {
+            "documents": [{
+                "file_id": "UPLOAD-1",
+                "sha256": hashlib.sha256(files[0]["data"]).hexdigest(),
+                "actual_type": "HOSPITAL_BILL",
+                "quality": "GOOD",
+                "content": {"total": 1500, "line_items": [{"description": "Consultation", "amount": 1500}]},
+            }],
+            "issues": [],
+            "metrics": {},
+        }
+
+    def decide(*_args):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return {"state": "DECIDED", "decision": "REJECTED", "approved_amount": 0, "approved_amount_paise": 0, "reasons": [], "trace": [], "ledger": []}
+        return {"state": "DECIDED", "decision": "APPROVED", "approved_amount": 1350, "approved_amount_paise": 135000, "reasons": [], "trace": [], "ledger": []}
+
+    monkeypatch.setattr(web, "process_uploads", inspect)
+    monkeypatch.setattr(web, "evaluate_claim", decide)
+    with _client(tmp_path, monkeypatch) as client:
+        first = _submit(client, data=PDF + b" rejected").json()
+        assert client.get(f"/api/claims/{first['id']}").json()["result"]["decision"] == "REJECTED"
+        second = _submit(client, data=PDF + b" rejected").json()
+        saved = client.get(f"/api/claims/{second['id']}").json()
+        assert saved["result"]["decision"] == "APPROVED"
+        assert calls["count"] == 2
+
+
 def test_history_is_loaded_from_local_claims_for_annual_and_frequency_limits(tmp_path, monkeypatch):
     observed = []
 
@@ -176,6 +209,38 @@ def test_history_is_loaded_from_local_claims_for_annual_and_frequency_limits(tmp
 
     assert observed[1]["ytd_claims_amount"] == 1350
     assert observed[1]["ytd_claims_source"] == "database_approved_decisions"
+    assert observed[1]["claims_history"] == [{"date": "2024-11-01"}]
+
+
+def test_dependent_history_uses_primary_member_family_pool(tmp_path, monkeypatch):
+    observed = []
+
+    def inspect(files, *_args, **_kwargs):
+        return {
+            "documents": [{
+                "file_id": "UPLOAD-1",
+                "sha256": hashlib.sha256(files[0]["data"]).hexdigest(),
+                "actual_type": "HOSPITAL_BILL",
+                "quality": "GOOD",
+                "content": {"total": 1500, "line_items": [{"description": "Consultation", "amount": 1500}]},
+            }],
+            "issues": [],
+            "metrics": {},
+        }
+
+    def decide(payload, _policy):
+        observed.append(payload)
+        return {"state": "DECIDED", "decision": "APPROVED", "approved_amount": 1350, "approved_amount_paise": 135000, "reasons": [], "trace": [], "ledger": []}
+
+    monkeypatch.setattr(web, "process_uploads", inspect)
+    monkeypatch.setattr(web, "evaluate_claim", decide)
+    with _client(tmp_path, monkeypatch) as client:
+        employee = _submit(client, data=PDF + b" employee").json()
+        assert client.get(f"/api/claims/{employee['id']}").json()["result"]["decision"] == "APPROVED"
+        dependent = _submit(client, data=PDF + b" dependent", member_id="DEP001").json()
+        assert client.get(f"/api/claims/{dependent['id']}").json()["result"]["decision"] == "APPROVED"
+    assert observed[1]["member_id"] == "DEP001"
+    assert observed[1]["ytd_claims_amount"] == 1350
     assert observed[1]["claims_history"] == [{"date": "2024-11-01"}]
 
 

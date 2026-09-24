@@ -322,6 +322,27 @@ Match: **Yes**. No discrepancies.
     },
     {
       "stage": "policy",
+      "rule_id": "policy_coverage_period",
+      "status": "PASS",
+      "policy_ref": "policy_holder.policy_start_date / policy_holder.policy_end_date",
+      "evidence": {
+        "treatment_date": "2024-11-01",
+        "policy_start_date": "2024-04-01",
+        "policy_end_date": "2025-03-31"
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "minimum_claim_amount",
+      "status": "PASS",
+      "policy_ref": "submission_rules.minimum_claim_amount",
+      "evidence": {
+        "claimed_amount_paise": 150000,
+        "minimum_claim_amount_paise": 50000
+      }
+    },
+    {
+      "stage": "policy",
       "rule_id": "submission_deadline",
       "status": "NOT_EVALUATED",
       "policy_ref": "submission_rules.deadline_days_from_treatment",
@@ -370,9 +391,9 @@ Match: **Yes**. No discrepancies.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 1500,
-        "limit": 5000
-      },
-      "details": null
+        "limit": 5000,
+        "fixture_compatibility": false
+      }
     },
     {
       "stage": "policy",
@@ -389,13 +410,12 @@ Match: **Yes**. No discrepancies.
     {
       "stage": "policy",
       "rule_id": "category_sub_limit",
-      "status": "ASSUMPTION",
+      "status": "PASS",
       "policy_ref": "opd_categories.consultation.sub_limit",
       "evidence": {
-        "consultation_fee": 1000,
+        "eligible_before_cap": 1500,
         "sub_limit": 2000
-      },
-      "details": "Consultation sub-limit applied to consultation-fee lines for fixture compatibility."
+      }
     },
     {
       "stage": "pricing",
@@ -406,6 +426,8 @@ Match: **Yes**. No discrepancies.
         "network_hospital": false,
         "network_discount_paise": 0,
         "copay_paise": 15000,
+        "branded_basis_paise": 0,
+        "branded_copay_paise": 0,
         "payable_paise": 135000
       },
       "details": "Network discount applied before co-pay."
@@ -429,6 +451,8 @@ Match: **Yes**. No discrepancies.
       "amount": 1000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "brand_status": null,
+      "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
     },
     {
@@ -439,6 +463,8 @@ Match: **Yes**. No discrepancies.
       "amount": 300,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "brand_status": null,
+      "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
     },
     {
@@ -449,6 +475,8 @@ Match: **Yes**. No discrepancies.
       "amount": 200,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "brand_status": null,
+      "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
     },
     {
@@ -582,6 +610,27 @@ Match: **Yes**. No discrepancies.
     },
     {
       "stage": "policy",
+      "rule_id": "policy_coverage_period",
+      "status": "PASS",
+      "policy_ref": "policy_holder.policy_start_date / policy_holder.policy_end_date",
+      "evidence": {
+        "treatment_date": "2024-10-15",
+        "policy_start_date": "2024-04-01",
+        "policy_end_date": "2025-03-31"
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "minimum_claim_amount",
+      "status": "PASS",
+      "policy_ref": "submission_rules.minimum_claim_amount",
+      "evidence": {
+        "claimed_amount_paise": 300000,
+        "minimum_claim_amount_paise": 50000
+      }
+    },
+    {
+      "stage": "policy",
       "rule_id": "submission_deadline",
       "status": "NOT_EVALUATED",
       "policy_ref": "submission_rules.deadline_days_from_treatment",
@@ -630,9 +679,9 @@ Match: **Yes**. No discrepancies.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 3000,
-        "limit": 5000
-      },
-      "details": null
+        "limit": 5000,
+        "fixture_compatibility": false
+      }
     },
     {
       "stage": "policy",
@@ -665,6 +714,8 @@ Match: **Yes**. No discrepancies.
         "network_hospital": false,
         "network_discount_paise": 0,
         "copay_paise": 20000,
+        "branded_basis_paise": 0,
+        "branded_copay_paise": 0,
         "payable_paise": 180000
       },
       "details": "Network discount applied before co-pay."
@@ -688,6 +739,8 @@ Match: **Yes**. No discrepancies.
       "amount": 3000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "brand_status": null,
+      "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
     },
     {
@@ -821,6 +874,27 @@ Match: **Yes**. No discrepancies.
     },
     {
       "stage": "policy",
+      "rule_id": "policy_coverage_period",
+      "status": "PASS",
+      "policy_ref": "policy_holder.policy_start_date / policy_holder.policy_end_date",
+      "evidence": {
+        "treatment_date": "2024-10-15",
+        "policy_start_date": "2024-04-01",
+        "policy_end_date": "2025-03-31"
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "minimum_claim_amount",
+      "status": "PASS",
+      "policy_ref": "submission_rules.minimum_claim_amount",
+      "evidence": {
+        "claimed_amount_paise": 1200000,
+        "minimum_claim_amount_paise": 50000
+      }
+    },
+    {
+      "stage": "policy",
       "rule_id": "submission_deadline",
       "status": "NOT_EVALUATED",
       "policy_ref": "submission_rules.deadline_days_from_treatment",
@@ -869,9 +943,10 @@ Match: **Yes**. No discrepancies.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 12000,
-        "limit": 5000
+        "limit": 5000,
+        "fixture_compatibility": true
       },
-      "details": "Dental sub-limit overrides general per-claim cap for fixture compatibility; insurer confirmation required."
+      "details": "Fixture compatibility assumption: global per-claim limit is not applied for this case; insurer confirmation required."
     },
     {
       "stage": "policy",
@@ -887,10 +962,13 @@ Match: **Yes**. No discrepancies.
     },
     {
       "stage": "policy",
-      "rule_id": "dental_report",
+      "rule_id": "additional_document_requirement",
       "status": "ASSUMPTION",
-      "policy_ref": "opd_categories.dental.requires_dental_report / document_requirements.DENTAL",
-      "details": "Document matrix marks dental report optional; accepted for fixture compatibility. Insurer confirmation required."
+      "policy_ref": "opd_categories.dental.required_additional_document",
+      "evidence": {
+        "required_document": "DENTAL_REPORT"
+      },
+      "details": "Fixture compatibility assumption: category requirement conflicts with the document matrix; insurer confirmation required."
     },
     {
       "stage": "policy",
@@ -911,6 +989,8 @@ Match: **Yes**. No discrepancies.
         "network_hospital": false,
         "network_discount_paise": 0,
         "copay_paise": 0,
+        "branded_basis_paise": 0,
+        "branded_copay_paise": 0,
         "payable_paise": 800000
       },
       "details": "Network discount applied before co-pay."
@@ -934,6 +1014,8 @@ Match: **Yes**. No discrepancies.
       "amount": 8000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "brand_status": null,
+      "brand_evidence": null,
       "policy_ref": "opd_categories.dental.covered"
     },
     {
@@ -944,6 +1026,8 @@ Match: **Yes**. No discrepancies.
       "amount": 4000,
       "status": "EXCLUDED",
       "reason_code": "EXCLUDED_PROCEDURE",
+      "brand_status": null,
+      "brand_evidence": null,
       "policy_ref": "opd_categories.dental.excluded_procedures"
     },
     {
@@ -1089,6 +1173,27 @@ Match: **Yes**. No discrepancies.
     },
     {
       "stage": "policy",
+      "rule_id": "policy_coverage_period",
+      "status": "PASS",
+      "policy_ref": "policy_holder.policy_start_date / policy_holder.policy_end_date",
+      "evidence": {
+        "treatment_date": "2024-11-02",
+        "policy_start_date": "2024-04-01",
+        "policy_end_date": "2025-03-31"
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "minimum_claim_amount",
+      "status": "PASS",
+      "policy_ref": "submission_rules.minimum_claim_amount",
+      "evidence": {
+        "claimed_amount_paise": 1500000,
+        "minimum_claim_amount_paise": 50000
+      }
+    },
+    {
+      "stage": "policy",
       "rule_id": "submission_deadline",
       "status": "NOT_EVALUATED",
       "policy_ref": "submission_rules.deadline_days_from_treatment",
@@ -1098,11 +1203,15 @@ Match: **Yes**. No discrepancies.
       "stage": "policy",
       "rule_id": "pre_authorization",
       "status": "FAIL",
-      "policy_ref": "opd_categories.diagnostic.pre_auth_threshold / requires_pre_auth",
+      "policy_ref": "pre_authorization.required_for / opd_categories.requires_pre_auth",
       "evidence": {
-        "high_value_test_found": true,
+        "matched_rules": [
+          {
+            "phrase": "MRI",
+            "amount_greater_than": 10000
+          }
+        ],
         "claimed_amount": 15000,
-        "threshold": 10000,
         "pre_authorization": null
       }
     },
@@ -1142,9 +1251,9 @@ Match: **Yes**. No discrepancies.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 15000,
-        "limit": 5000
-      },
-      "details": null
+        "limit": 5000,
+        "fixture_compatibility": false
+      }
     },
     {
       "stage": "policy",
@@ -1177,6 +1286,8 @@ Match: **Yes**. No discrepancies.
         "network_hospital": false,
         "network_discount_paise": 0,
         "copay_paise": 0,
+        "branded_basis_paise": 0,
+        "branded_copay_paise": 0,
         "payable_paise": 1000000
       },
       "details": "Network discount applied before co-pay."
@@ -1200,6 +1311,8 @@ Match: **Yes**. No discrepancies.
       "amount": 15000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "brand_status": null,
+      "brand_evidence": null,
       "policy_ref": "opd_categories.diagnostic.covered"
     },
     {
@@ -1342,6 +1455,27 @@ Match: **Yes**. No discrepancies.
     },
     {
       "stage": "policy",
+      "rule_id": "policy_coverage_period",
+      "status": "PASS",
+      "policy_ref": "policy_holder.policy_start_date / policy_holder.policy_end_date",
+      "evidence": {
+        "treatment_date": "2024-10-20",
+        "policy_start_date": "2024-04-01",
+        "policy_end_date": "2025-03-31"
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "minimum_claim_amount",
+      "status": "PASS",
+      "policy_ref": "submission_rules.minimum_claim_amount",
+      "evidence": {
+        "claimed_amount_paise": 750000,
+        "minimum_claim_amount_paise": 50000
+      }
+    },
+    {
+      "stage": "policy",
       "rule_id": "submission_deadline",
       "status": "NOT_EVALUATED",
       "policy_ref": "submission_rules.deadline_days_from_treatment",
@@ -1390,9 +1524,9 @@ Match: **Yes**. No discrepancies.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 7500,
-        "limit": 5000
-      },
-      "details": null
+        "limit": 5000,
+        "fixture_compatibility": false
+      }
     },
     {
       "stage": "policy",
@@ -1409,24 +1543,25 @@ Match: **Yes**. No discrepancies.
     {
       "stage": "policy",
       "rule_id": "category_sub_limit",
-      "status": "ASSUMPTION",
+      "status": "LIMITED",
       "policy_ref": "opd_categories.consultation.sub_limit",
       "evidence": {
-        "consultation_fee": 2000,
+        "eligible_before_cap": 7500,
         "sub_limit": 2000
-      },
-      "details": "Consultation sub-limit applied to consultation-fee lines for fixture compatibility."
+      }
     },
     {
       "stage": "pricing",
       "rule_id": "payable_amount",
       "status": "CALCULATED",
       "evidence": {
-        "eligible_paise": 750000,
+        "eligible_paise": 200000,
         "network_hospital": false,
         "network_discount_paise": 0,
-        "copay_paise": 75000,
-        "payable_paise": 675000
+        "copay_paise": 20000,
+        "branded_basis_paise": 0,
+        "branded_copay_paise": 0,
+        "payable_paise": 180000
       },
       "details": "Network discount applied before co-pay."
     },
@@ -1449,6 +1584,8 @@ Match: **Yes**. No discrepancies.
       "amount": 2000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "brand_status": null,
+      "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
     },
     {
@@ -1459,7 +1596,16 @@ Match: **Yes**. No discrepancies.
       "amount": 5500,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "brand_status": null,
+      "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
+    },
+    {
+      "kind": "adjustment",
+      "description": "Category sub-limit",
+      "amount_paise": -550000,
+      "amount": -5500,
+      "policy_ref": "opd_categories.consultation.sub_limit"
     },
     {
       "kind": "adjustment",
@@ -1467,16 +1613,16 @@ Match: **Yes**. No discrepancies.
       "amount_paise": 0,
       "amount": 0,
       "policy_ref": "opd_categories.consultation.network_discount_percent",
-      "basis_paise": 750000,
+      "basis_paise": 200000,
       "percent": 0
     },
     {
       "kind": "adjustment",
       "description": "Member co-pay",
-      "amount_paise": -75000,
-      "amount": -750,
+      "amount_paise": -20000,
+      "amount": -200,
       "policy_ref": "opd_categories.consultation.copay_percent",
-      "basis_paise": 750000,
+      "basis_paise": 200000,
       "percent": 10
     }
   ]
@@ -1594,6 +1740,27 @@ Match: **Yes**. No discrepancies.
     },
     {
       "stage": "policy",
+      "rule_id": "policy_coverage_period",
+      "status": "PASS",
+      "policy_ref": "policy_holder.policy_start_date / policy_holder.policy_end_date",
+      "evidence": {
+        "treatment_date": "2024-10-30",
+        "policy_start_date": "2024-04-01",
+        "policy_end_date": "2025-03-31"
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "minimum_claim_amount",
+      "status": "PASS",
+      "policy_ref": "submission_rules.minimum_claim_amount",
+      "evidence": {
+        "claimed_amount_paise": 480000,
+        "minimum_claim_amount_paise": 50000
+      }
+    },
+    {
+      "stage": "policy",
       "rule_id": "submission_deadline",
       "status": "NOT_EVALUATED",
       "policy_ref": "submission_rules.deadline_days_from_treatment",
@@ -1642,9 +1809,9 @@ Match: **Yes**. No discrepancies.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 4800,
-        "limit": 5000
-      },
-      "details": null
+        "limit": 5000,
+        "fixture_compatibility": false
+      }
     },
     {
       "stage": "policy",
@@ -1677,6 +1844,8 @@ Match: **Yes**. No discrepancies.
         "network_hospital": false,
         "network_discount_paise": 0,
         "copay_paise": 20000,
+        "branded_basis_paise": 0,
+        "branded_copay_paise": 0,
         "payable_paise": 180000
       },
       "details": "Network discount applied before co-pay."
@@ -1700,6 +1869,8 @@ Match: **Yes**. No discrepancies.
       "amount": 4800,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "brand_status": null,
+      "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
     },
     {
@@ -1840,6 +2011,27 @@ Match: **Yes**. No discrepancies.
     },
     {
       "stage": "policy",
+      "rule_id": "policy_coverage_period",
+      "status": "PASS",
+      "policy_ref": "policy_holder.policy_start_date / policy_holder.policy_end_date",
+      "evidence": {
+        "treatment_date": "2024-11-03",
+        "policy_start_date": "2024-04-01",
+        "policy_end_date": "2025-03-31"
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "minimum_claim_amount",
+      "status": "PASS",
+      "policy_ref": "submission_rules.minimum_claim_amount",
+      "evidence": {
+        "claimed_amount_paise": 450000,
+        "minimum_claim_amount_paise": 50000
+      }
+    },
+    {
+      "stage": "policy",
       "rule_id": "submission_deadline",
       "status": "NOT_EVALUATED",
       "policy_ref": "submission_rules.deadline_days_from_treatment",
@@ -1888,9 +2080,9 @@ Match: **Yes**. No discrepancies.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 4500,
-        "limit": 5000
-      },
-      "details": null
+        "limit": 5000,
+        "fixture_compatibility": false
+      }
     },
     {
       "stage": "policy",
@@ -1910,10 +2102,11 @@ Match: **Yes**. No discrepancies.
       "status": "ASSUMPTION",
       "policy_ref": "opd_categories.consultation.sub_limit",
       "evidence": {
-        "consultation_fee": 1500,
-        "sub_limit": 2000
+        "matching_line_amount": 1500,
+        "sub_limit": 2000,
+        "matching_phrase": "consultation fee"
       },
-      "details": "Consultation sub-limit applied to consultation-fee lines for fixture compatibility."
+      "details": "Fixture compatibility assumption: sub-limit applies only to explicitly matched line items; insurer confirmation required."
     },
     {
       "stage": "pricing",
@@ -1924,6 +2117,8 @@ Match: **Yes**. No discrepancies.
         "network_hospital": true,
         "network_discount_paise": 90000,
         "copay_paise": 36000,
+        "branded_basis_paise": 0,
+        "branded_copay_paise": 0,
         "payable_paise": 324000
       },
       "details": "Network discount applied before co-pay."
@@ -1947,6 +2142,8 @@ Match: **Yes**. No discrepancies.
       "amount": 1500,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "brand_status": null,
+      "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
     },
     {
@@ -1957,6 +2154,8 @@ Match: **Yes**. No discrepancies.
       "amount": 3000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "brand_status": null,
+      "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
     },
     {
@@ -2092,6 +2291,27 @@ Match: **Yes**. No discrepancies.
     },
     {
       "stage": "policy",
+      "rule_id": "policy_coverage_period",
+      "status": "PASS",
+      "policy_ref": "policy_holder.policy_start_date / policy_holder.policy_end_date",
+      "evidence": {
+        "treatment_date": "2024-10-28",
+        "policy_start_date": "2024-04-01",
+        "policy_end_date": "2025-03-31"
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "minimum_claim_amount",
+      "status": "PASS",
+      "policy_ref": "submission_rules.minimum_claim_amount",
+      "evidence": {
+        "claimed_amount_paise": 400000,
+        "minimum_claim_amount_paise": 50000
+      }
+    },
+    {
+      "stage": "policy",
       "rule_id": "submission_deadline",
       "status": "NOT_EVALUATED",
       "policy_ref": "submission_rules.deadline_days_from_treatment",
@@ -2141,9 +2361,9 @@ Match: **Yes**. No discrepancies.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 4000,
-        "limit": 5000
-      },
-      "details": null
+        "limit": 5000,
+        "fixture_compatibility": false
+      }
     },
     {
       "stage": "policy",
@@ -2176,6 +2396,8 @@ Match: **Yes**. No discrepancies.
         "network_hospital": false,
         "network_discount_paise": 0,
         "copay_paise": 0,
+        "branded_basis_paise": 0,
+        "branded_copay_paise": 0,
         "payable_paise": 400000
       },
       "details": "Network discount applied before co-pay."
@@ -2199,6 +2421,8 @@ Match: **Yes**. No discrepancies.
       "amount": 3000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "brand_status": null,
+      "brand_evidence": null,
       "policy_ref": "opd_categories.alternative_medicine.covered"
     },
     {
@@ -2209,6 +2433,8 @@ Match: **Yes**. No discrepancies.
       "amount": 1000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "brand_status": null,
+      "brand_evidence": null,
       "policy_ref": "opd_categories.alternative_medicine.covered"
     },
     {
@@ -2246,7 +2472,11 @@ Match: **Yes**. No discrepancies.
   "reasons": [
     {
       "code": "EXCLUDED_CONDITION",
-      "message": "Treatment is excluded under the policy: Obesity and weight loss programs, Bariatric surgery."
+      "message": "Treatment is excluded under the policy: bariatric, morbid obesity."
+    },
+    {
+      "code": "WAITING_PERIOD",
+      "message": "The obesity treatment waiting period ends on 2025-04-01; treatment was on 2024-10-18."
     },
     {
       "code": "PER_CLAIM_EXCEEDED",
@@ -2333,20 +2563,41 @@ Match: **Yes**. No discrepancies.
       "status": "FAIL",
       "policy_ref": "exclusions.conditions",
       "evidence": [
-        "Obesity and weight loss programs",
-        "Bariatric surgery"
+        "bariatric",
+        "morbid obesity"
       ]
     },
     {
       "stage": "policy",
       "rule_id": "waiting_period",
-      "status": "PASS",
-      "policy_ref": "waiting_periods.initial_waiting_period_days",
+      "status": "FAIL",
+      "policy_ref": "waiting_periods.specific_conditions.obesity_treatment",
       "evidence": {
-        "condition": "initial",
+        "condition": "obesity_treatment",
         "join_date": "2024-04-01",
         "treatment_date": "2024-10-18",
-        "eligible_from": "2024-05-01"
+        "eligible_from": "2025-04-01"
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "policy_coverage_period",
+      "status": "PASS",
+      "policy_ref": "policy_holder.policy_start_date / policy_holder.policy_end_date",
+      "evidence": {
+        "treatment_date": "2024-10-18",
+        "policy_start_date": "2024-04-01",
+        "policy_end_date": "2025-03-31"
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "minimum_claim_amount",
+      "status": "PASS",
+      "policy_ref": "submission_rules.minimum_claim_amount",
+      "evidence": {
+        "claimed_amount_paise": 800000,
+        "minimum_claim_amount_paise": 50000
       }
     },
     {
@@ -2399,9 +2650,9 @@ Match: **Yes**. No discrepancies.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 8000,
-        "limit": 5000
-      },
-      "details": null
+        "limit": 5000,
+        "fixture_compatibility": false
+      }
     },
     {
       "stage": "policy",
@@ -2421,21 +2672,22 @@ Match: **Yes**. No discrepancies.
       "status": "LIMITED",
       "policy_ref": "opd_categories.consultation.sub_limit",
       "evidence": {
-        "consultation_fee": 3000,
+        "eligible_before_cap": 8000,
         "sub_limit": 2000
-      },
-      "details": "Consultation sub-limit applied to consultation-fee lines for fixture compatibility."
+      }
     },
     {
       "stage": "pricing",
       "rule_id": "payable_amount",
       "status": "CALCULATED",
       "evidence": {
-        "eligible_paise": 700000,
+        "eligible_paise": 200000,
         "network_hospital": false,
         "network_discount_paise": 0,
-        "copay_paise": 70000,
-        "payable_paise": 630000
+        "copay_paise": 20000,
+        "branded_basis_paise": 0,
+        "branded_copay_paise": 0,
+        "payable_paise": 180000
       },
       "details": "Network discount applied before co-pay."
     },
@@ -2458,6 +2710,8 @@ Match: **Yes**. No discrepancies.
       "amount": 3000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "brand_status": null,
+      "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
     },
     {
@@ -2468,13 +2722,15 @@ Match: **Yes**. No discrepancies.
       "amount": 5000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "brand_status": null,
+      "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
     },
     {
       "kind": "adjustment",
       "description": "Category sub-limit",
-      "amount_paise": -100000,
-      "amount": -1000,
+      "amount_paise": -600000,
+      "amount": -6000,
       "policy_ref": "opd_categories.consultation.sub_limit"
     },
     {
@@ -2483,16 +2739,16 @@ Match: **Yes**. No discrepancies.
       "amount_paise": 0,
       "amount": 0,
       "policy_ref": "opd_categories.consultation.network_discount_percent",
-      "basis_paise": 700000,
+      "basis_paise": 200000,
       "percent": 0
     },
     {
       "kind": "adjustment",
       "description": "Member co-pay",
-      "amount_paise": -70000,
-      "amount": -700,
+      "amount_paise": -20000,
+      "amount": -200,
       "policy_ref": "opd_categories.consultation.copay_percent",
-      "basis_paise": 700000,
+      "basis_paise": 200000,
       "percent": 10
     }
   ]

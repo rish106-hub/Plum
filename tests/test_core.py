@@ -65,7 +65,7 @@ class ClaimCoreTests(unittest.TestCase):
         result = self.evaluate("TC006")
         self.assertEqual(result["approved_amount_paise"], 800000)
         self.assertEqual([entry["status"] for entry in result["ledger"] if entry["kind"] == "line_item"], ["ELIGIBLE", "EXCLUDED"])
-        self.assertTrue(any(step["status"] == "ASSUMPTION" and step["rule_id"] == "dental_report" for step in result["trace"]))
+        self.assertTrue(any(step["status"] == "ASSUMPTION" and step["rule_id"] == "additional_document_requirement" for step in result["trace"]))
         self.assertTrue(any(step["status"] == "ASSUMPTION" and step["rule_id"] == "per_claim_limit" for step in result["trace"]))
 
     def test_discount_precedes_copay_and_uses_integer_paise(self) -> None:
@@ -140,6 +140,136 @@ class ClaimCoreTests(unittest.TestCase):
         self.assertEqual(result["decision"], "MANUAL_REVIEW")
         self.assertEqual(result["reasons"][0]["code"], "MALFORMED_EVIDENCE")
         self.assertEqual(result["trace"][0]["status"], "FAIL")
+
+    def _consultation_claim(self) -> dict:
+        return normalize_fixture(self.cases["TC004"])
+
+    def _set_claim_text(self, claim: dict, text: str) -> None:
+        prescription = next(doc for doc in claim["documents"] if doc["doc_type"] == "PRESCRIPTION")
+        prescription["fields"].update(diagnosis=text, treatment=text)
+
+    def test_exclusions_use_phrase_boundaries_and_do_not_reject_covered_phrases(self) -> None:
+        for phrase in ("Cataract Surgery", "Health checkup", "Mental health counselling"):
+            with self.subTest(phrase=phrase):
+                claim = self._consultation_claim()
+                self._set_claim_text(claim, phrase)
+                result = evaluate_claim(claim, self.policy)
+                self.assertNotIn("EXCLUDED_CONDITION", {reason["code"] for reason in result["reasons"]})
+                exclusion = next(step for step in result["trace"] if step["rule_id"] == "excluded_condition")
+                self.assertEqual(exclusion["evidence"], [])
+        claim = self._consultation_claim()
+        self._set_claim_text(claim, "Multivitamin tonic")
+        result = evaluate_claim(claim, self.policy)
+        self.assertIn("EXCLUDED_CONDITION", {reason["code"] for reason in result["reasons"]})
+
+    def test_condition_aliases_apply_waiting_period(self) -> None:
+        for alias in ("T2DM", "HTN", "Hypothyroidism"):
+            with self.subTest(alias=alias):
+                claim = normalize_fixture(self.cases["TC005"])
+                self._set_claim_text(claim, alias)
+                result = evaluate_claim(claim, self.policy)
+                self.assertEqual(result["decision"], "REJECTED")
+                self.assertIn("WAITING_PERIOD", {reason["code"] for reason in result["reasons"]})
+
+    def test_dependent_inherits_primary_member_waiting_period_start(self) -> None:
+        claim = self._consultation_claim()
+        claim["member_id"] = "DEP001"
+        claim["treatment_date"] = "2024-04-15"
+        prescription = next(doc for doc in claim["documents"] if doc["doc_type"] == "PRESCRIPTION")
+        prescription["patient_name"] = "Sunita Kumar"
+        prescription["fields"]["patient_name"] = "Sunita Kumar"
+        bill = next(doc for doc in claim["documents"] if doc["doc_type"] == "HOSPITAL_BILL")
+        bill["patient_name"] = "Sunita Kumar"
+        bill["fields"]["patient_name"] = "Sunita Kumar"
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "REJECTED")
+        self.assertIn("WAITING_PERIOD", {reason["code"] for reason in result["reasons"]})
+
+    def test_policy_period_and_minimum_claim_amount_are_enforced(self) -> None:
+        claim = self._consultation_claim()
+        claim["treatment_date"] = "2025-04-01"
+        result = evaluate_claim(claim, self.policy)
+        self.assertIn("OUTSIDE_POLICY_PERIOD", {reason["code"] for reason in result["reasons"]})
+        claim["treatment_date"] = "2024-03-31"
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["trace"][-1]["evidence"]["primary_reason"], "OUTSIDE_POLICY_PERIOD")
+
+        claim = self._consultation_claim()
+        claim["claimed_amount"] = 500
+        bill = next(doc for doc in claim["documents"] if doc["doc_type"] == "HOSPITAL_BILL")
+        bill["fields"]["total"] = 500
+        bill["fields"]["line_items"] = [{"description": "Consultation fee", "amount": 500}]
+        result = evaluate_claim(claim, self.policy)
+        self.assertNotIn("MINIMUM_CLAIM_AMOUNT", {reason["code"] for reason in result["reasons"]})
+
+        claim["claimed_amount"] = 100
+        bill["fields"]["total"] = 100
+        bill["fields"]["line_items"] = [{"description": "Consultation fee", "amount": 100}]
+        result = evaluate_claim(claim, self.policy)
+        self.assertIn("MINIMUM_CLAIM_AMOUNT", {reason["code"] for reason in result["reasons"]})
+
+    def test_pet_scan_always_requires_pre_authorization(self) -> None:
+        claim = normalize_fixture(self.cases["TC007"])
+        claim["claimed_amount"] = 9000
+        for document in claim["documents"]:
+            fields = document["fields"]
+            if "tests_ordered" in fields:
+                fields["tests_ordered"] = ["PET Scan"]
+            if "test_name" in fields:
+                fields["test_name"] = "PET Scan"
+            if fields.get("line_items"):
+                fields["line_items"] = [{"description": "PET Scan", "amount": 9000}]
+                fields["total"] = 9000
+        result = evaluate_claim(claim, self.policy)
+        self.assertIn("PRE_AUTH_MISSING", {reason["code"] for reason in result["reasons"]})
+
+    def test_pharmacy_branded_copay_requires_explicit_status(self) -> None:
+        claim = self._consultation_claim()
+        claim["claim_category"] = "PHARMACY"
+        bill = next(doc for doc in claim["documents"] if doc["doc_type"] == "HOSPITAL_BILL")
+        bill["doc_type"] = "PHARMACY_BILL"
+        bill["fields"]["total"] = 1500
+        bill["fields"]["line_items"] = [{"description": "Brand Medicine", "amount": 1500, "brand_status": "BRANDED", "brand_evidence": "Brand"}]
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["approved_amount"], 1050)
+        self.assertTrue(any(item["description"] == "Branded medicine co-pay" for item in result["ledger"]))
+
+        bill["fields"]["line_items"][0].pop("brand_status")
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "MANUAL_REVIEW")
+        self.assertIn("PHARMACY_BRAND_STATUS_UNKNOWN", {reason["code"] for reason in result["reasons"]})
+
+    def test_blank_line_description_is_unknown_not_excluded(self) -> None:
+        claim = self._consultation_claim()
+        bill = next(doc for doc in claim["documents"] if doc["doc_type"] == "HOSPITAL_BILL")
+        bill["fields"]["line_items"][0]["description"] = ""
+        result = evaluate_claim(claim, self.policy)
+        line_item = next(item for item in result["ledger"] if item["kind"] == "line_item")
+        self.assertEqual(line_item["status"], "UNKNOWN")
+        self.assertEqual(result["decision"], "MANUAL_REVIEW")
+        self.assertNotIn("EXCLUDED_PROCEDURE", {reason["code"] for reason in result["reasons"]})
+
+    def test_configured_network_provider_branch_alias_matches(self) -> None:
+        claim = normalize_fixture(self.cases["TC010"])
+        claim["hospital_name"] = "Apollo Hospitals, Bengaluru"
+        result = evaluate_claim(claim, self.policy)
+        pricing = next(step for step in result["trace"] if step["rule_id"] == "payable_amount")["evidence"]
+        self.assertTrue(pricing["network_hospital"])
+        self.assertEqual(result["approved_amount"], 3240)
+
+    def test_fixture_limit_interpretations_are_explicit_and_not_general_rules(self) -> None:
+        dental = normalize_fixture(self.cases["TC006"])
+        dental.pop("fixture_compatibility_assumptions")
+        result = evaluate_claim(dental, self.policy)
+        self.assertEqual(result["decision"], "REJECTED")
+        self.assertIn("PER_CLAIM_EXCEEDED", {reason["code"] for reason in result["reasons"]})
+
+        consultation = normalize_fixture(self.cases["TC010"])
+        consultation.pop("fixture_compatibility_assumptions")
+        consultation.pop("fixture_sub_limit_item_phrase")
+        result = evaluate_claim(consultation, self.policy)
+        cap = next(step for step in result["trace"] if step["rule_id"] == "category_sub_limit")
+        self.assertEqual(cap["status"], "LIMITED")
 
 
 if __name__ == "__main__":

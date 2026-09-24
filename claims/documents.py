@@ -70,6 +70,16 @@ def _normal_name(value: str) -> str:
     return " ".join(re.findall(r"[a-z]+", value.casefold()))
 
 
+def _normalized_words(value: str) -> str:
+    return " ".join(re.findall(r"[\w]+", value.casefold(), flags=re.UNICODE))
+
+
+def _evidence_in_text(text: str, evidence: str) -> bool:
+    normalized_text = _normalized_words(text)
+    normalized_evidence = _normalized_words(evidence)
+    return bool(normalized_evidence and f" {normalized_evidence} " in f" {normalized_text} ")
+
+
 def _safe_name(value: Any) -> str:
     name = str(value or "upload").replace("\\", "/").split("/")[-1]
     return name[:180] or "upload"
@@ -275,6 +285,8 @@ class SarvamDocumentProvider:
                         "properties": {
                             "description": {"type": "string", "description": "Line item description exactly as printed"},
                             "amount": {"type": "number", "description": "Line item amount in Indian rupees"},
+                            "brand_status": {"type": "string", "enum": ["BRANDED", "GENERIC", "UNKNOWN"], "description": "Use BRANDED or GENERIC only when the bill explicitly identifies that status; otherwise UNKNOWN"},
+                            "brand_evidence": {"type": "string", "description": "Exact printed phrase from this line that explicitly identifies the brand status; empty when absent"},
                         },
                     },
                 },
@@ -317,7 +329,12 @@ def _provider_result(value: Any) -> tuple[str, str, dict[str, Any], list[str]]:
                 if isinstance(item, dict) and isinstance(item.get("description"), str):
                     amount = _amount(str(item.get("amount", "")))
                     if amount is not None and amount >= 0:
-                        clean_items.append({"description": item["description"][:160], "amount": amount})
+                        description = item["description"][:160]
+                        brand_status = str(item.get("brand_status", "UNKNOWN")).upper()
+                        brand_evidence = str(item.get("brand_evidence", ""))[:100]
+                        if brand_status not in {"BRANDED", "GENERIC"} or not _evidence_in_text(description, brand_evidence):
+                            brand_status, brand_evidence = "UNKNOWN", ""
+                        clean_items.append({"description": description, "amount": amount, "brand_status": brand_status, "brand_evidence": brand_evidence})
         content["line_items"] = clean_items
     warnings = value.get("warnings")
     return kind, quality, content, [str(w)[:200] for w in warnings[:10]] if isinstance(warnings, list) else []
@@ -326,6 +343,8 @@ def _provider_result(value: Any) -> tuple[str, str, dict[str, Any], list[str]]:
 def _needs_extract(kind: str, content: dict[str, Any]) -> bool:
     if kind in {"HOSPITAL_BILL", "PHARMACY_BILL"}:
         if "total" not in content or not content.get("line_items"):
+            return True
+        if kind == "PHARMACY_BILL" and any(item.get("brand_status") not in {"BRANDED", "GENERIC"} for item in content["line_items"]):
             return True
         return abs(sum(item["amount"] for item in content["line_items"]) - content["total"]) > 1
     if kind == "PRESCRIPTION":
@@ -449,7 +468,25 @@ def process_uploads(
                 metrics["sarvam_extract_pages"] += pages
                 parsed = provider.extract_fields(data, mime, kind)
                 _, _, additional, provider_warnings = _provider_result(parsed)
-                content = {**additional, **content}
+                merged_content = {**additional, **content}
+                if kind == "PHARMACY_BILL" and additional.get("line_items") and content.get("line_items"):
+                    extracted_by_key = {
+                        (_normalized_words(str(item.get("description", ""))), item.get("amount")): item
+                        for item in additional["line_items"]
+                    }
+                    merged_content["line_items"] = [
+                        {
+                            **local_item,
+                            "brand_status": extracted_by_key.get(
+                                (_normalized_words(str(local_item.get("description", ""))), local_item.get("amount")), {}
+                            ).get("brand_status", "UNKNOWN"),
+                            "brand_evidence": extracted_by_key.get(
+                                (_normalized_words(str(local_item.get("description", ""))), local_item.get("amount")), {}
+                            ).get("brand_evidence", ""),
+                        }
+                        for local_item in content["line_items"]
+                    ]
+                content = merged_content
                 warnings.extend(provider_warnings)
                 evidence.extend(
                     {"field": key, "source": "sarvam_extract", "confidence": 0.75}

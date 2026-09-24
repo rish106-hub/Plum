@@ -335,7 +335,13 @@ def _duplicate_bill_hits(
     with _connect() as connection:
         for digest in sorted(bill_hashes):
             rows = connection.execute(
-                "SELECT DISTINCT claim_id FROM documents WHERE sha256=? AND claim_id<>? ORDER BY claim_id",
+                """SELECT DISTINCT documents.claim_id
+                   FROM documents JOIN claims ON claims.id=documents.claim_id
+                   WHERE documents.sha256=? AND documents.claim_id<>?
+                     AND claims.state='DECIDED'
+                     AND claims.decision IN ('APPROVED', 'PARTIAL')
+                     AND claims.approved_amount_paise>0
+                   ORDER BY documents.claim_id""",
                 (digest, claim_id),
             ).fetchall()
             if rows:
