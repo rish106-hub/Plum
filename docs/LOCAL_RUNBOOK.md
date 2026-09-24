@@ -72,6 +72,23 @@ You can also open the reviewer page at `http://127.0.0.1:8000/claims/$CLAIM_ID`.
 
 Do not treat confidence as a calibrated probability. This is a prototype against supplied policy data, and its local annual-benefit history is based on approved decisions rather than insurer remittance records.
 
+## Optional Gemini evidence extraction
+
+Gemini is not an always-on second OCR pass. A configured key alone does not enable it. The default setting is off; when explicitly enabled, the app calls Gemini only if local/Sarvam parsing leaves a required document fact missing, the document type is unknown, or bill totals conflict with line items. Clear claims should show `gemini.calls: 0`. The full gate sequence and fail-closed behavior are in [AI escalation logic](AI_ESCALATION.md).
+
+For a synthetic-only run, first add `GEMINI_API_KEY` to the ignored `.env` file. Keep the existing `SARVAM_API_KEY` line unchanged. Only after the Gemini key is set, enable the opt-in flag:
+
+```dotenv
+GEMINI_API_KEY=replace-with-your-key
+GEMINI_EVIDENCE_REVIEW_ENABLED=true
+```
+
+Do not paste either key into a terminal command or commit `.env`. Restart the app after changing `.env`, then submit synthetic documents as above. Gemini receives only the selected relevant page(s) and bounded OCR snippets for the unresolved fields. Its response must cite exact source text and page; the app validates and re-runs the document gate and deterministic policy evaluator. It never chooses eligibility or payable amounts. Provider failures, unsupported evidence, and unresolved conflicts remain manual review.
+
+The sample claim may be clear enough not to call Gemini; that is expected and costs nothing. For a test that reaches Gemini, use a deliberately incomplete synthetic document and confirm `document_metrics.gemini` shows the call count and token usage. Do not use a real person's health documents for this demo. After the check, set the toggle back to `false` (or remove the line) and restart the app.
+
+One synthetic one-page bill check against the current implementation used 1,429 input tokens and 333 output tokens, with one call and no retry. At Google's paid-tier introductory rates through December 31, 2026 ($0.75/1M input and $3.75/1M output), that request is about $0.0023; free-tier eligibility and actual document size can change the bill. See [current Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing).
+
 ## No-OCR-cost digital PDF path
 
 Selectable-text PDFs are parsed locally. To avoid an OCR provider call, use the digital bill PDF rather than the `.png` above; keep the other form fields and prescription PDF. Images and scanned PDFs use Sarvam and may incur a charge.
