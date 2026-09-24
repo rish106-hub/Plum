@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import json
 from io import BytesIO
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from google.genai import types
 from pypdf import PdfWriter
 
 from claims.ai_review import (
     _DOC_REQUIRED,
+    GoogleGenAITransport,
     build_trigger,
     resolve_evidence,
 )
@@ -71,6 +74,28 @@ def _file(pages: int = 1) -> dict[str, Any]:
     return {"data": output.getvalue(), "mime_type": "application/pdf"}
 
 
+def test_google_transport_explicitly_uses_low_thinking() -> None:
+    captured: dict[str, Any] = {}
+
+    class FakeModels:
+        def generate_content(self, **kwargs: Any) -> Any:
+            captured.update(kwargs)
+            return SimpleNamespace(
+                text="{}",
+                usage_metadata=SimpleNamespace(prompt_token_count=2, candidates_token_count=3),
+            )
+
+    transport = GoogleGenAITransport.__new__(GoogleGenAITransport)
+    transport._types = types
+    transport._client = SimpleNamespace(models=FakeModels())
+
+    text, usage = transport.generate("gemini-test", ["field extraction"], {"type": "OBJECT"})
+
+    assert text == "{}"
+    assert usage == {"input_tokens": 2, "output_tokens": 3, "total_tokens": 5}
+    assert captured["config"].thinking_config.thinking_level == types.ThinkingLevel.LOW
+
+
 def test_prescription_without_printed_date_does_not_trigger_gemini() -> None:
     doc = _claim_doc(kind="PRESCRIPTION", content={"patient_name": "Rajesh Kumar", "diagnosis": "Viral Fever"})
     fake = FakeTransport([])
@@ -114,6 +139,120 @@ def test_unknown_type_is_grouped_and_quote_validated() -> None:
     assert fake.calls[0][2]["properties"].keys() == {"abstain", "documents"}
     assert "decision" not in str(fake.calls[0][2]).lower()
     assert "payable" not in str(fake.calls[0][2]).lower()
+
+
+def test_known_type_quote_is_validated_but_not_returned_as_candidate() -> None:
+    doc = _claim_doc(
+        kind="HOSPITAL_BILL",
+        content={"patient_name": "Rajesh Kumar", "date": "2024-11-01"},
+    )
+    raw = _model_doc("UPLOAD-1", kind="HOSPITAL_BILL")
+    raw.update({
+        "document_type_page": 1,
+        "document_type_quote": "HOSPITAL BILL",
+        "total_paise": 10000,
+        "total_paise_quote": "Grand Total: Rs 100.00",
+        "line_items": [{"description": "Consultation Fee", "amount_paise": 10000, "page": 1, "quote": "Consultation Fee 100.00"}],
+    })
+    fake = FakeTransport([{"abstain": False, "documents": [raw]}])
+
+    result = resolve_evidence(
+        [doc],
+        {"UPLOAD-1": _file()},
+        {"UPLOAD-1": ["HOSPITAL BILL Patient: Rajesh Kumar Consultation Fee 100.00 Grand Total: Rs 100.00"]},
+        transport=fake,
+    )
+
+    assert result["status"] == "CANDIDATES_VALIDATED"
+    assert result["candidates"][0]["fields"] == {
+        "total_paise": 10000,
+        "line_items": [{"description": "Consultation Fee", "amount_paise": 10000}],
+    }
+    assert all(proof["field"] != "document_type" for proof in result["candidates"][0]["evidence"])
+
+
+def test_provider_echoes_of_known_fields_are_checked_then_discarded() -> None:
+    doc = _claim_doc(
+        kind="PRESCRIPTION",
+        content={"patient_name": "Rajesh Kumar"},
+    )
+    raw = _model_doc("UPLOAD-1", kind="PRESCRIPTION")
+    raw.update({
+        "document_type_quote": "PRESCRIPTION",
+        "patient_name": "Rajesh Kumar",
+        "patient_name_quote": "Patient: Rajesh Kumar",
+        "date": "2024-11-01",
+        "date_quote": "Date: 01-Nov-2024",
+        "diagnosis": "Viral Fever",
+        "diagnosis_quote": "Diagnosis: Viral Fever",
+    })
+    fake = FakeTransport([{"abstain": False, "documents": [raw]}])
+
+    result = resolve_evidence(
+        [doc],
+        {"UPLOAD-1": _file()},
+        {"UPLOAD-1": ["PRESCRIPTION Patient: Rajesh Kumar Date: 01-Nov-2024 Diagnosis: Viral Fever"]},
+        allowed_patient_names=["Rajesh Kumar"],
+        transport=fake,
+    )
+
+    assert result["status"] == "CANDIDATES_VALIDATED"
+    assert result["candidates"][0]["fields"] == {"diagnosis": "Viral Fever"}
+    assert [proof["field"] for proof in result["candidates"][0]["evidence"]] == ["diagnosis"]
+    assert "For every schema field not listed in fields_to_resolve" in fake.calls[0][1][0]
+
+
+@pytest.mark.parametrize(
+    ("extra_values", "reason"),
+    [
+        ({"date": "2024-11-02"}, "unsolicited_field_conflict"),
+        ({"date": "2024-11-02", "date_quote": "Date: 01-Nov-2024"}, "unsolicited_field_conflict"),
+    ],
+)
+def test_conflicting_unsolicited_fields_abstain(extra_values: dict[str, str], reason: str) -> None:
+    doc = _claim_doc(
+        kind="PRESCRIPTION",
+        content={"patient_name": "Rajesh Kumar", "date": "2024-11-01"},
+    )
+    raw = _model_doc("UPLOAD-1", kind="PRESCRIPTION")
+    raw.update({
+        "document_type_quote": "PRESCRIPTION",
+        "diagnosis": "Viral Fever",
+        "diagnosis_quote": "Diagnosis: Viral Fever",
+        **extra_values,
+    })
+    result = resolve_evidence(
+        [doc],
+        {"UPLOAD-1": _file()},
+        {"UPLOAD-1": ["PRESCRIPTION Patient: Rajesh Kumar Date: 01-Nov-2024 Diagnosis: Viral Fever"]},
+        allowed_patient_names=["Rajesh Kumar"],
+        transport=FakeTransport([{"abstain": False, "documents": [raw]}]),
+    )
+
+    assert result["status"] == "ABSTAINED"
+    assert result["trace"]["reason"] == reason
+
+
+def test_unsupported_extra_field_abstains_even_when_it_is_not_locally_known() -> None:
+    doc = _claim_doc(kind="PRESCRIPTION", content={"patient_name": "Rajesh Kumar"})
+    raw = _model_doc("UPLOAD-1", kind="PRESCRIPTION")
+    raw.update({
+        "document_type_quote": "PRESCRIPTION",
+        "diagnosis": "Viral Fever",
+        "diagnosis_quote": "Diagnosis: Viral Fever",
+        "date": "2024-11-02",
+        "date_quote": "Date: 01-Nov-2024",
+    })
+    result = resolve_evidence(
+        [doc],
+        {"UPLOAD-1": _file()},
+        {"UPLOAD-1": ["PRESCRIPTION Patient: Rajesh Kumar Date: 01-Nov-2024 Diagnosis: Viral Fever"]},
+        allowed_patient_names=["Rajesh Kumar"],
+        transport=FakeTransport([{"abstain": False, "documents": [raw]}]),
+    )
+
+    assert result["status"] == "ABSTAINED"
+    assert result["trace"]["reason"] == "date_not_supported_by_quote"
 
 
 def test_missing_bill_fields_require_quotes_and_exact_arithmetic() -> None:
