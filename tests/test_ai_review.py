@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import json
 from io import BytesIO
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from google.genai import types
 from pypdf import PdfWriter
 
 from claims.ai_review import (
     _DOC_REQUIRED,
+    GoogleGenAITransport,
     build_trigger,
     resolve_evidence,
 )
@@ -69,6 +72,28 @@ def _file(pages: int = 1) -> dict[str, Any]:
         writer.add_blank_page(width=612, height=792)
     writer.write(output)
     return {"data": output.getvalue(), "mime_type": "application/pdf"}
+
+
+def test_google_transport_explicitly_uses_low_thinking() -> None:
+    captured: dict[str, Any] = {}
+
+    class FakeModels:
+        def generate_content(self, **kwargs: Any) -> Any:
+            captured.update(kwargs)
+            return SimpleNamespace(
+                text="{}",
+                usage_metadata=SimpleNamespace(prompt_token_count=2, candidates_token_count=3),
+            )
+
+    transport = GoogleGenAITransport.__new__(GoogleGenAITransport)
+    transport._types = types
+    transport._client = SimpleNamespace(models=FakeModels())
+
+    text, usage = transport.generate("gemini-test", ["field extraction"], {"type": "OBJECT"})
+
+    assert text == "{}"
+    assert usage == {"input_tokens": 2, "output_tokens": 3, "total_tokens": 5}
+    assert captured["config"].thinking_config.thinking_level == types.ThinkingLevel.LOW
 
 
 def test_prescription_without_printed_date_does_not_trigger_gemini() -> None:
