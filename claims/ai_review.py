@@ -150,6 +150,9 @@ class GoogleGenAITransport:
                 response_schema=schema,
                 max_output_tokens=MAX_OUTPUT_TOKENS,
                 temperature=0,
+                thinking_config=self._types.ThinkingConfig(
+                    thinking_level=self._types.ThinkingLevel.LOW,
+                ),
             ),
         )
         usage = getattr(response, "usage_metadata", None)

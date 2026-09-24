@@ -32,6 +32,7 @@ Hard limits per claim call:
 - 5 MiB per rendered image page;
 - 4,096 generated output tokens;
 - 30 second transport timeout;
+- explicit `LOW` thinking level for constrained field extraction;
 - one additional attempt only for a recognized transient timeout, connection failure, or HTTP 408/429/5xx. SDK retries are disabled.
 
 Metrics retain call/retry counts, selected files/pages, and provider input/output token counts so a cost can be calculated against the model's current published rate. No raw OCR, page image, API key, or provider exception body is put in the trace. The application should compare cost per correctly resolved claim, not only per-call token price.
