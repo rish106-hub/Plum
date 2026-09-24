@@ -76,13 +76,14 @@ Do not treat confidence as a calibrated probability. This is a prototype against
 
 Gemini is not an always-on second OCR pass. A configured key alone does not enable it. The default setting is off; when explicitly enabled, the app calls Gemini only if local/Sarvam parsing leaves a required document fact missing, the document type is unknown, or bill totals conflict with line items. Clear claims should show `gemini.calls: 0`. The full gate sequence and fail-closed behavior are in [AI escalation logic](AI_ESCALATION.md).
 
-For a synthetic-only run, add or change this setting in the ignored `.env` file, leaving the existing API key line untouched:
+For a synthetic-only run, first add `GEMINI_API_KEY` to the ignored `.env` file. Keep the existing `SARVAM_API_KEY` line unchanged. Only after the Gemini key is set, enable the opt-in flag:
 
 ```dotenv
+GEMINI_API_KEY=replace-with-your-key
 GEMINI_EVIDENCE_REVIEW_ENABLED=true
 ```
 
-Restart the app after changing `.env`, then submit synthetic documents as above. Gemini receives only the selected relevant page(s) and bounded OCR snippets for the unresolved fields. Its response must cite exact source text and page; the app validates and re-runs the document gate and deterministic policy evaluator. It never chooses eligibility or payable amounts. Provider failures, unsupported evidence, and unresolved conflicts remain manual review.
+Do not paste either key into a terminal command or commit `.env`. Restart the app after changing `.env`, then submit synthetic documents as above. Gemini receives only the selected relevant page(s) and bounded OCR snippets for the unresolved fields. Its response must cite exact source text and page; the app validates and re-runs the document gate and deterministic policy evaluator. It never chooses eligibility or payable amounts. Provider failures, unsupported evidence, and unresolved conflicts remain manual review.
 
 The sample claim may be clear enough not to call Gemini; that is expected and costs nothing. For a test that reaches Gemini, use a deliberately incomplete synthetic document and confirm `document_metrics.gemini` shows the call count and token usage. Do not use a real person's health documents for this demo. After the check, set the toggle back to `false` (or remove the line) and restart the app.
 
