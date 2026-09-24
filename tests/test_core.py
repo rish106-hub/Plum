@@ -223,6 +223,40 @@ class ClaimCoreTests(unittest.TestCase):
         result = evaluate_claim(claim, self.policy)
         self.assertIn("PRE_AUTH_MISSING", {reason["code"] for reason in result["reasons"]})
 
+    def test_live_required_pre_auth_without_status_routes_to_review(self) -> None:
+        claim = normalize_fixture(self.cases["TC007"])
+        policy = deepcopy(self.policy)
+        policy["coverage"]["per_claim_limit"] = 20000
+        claim["documents"] = [
+            {**document, "source": "uploaded_file", "patient_name": "Suresh Patil"}
+            for document in claim["documents"]
+        ]
+        claim.pop("pre_authorization", None)
+        result = evaluate_claim(claim, policy)
+
+        self.assertEqual(result["decision"], "MANUAL_REVIEW")
+        self.assertIn("PRE_AUTH_STATUS_UNKNOWN", {reason["code"] for reason in result["reasons"]})
+        self.assertIn("approval record", " ".join(reason["message"] for reason in result["reasons"]).lower())
+        step = next(item for item in result["trace"] if item["rule_id"] == "pre_authorization")
+        self.assertEqual(step["status"], "NOT_EVALUATED")
+        self.assertEqual(step["evidence"]["status_source"], "missing_or_unconfirmed")
+
+    def test_live_required_pre_auth_explicit_false_is_policy_denial(self) -> None:
+        claim = normalize_fixture(self.cases["TC007"])
+        policy = deepcopy(self.policy)
+        policy["coverage"]["per_claim_limit"] = 20000
+        claim["documents"] = [
+            {**document, "source": "uploaded_file", "patient_name": "Suresh Patil"}
+            for document in claim["documents"]
+        ]
+        claim["pre_authorization"] = False
+        result = evaluate_claim(claim, policy)
+
+        self.assertEqual(result["decision"], "REJECTED")
+        self.assertIn("PRE_AUTH_MISSING", {reason["code"] for reason in result["reasons"]})
+        step = next(item for item in result["trace"] if item["rule_id"] == "pre_authorization")
+        self.assertEqual(step["status"], "FAIL")
+
     def test_pharmacy_branded_copay_requires_explicit_status(self) -> None:
         claim = self._consultation_claim()
         claim["claim_category"] = "PHARMACY"

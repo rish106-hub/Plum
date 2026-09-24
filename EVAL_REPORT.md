@@ -1065,7 +1065,7 @@ Match: **Yes**. No discrepancies.
   "reasons": [
     {
       "code": "PRE_AUTH_MISSING",
-      "message": "Pre-authorization was required and was not provided. Obtain the approval record and resubmit with it."
+      "message": "Pre-authorization was required and was explicitly not obtained. Provide the approval record or correct the status if it was granted."
     },
     {
       "code": "PER_CLAIM_EXCEEDED",
@@ -1212,7 +1212,8 @@ Match: **Yes**. No discrepancies.
           }
         ],
         "claimed_amount": 15000,
-        "pre_authorization": null
+        "pre_authorization": null,
+        "status_source": "missing_or_unconfirmed"
       }
     },
     {
