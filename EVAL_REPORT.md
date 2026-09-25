@@ -1,6 +1,6 @@
 # Evaluation report
 
-Policy: `PLUM_GHI_2024`. Cases: 12. Expected decision/amount/reason/confidence checks matched: **12/12**.
+Policy: `PLUM_GHI_2024`. Cases: 12. Expected decision, amount, reason, confidence, and explicitly checked behavior matched: **12/12**.
 
 These are structured fixtures with no actual image or PDF bytes. A pass establishes policy-pipeline behavior, not OCR accuracy. The complete machine-readable outputs are also in [eval_outputs.json](docs/eval_outputs.json).
 
@@ -32,6 +32,7 @@ These are structured fixtures with no actual image or PDF bytes. A pass establis
 ### TC001: Wrong Document Uploaded
 
 Match: **Yes**. No discrepancies.
+Explicit behavior checks: **Passed**.
 
 ```json
 {
@@ -90,6 +91,7 @@ Match: **Yes**. No discrepancies.
 ### TC002: Unreadable Document
 
 Match: **Yes**. No discrepancies.
+Explicit behavior checks: **Passed**.
 
 ```json
 {
@@ -144,6 +146,7 @@ Match: **Yes**. No discrepancies.
 ### TC003: Documents Belong to Different Patients
 
 Match: **Yes**. No discrepancies.
+Explicit behavior checks: **Passed**.
 
 ```json
 {
@@ -214,6 +217,7 @@ Match: **Yes**. No discrepancies.
 ### TC004: Clean Consultation — Full Approval
 
 Match: **Yes**. No discrepancies.
+Explicit behavior checks: **Passed**.
 
 ```json
 {
@@ -504,6 +508,7 @@ Match: **Yes**. No discrepancies.
 ### TC005: Waiting Period — Diabetes
 
 Match: **Yes**. No discrepancies.
+Explicit behavior checks: **Passed**.
 
 ```json
 {
@@ -775,6 +780,7 @@ Match: **Yes**. No discrepancies.
 ### TC006: Dental Partial Approval — Cosmetic Exclusion
 
 Match: **Yes**. No discrepancies.
+Explicit behavior checks: **Passed**.
 
 ```json
 {
@@ -1055,6 +1061,7 @@ Match: **Yes**. No discrepancies.
 ### TC007: MRI Without Pre-Authorization
 
 Match: **Yes**. No discrepancies.
+Explicit behavior checks: **Passed**.
 
 ```json
 {
@@ -1348,6 +1355,7 @@ Match: **Yes**. No discrepancies.
 ### TC008: Per-Claim Limit Exceeded
 
 Match: **Yes**. No discrepancies.
+Explicit behavior checks: **Passed**.
 
 ```json
 {
@@ -1633,6 +1641,7 @@ Match: **Yes**. No discrepancies.
 ### TC009: Fraud Signal — Multiple Same-Day Claims
 
 Match: **Yes**. No discrepancies.
+Explicit behavior checks: **Passed**.
 
 ```json
 {
@@ -1906,6 +1915,7 @@ Match: **Yes**. No discrepancies.
 ### TC010: Network Hospital — Discount Applied
 
 Match: **Yes**. No discrepancies.
+Explicit behavior checks: **Passed**.
 
 ```json
 {
@@ -2184,6 +2194,7 @@ Match: **Yes**. No discrepancies.
 ### TC011: Component Failure — Graceful Degradation
 
 Match: **Yes**. No discrepancies.
+Explicit behavior checks: **Passed**.
 
 ```json
 {
@@ -2464,6 +2475,7 @@ Match: **Yes**. No discrepancies.
 ### TC012: Excluded Treatment
 
 Match: **Yes**. No discrepancies.
+Explicit behavior checks: **Passed**.
 
 ```json
 {

@@ -69,10 +69,14 @@ def _rule_trace(
 
 
 def _line_items(documents: list[dict[str, Any]], fallback_paise: int) -> list[dict[str, Any]]:
+    lines: list[dict[str, Any]] = []
     for document in documents:
+        kind = str(document.get("doc_type") or document.get("actual_type") or "").upper()
+        if not kind.endswith("BILL"):
+            continue
         fields = document.get("fields") or document.get("content") or {}
         if fields.get("line_items"):
-            return [
+            lines.extend(
                 {
                     "description": str(item.get("description") or ""),
                     "amount_paise": _paise(item.get("amount", 0)),
@@ -81,7 +85,9 @@ def _line_items(documents: list[dict[str, Any]], fallback_paise: int) -> list[di
                     "source_document": document.get("file_id"),
                 }
                 for item in fields["line_items"]
-            ]
+            )
+    if lines:
+        return lines
     return [{"description": "Claimed treatment", "amount_paise": fallback_paise, "brand_status": "UNKNOWN", "brand_evidence": "", "source_document": None}]
 
 

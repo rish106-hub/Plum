@@ -84,6 +84,24 @@ class ClaimCoreTests(unittest.TestCase):
         self.assertEqual(pricing["copay_paise"], 36000)
         self.assertEqual(pricing["payable_paise"], 324000)
 
+    def test_all_matching_bill_lines_are_used_for_pricing(self) -> None:
+        claim = normalize_fixture(self.cases["TC004"])
+        first_bill = claim["documents"][1]
+        first_bill["fields"]["total"] = 1000
+        first_bill["fields"]["line_items"] = [{"description": "Consultation Fee", "amount": 1000}]
+        second_bill = deepcopy(first_bill)
+        second_bill["file_id"] = "SECOND-BILL"
+        second_bill["fields"]["total"] = 500
+        second_bill["fields"]["line_items"] = [{"description": "CBC Test", "amount": 500}]
+        claim["documents"].append(second_bill)
+
+        result = evaluate_claim(claim, self.policy)
+
+        self.assertEqual(result["decision"], "APPROVED")
+        self.assertEqual(result["approved_amount_paise"], 135000)
+        bill_lines = [entry for entry in result["ledger"] if entry["kind"] == "line_item"]
+        self.assertEqual([entry["source_document"] for entry in bill_lines], [first_bill["file_id"], "SECOND-BILL"])
+
     def test_optional_failure_is_visible_without_changing_supported_decision(self) -> None:
         result = self.evaluate("TC011")
         self.assertEqual(result["decision"], "APPROVED")

@@ -28,9 +28,9 @@ flowchart LR
 | Fixture adapter | Normalize the provided JSON cases into document evidence | Uses fixture metadata explicitly; does not claim OCR happened |
 | Reconciler and policy core | Check consistency, apply ordered rules, calculate integer-paise ledger | Does not call a model or alter source documents |
 | Trace store | Record stage, status, rule/policy reference, evidence, decision and degradation | Avoids raw health data in ordinary logs |
-| Review UI | Show outcome, amount arithmetic, evidence and failed/skipped checks | Human reviewer remains responsible for uncertain cases |
+| Review UI and operations worklist | Show outcome, amount arithmetic, evidence, model usage, escalation signals, and failed/skipped checks | Human reviewer remains responsible for uncertain cases; `/ops` has no production authentication |
 
-The specialists are bounded by typed data: document gate, extraction, and ambiguity handling. Their separation supports independent substitution and a multi-agent design discussion without paying for redundant model loops on every claim. The rules engine is intentionally deterministic so a reviewer can recompute every payable amount from the policy, source facts and ledger.
+The specialists are bounded by typed data: document gate, extraction, ambiguity handling, policy reduction, and decision validation. `claims.agent_pipeline` verifies the evidence-agent envelope and re-runs the document gate after accepted Gemini candidates; it checks the final decision and amount before persistence. Malformed or inconsistent policy output becomes `MANUAL_REVIEW` with zero approved amount. Gemini requires an explicit local opt-in; with opt-in enabled, a clear document set returns `NOT_NEEDED` without a model call. Sarvam Document AI and Gemini are the two model-backed specialist components; neither can decide coverage or calculate payment. The rules engine is deterministic so a reviewer can recompute every payable amount from the policy, source facts and ledger. Detailed prompts and handoffs are in [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
 
 ## Document path and cost choices
 

@@ -13,7 +13,7 @@
 
   function formatMoney(value) {
     const amount = Number(value);
-    if (!Number.isFinite(amount)) return "—";
+    if (!Number.isFinite(amount)) return "Not available";
     return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(amount);
   }
 
@@ -21,6 +21,70 @@
 
   function titleCase(value) {
     return String(value || "").replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+
+  const FRIENDLY_LABELS = {
+    annual_opd_limit: "Annual outpatient benefit limit", bill_arithmetic_conflict: "Bill total does not match its line items",
+    candidate_evidence: "Model-supported evidence", claimed_amount: "Claimed amount", co_pay: "Member co-pay",
+    consultation: "Consultation coverage", date: "Treatment date", decision_validation: "Decision consistency check",
+    diagnosis: "Diagnosis", document_evidence: "Document evidence", document_extraction: "Document extraction",
+    document_gate: "Required document check", document_type: "Document type", duplicate_check: "Duplicate bill check",
+    evidence: "Supporting facts", extracted_facts: "Facts extracted from documents", extraction_source: "Extraction method",
+    file_id: "Document reference", file_name: "Document name", fields: "Extracted facts", gemini_evidence: "Model evidence review",
+    hospital_name: "Hospital or clinic", line_items: "Bill line items", matching_claim_count: "Similar claims found",
+    matching_claim_ids: "Related claim references", member_id: "Member identifier", missing_document: "Required document is missing",
+    patient_name: "Patient name", policy_ref: "Policy clause", previous_bill_hash: "Previously submitted bill match",
+    quality: "Document quality", required_type: "Required document", root_cause: "Primary review reason",
+    source: "Evidence source", sources: "Evidence sources", test_name: "Test or procedure", total: "Document total",
+    total_paise: "Document total", waiting_period: "Waiting period check", ytd_claims_amount: "Approved this policy year",
+  };
+
+  const FRIENDLY_STATUSES = {
+    ABSTAINED: "Model abstained", APPROVED: "Approved", BLOCKED: "Stopped",
+    CANDIDATES_APPLIED: "Evidence verified", CANDIDATES_VALIDATED: "Evidence verified",
+    DEGRADED: "Review needed", DISABLED: "Off", DOCUMENT_CORRECTION_REQUIRED: "Document correction",
+    FAIL: "Failed", FAILED: "Failed", FLAG: "Review needed", MANUAL_REVIEW: "Manual review",
+    NEEDS_CORRECTION: "Document correction", NOT_EVALUATED: "Not evaluated", NOT_NEEDED: "No model call needed",
+    OK: "Passed", PARTIAL: "Partially approved", PASS: "Passed", PASSED: "Passed",
+    PROCESSING: "Processing", PROCESSING_FAILED: "Processing failed", QUEUED: "Queued", RECORDED: "Recorded", REJECTED: "Rejected",
+  };
+
+  function friendlyLabel(value) {
+    const key = String(value || "").toLowerCase();
+    return FRIENDLY_LABELS[key] || titleCase(key).replace(" Id", " identifier").replace(" Paise", "");
+  }
+
+  function friendlyStatus(value) {
+    const key = String(value || "").toUpperCase();
+    return FRIENDLY_STATUSES[key] || titleCase(key);
+  }
+
+  function humanValue(value, keyName) {
+    if (value === null || value === undefined || value === "") return "Not recorded";
+    if (keyName === "policy_ref") return readablePolicyReference(value);
+    if (typeof value === "boolean") return value ? "Yes" : "No";
+    if (typeof value === "string" && /^UPLOAD-\d+$/i.test(value)) return `Submitted document ${value.split("-")[1]}`;
+    if (typeof value === "string" && /^[A-Z][A-Z0-9_]+$/.test(value)) return friendlyLabel(value);
+    if (typeof value !== "object") return String(value);
+    if (Array.isArray(value)) return value.length ? value.map((item) => humanValue(item, keyName)).join("; ") : "None recorded";
+    return Object.entries(value).map(([key, item]) => `${friendlyLabel(key)}: ${humanValue(item, key)}`).join(". ");
+  }
+
+  function readablePolicyReference(value) {
+    const segments = String(value || "").split(/[.>\[\]\/]+/).filter(Boolean);
+    return segments.length ? friendlyLabel(segments[segments.length - 1]) : "Policy terms";
+  }
+
+  function appendReadableFacts(parent, data) {
+    const facts = make("dl", "readable-facts");
+    const source = data && typeof data === "object" && !Array.isArray(data) ? data : { fact: data };
+    Object.entries(source).forEach(([key, value]) => {
+      if (["schema_version", "candidate_evidence"].includes(key)) return;
+      const row = make("div");
+      row.append(make("dt", "", friendlyLabel(key)), make("dd", "", humanValue(value, key)));
+      facts.append(row);
+    });
+    if (facts.children.length) parent.append(facts);
   }
 
   function messageFromError(response) {
@@ -49,7 +113,7 @@
         row.append(make("span", "recent-row__id", shortId(claim.id)));
         row.append(make("span", "recent-row__category", titleCase(claim.request.claim_category)));
         row.append(make("span", "recent-row__muted", claim.request.member_id));
-        row.append(make("span", "", titleCase(claim.decision || claim.state)));
+        row.append(make("span", "", friendlyStatus(claim.decision || claim.state)));
         list.append(row);
       });
     } catch (_error) {
@@ -137,18 +201,18 @@
       item.dataset.kind = traceKind(status);
       item.append(make("span", "trace-entry__mark"));
       const body = make("div");
-      body.append(make("p", "trace-entry__title", titleCase(entry.rule_id || entry.stage || `Check ${index + 1}`)));
+      body.append(make("p", "trace-entry__title", friendlyLabel(entry.rule_id || entry.stage || `Check ${index + 1}`)));
       const reason = entry.reason || entry.message || entry.explanation || entry.details || entry.output;
-      if (reason && (!Array.isArray(reason) || reason.length)) body.append(make("p", "trace-entry__reason", typeof reason === "string" ? reason : JSON.stringify(reason)));
+      if (reason && (!Array.isArray(reason) || reason.length)) body.append(make("p", "trace-entry__reason", humanValue(reason)));
       const extra = Object.fromEntries(Object.entries(entry).filter(([key]) => !["rule_id", "stage", "status", "outcome", "reason", "message", "explanation", "details", "output"].includes(key)));
       if (Object.keys(extra).length) {
         const detail = make("details");
-        detail.append(make("summary", "", "View evidence"));
-        detail.append(make("pre", "", JSON.stringify(extra, null, 2)));
+        detail.append(make("summary", "", "View supporting facts"));
+        appendReadableFacts(detail, extra);
         body.append(detail);
       }
       item.append(body);
-      item.append(make("span", "trace-entry__status", titleCase(status)));
+      item.append(make("span", "trace-entry__status", friendlyStatus(status)));
       list.append(item);
     });
   }
@@ -162,9 +226,9 @@
     }
     ledger.forEach((entry) => {
       const row = make("div", "ledger-row");
-      const label = entry.description || entry.label || entry.rule_id || entry.stage || "Adjustment";
+      const label = entry.description || entry.label || friendlyLabel(entry.rule_id || entry.stage || "Adjustment");
       const detail = make("span", "ledger-row__label", label);
-      const context = [entry.status && titleCase(entry.status), entry.reason_code && titleCase(entry.reason_code), entry.source_document && `Source ${entry.source_document}`, entry.policy_ref && `Policy: ${entry.policy_ref}`].filter(Boolean).join(" · ");
+      const context = [entry.status && friendlyStatus(entry.status), entry.reason_code && friendlyLabel(entry.reason_code), entry.source_document && `Source: ${entry.source_document}`, entry.policy_ref && `Policy: ${readablePolicyReference(entry.policy_ref)}`].filter(Boolean).join(" / ");
       if (context) detail.append(make("small", "ledger-row__context", context));
       row.append(detail);
       const paise = entry.amount_paise ?? entry.value_paise ?? entry.approved_amount_paise;
@@ -181,7 +245,7 @@
     const candidates = trace.flatMap((entry) => Array.isArray(entry.candidate_evidence) ? entry.candidate_evidence : []);
     const namesByUpload = new Map((documents || []).map((document, index) => [`UPLOAD-${index + 1}`, document.original_name]));
     const evidence = candidates.flatMap((candidate) => (candidate.sources || []).map((source) => ({
-      file: namesByUpload.get(candidate.file_id) || candidate.file_id || "Submitted document",
+      file: namesByUpload.get(candidate.file_id) || humanValue(candidate.file_id, "file_id") || "Submitted document",
       field: source.field,
       page: source.page,
       quote: source.quote,
@@ -192,7 +256,7 @@
     }
     evidence.forEach((source) => {
       const item = make("article", "evidence-entry");
-      const meta = [titleCase(source.field), source.file, source.page ? `Page ${source.page}` : "Page not recorded"].filter(Boolean).join(" · ");
+      const meta = [friendlyLabel(source.field), source.file, source.page ? `Page ${source.page}` : "Page not recorded"].filter(Boolean).join(" / ");
       item.append(make("p", "evidence-entry__meta", meta));
       item.append(make("blockquote", "", `“${source.quote}”`));
       list.append(item);
@@ -211,21 +275,22 @@
     byId("escalation-reason").textContent = typeof primary === "string" ? primary : primary?.message || "A material fact could not be safely resolved automatically.";
     const signals = byId("escalation-signals");
     signals.replaceChildren();
-    const readable = reviewSignals.slice(0, 4).map((entry) => `${titleCase(entry.rule_id || entry.stage)}: ${entry.reason || entry.details || titleCase(entry.status)}`);
+    const readable = reviewSignals.slice(0, 4).map((entry) => `${friendlyLabel(entry.rule_id || entry.stage)}: ${humanValue(entry.reason || entry.details || friendlyStatus(entry.status))}`);
     (readable.length ? readable : ["A policy or evidence gate requires human verification."]).forEach((signal) => signals.append(make("li", "", signal)));
   }
 
   function renderAiMetrics(result) {
     const facts = byId("ai-facts");
     facts.replaceChildren();
-    const metrics = result.document_metrics?.gemini || {};
+    const documentMetrics = result.document_metrics || result.metrics || {};
+    const metrics = documentMetrics.gemini || {};
     const geminiTrace = (result.trace || []).find((entry) => entry.stage === "gemini_evidence") || {};
     const usage = metrics.total_tokens || ((metrics.input_tokens || 0) + (metrics.output_tokens || 0));
-    appendFact(facts, "Resolver", metrics.status === "DISABLED" ? "Off" : titleCase(metrics.status || geminiTrace.status || "Not invoked"));
-    appendFact(facts, "Calls", `${Number(metrics.calls || 0)}${metrics.retries ? ` · ${metrics.retries} retry` : ""}`);
+    appendFact(facts, "Evidence model", friendlyStatus(metrics.status || geminiTrace.status || "Not invoked"));
+    appendFact(facts, "Calls", `${Number(metrics.calls || 0)}${metrics.retries ? ` / ${metrics.retries} retry` : ""}`);
     appendFact(facts, "Pages reviewed", String(metrics.pages || 0));
     appendFact(facts, "Token usage", Number(usage).toLocaleString("en-IN"));
-    appendFact(facts, "Model", geminiTrace.model || "—");
+    appendFact(facts, "Model", geminiTrace.model || "Not recorded");
     byId("ai-cost-note").textContent = usage
       ? "Token counts are shown as the cost proxy. Provider billing is not available in this local record."
       : "No model usage was recorded for this claim.";
@@ -239,7 +304,7 @@
     badge.className = `state-badge state-badge--${statusKind}`;
     byId("breadcrumb-id").textContent = shortId(claim.id);
     byId("claim-title").textContent = `Claim ${shortId(claim.id)}`;
-    byId("claim-subtitle").textContent = `${titleCase(claim.request.claim_category)} · ${claim.request.member_id} · ${formatMoney(claim.request.claimed_amount)} claimed`;
+    byId("claim-subtitle").textContent = `${titleCase(claim.request.claim_category)} / ${claim.request.member_id} / ${formatMoney(claim.request.claimed_amount)} claimed`;
     const active = ["QUEUED", "PROCESSING"].includes(claim.state);
     byId("loading-state").hidden = !active;
     byId("failure-state").hidden = claim.state !== "PROCESSING_FAILED";
@@ -255,12 +320,12 @@
     byId("decision-reason").textContent = isCorrection ? "The document check stopped this claim before adjudication." : (typeof primaryReason === "string" ? primaryReason : primaryReason?.message || "See the decision trace below.");
     const amountPendingReview = result.decision === "MANUAL_REVIEW";
     byId("amount-label").textContent = amountPendingReview ? "Amount pending review" : "Approved amount";
-    byId("approved-amount").textContent = result.approved_amount_paise === null || result.approved_amount === null || isCorrection || amountPendingReview ? "—" : formatMoney(result.approved_amount_paise !== undefined ? Number(result.approved_amount_paise) / 100 : result.approved_amount);
+    byId("approved-amount").textContent = result.approved_amount_paise === null || result.approved_amount === null || isCorrection || amountPendingReview ? "Pending" : formatMoney(result.approved_amount_paise !== undefined ? Number(result.approved_amount_paise) / 100 : result.approved_amount);
     byId("confidence-value").textContent = Number.isFinite(Number(result.confidence_score)) && result.confidence_score !== null ? `Evidence quality score ${Math.round(Number(result.confidence_score) * 100)}%` : "No confidence score yet";
 
     const corrections = byId("correction-list");
     corrections.replaceChildren();
-    (result.correction_requests || []).forEach((request) => corrections.append(make("li", "", typeof request === "string" ? request : request.message || JSON.stringify(request))));
+    (result.correction_requests || []).forEach((request) => corrections.append(make("li", "", typeof request === "string" ? request : request.message || humanValue(request))));
     renderTrace(result.trace);
     renderLedger(result.ledger);
     renderEvidence(result, claim.documents);
@@ -278,19 +343,19 @@
     appendFact(facts, "Claimed", formatMoney(claim.request.claimed_amount));
     const annualLimit = (claim.result?.trace || []).find((entry) => entry.rule_id === "annual_opd_limit")?.evidence;
     appendFact(facts, "YTD approved", annualLimit?.ytd_claims_amount === undefined ? "Unknown" : formatMoney(annualLimit.ytd_claims_amount));
-    appendFact(facts, "Policy", claim.request.policy_id || "—");
+    appendFact(facts, "Policy", claim.request.policy_id || "Not recorded");
 
     const documents = byId("document-list");
     documents.replaceChildren();
     (claim.documents || []).forEach((document) => {
       const item = make("li", "", document.original_name);
-      item.append(make("span", "", `${(document.size_bytes / 1024 / 1024).toFixed(1)} MB · ${document.media_type}`));
+      item.append(make("span", "", `${(document.size_bytes / 1024 / 1024).toFixed(1)} MB / ${document.media_type}`));
       documents.append(item);
     });
     const events = byId("event-list");
     events.replaceChildren();
     (claim.events || []).forEach((event) => {
-      const item = make("li", "", titleCase(event.stage));
+      const item = make("li", "", friendlyLabel(event.stage));
       item.append(make("span", "", new Date(event.occurred_at).toLocaleString("en-IN")));
       events.append(item);
     });

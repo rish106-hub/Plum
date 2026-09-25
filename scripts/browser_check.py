@@ -48,7 +48,7 @@ def main() -> None:
         assert page.locator("#ledger-total").is_visible()
         assert "₹" in page.locator("#ledger-payable").inner_text()
         assert "1,350" in page.locator("#ledger-payable").inner_text()
-        assert "Off" in page.locator("#ai-facts").inner_text()
+        assert any(label in page.locator("#ai-facts").inner_text() for label in ("No model call needed", "Off"))
         page.screenshot(path=str(SCREENSHOTS / "approval.png"), full_page=True)
 
         # UI-only fixture verifies the grounded-evidence presentation without making a paid model call.
@@ -88,7 +88,7 @@ def main() -> None:
         assert page.locator("#escalation-panel").is_visible()
         assert "identical bill" in page.locator("#escalation-reason").inner_text().lower()
         assert page.locator("#amount-label").inner_text() == "Amount pending review"
-        assert page.locator("#approved-amount").inner_text() == "—"
+        assert page.locator("#approved-amount").inner_text() == "Pending"
         assert page.locator("#ledger-total").is_hidden()
         page.screenshot(path=str(SCREENSHOTS / "duplicate-review.png"), full_page=True)
 

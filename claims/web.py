@@ -23,9 +23,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
+from claims.agent_pipeline import (
+    adjudicate_handoff,
+    document_evidence_trace,
+    resolve_document_handoff,
+)
 from claims.ai_review import resolve_evidence
 from claims.core import evaluate_claim
-from claims.documents import apply_evidence_candidates, process_uploads, revalidate_documents
+from claims.documents import process_uploads
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PACKAGE_ROOT = Path(__file__).resolve().parent
@@ -219,7 +224,7 @@ def _gemini_opt_in() -> bool:
 def _gemini_provider_failure(result: dict[str, Any]) -> bool:
     return result.get("status") == "ABSTAINED" and any(
         marker in str((result.get("trace") or {}).get("reason") or "")
-        for marker in ("timeout", "connection_error", "provider_error", "rate_limited", "provider_unavailable", "provider_not_configured", "provider_dependency_unavailable")
+        for marker in ("timeout", "connection_error", "provider_error", "rate_limited", "provider_unavailable", "provider_not_configured", "provider_dependency_unavailable", "resolver_failure", "candidate_application_failed")
     )
 
 
@@ -425,6 +430,7 @@ def process_claim(claim_id: str) -> None:
         issues = inspection.get("issues", [])
 
         ai_result: dict[str, Any] | None = None
+        gemini_trace: list[dict[str, Any]] = []
         if _gemini_opt_in():
             files_by_id = {
                 f"UPLOAD-{index}": {
@@ -433,50 +439,23 @@ def process_claim(claim_id: str) -> None:
                 }
                 for index, item in enumerate(files, 1)
             }
-            ai_result = resolve_evidence(
-                inspection.get("documents", []),
+            handoff = resolve_document_handoff(
+                inspection,
                 files_by_id,
                 ocr_text_by_file_id,
-                allowed_patient_names=_covered_member_names(policy, request_data["member_id"]),
+                request_data["claim_category"],
+                _member_name(policy, request_data["member_id"]),
+                _covered_member_names(policy, request_data["member_id"]),
+                policy,
+                resolve_evidence,
             )
-            inspection.setdefault("metrics", {})["gemini"] = {
-                **ai_result.get("metrics", {}),
-                "status": ai_result.get("status"),
-            }
-            if ai_result.get("status") == "CANDIDATES_VALIDATED":
-                inspection["documents"] = apply_evidence_candidates(
-                    inspection.get("documents", []),
-                    ai_result.get("candidates", []),
-                    ocr_text_by_file_id,
-                )
-                issues = revalidate_documents(
-                    inspection["documents"],
-                    issues,
-                    request_data["claim_category"],
-                    _member_name(policy, request_data["member_id"]),
-                    policy,
-                )
-                inspection["issues"] = issues
+            inspection["documents"] = handoff["documents"]
+            inspection["issues"] = issues = handoff["issues"]
+            inspection["metrics"] = handoff["metrics"]
+            gemini_trace = handoff["trace"]
+            ai_result = {"status": handoff["status"], "trace": gemini_trace[0]}
         else:
             inspection.setdefault("metrics", {})["gemini"] = {"status": "DISABLED", "calls": 0, "pages": 0}
-
-        gemini_trace: list[dict[str, Any]] = []
-        if ai_result:
-            trace = dict(ai_result.get("trace") or {})
-            if ai_result.get("status") == "CANDIDATES_VALIDATED":
-                trace["status"] = "CANDIDATES_APPLIED"
-                trace["candidate_evidence"] = [
-                    {
-                        "file_id": candidate.get("file_id"),
-                        "fields": sorted((candidate.get("fields") or {}).keys()),
-                        "sources": [
-                            {"field": entry.get("field"), "page": entry.get("page"), "quote": entry.get("quote")}
-                            for entry in candidate.get("evidence", [])
-                        ],
-                    }
-                    for candidate in ai_result.get("candidates", [])
-                ]
-            gemini_trace.append(trace)
 
         if ai_result and _gemini_provider_failure(ai_result) and issues:
             result = _provider_review_result(issues, inspection.get("metrics", {}))
@@ -520,9 +499,9 @@ def process_claim(claim_id: str) -> None:
         payload["claims_history_source"] = "local_claim_database"
         payload["ytd_claims_amount"] = approved_ytd_paise / 100
         payload["ytd_claims_source"] = "database_approved_decisions"
-        result = evaluate_claim(payload, policy)
+        result = adjudicate_handoff(payload, policy, evaluate_claim)
         result.setdefault("document_metrics", inspection.get("metrics", {}))
-        result.setdefault("trace", []).extend(gemini_trace)
+        result["trace"] = [document_evidence_trace(inspection.get("documents", []))] + gemini_trace + result.get("trace", [])
         final_state = str(result.get("state") or result.get("decision") or "MANUAL_REVIEW")
         _set_state(claim_id, final_state, result=result, detail={"decision": result.get("decision")})
     except Exception as exc:  # noqa: BLE001 - isolate all provider and parser failures at the job boundary
@@ -565,6 +544,12 @@ def claim_page(request: Request, claim_id: str) -> HTMLResponse:
     if claim is None:
         raise HTTPException(status_code=404, detail="Claim not found")
     return templates.TemplateResponse(request, "claim.html", {"claim_id": claim_id})
+
+
+@app.get("/ops", response_class=HTMLResponse)
+def operations_page(request: Request) -> HTMLResponse:
+    """Local reviewer worklist; production access control is not in this demo."""
+    return templates.TemplateResponse(request, "ops.html")
 
 
 @app.post("/api/claims", status_code=202)

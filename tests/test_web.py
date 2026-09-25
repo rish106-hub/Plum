@@ -22,6 +22,13 @@ def _client(tmp_path: Path, monkeypatch) -> TestClient:
     return TestClient(web.app)
 
 
+def test_operations_worklist_page_is_available(tmp_path, monkeypatch) -> None:
+    with _client(tmp_path, monkeypatch) as client:
+        response = client.get("/ops")
+    assert response.status_code == 200
+    assert "Review" in response.text
+
+
 def _submit(client: TestClient, data: bytes = PDF, content_type: str = "application/pdf", member_id: str = "EMP001"):
     fields = {
         "member_id": member_id,
@@ -34,6 +41,19 @@ def _submit(client: TestClient, data: bytes = PDF, content_type: str = "applicat
         data=fields,
         files=[("files", ("claim.pdf", data, content_type))],
     )
+
+
+def _mock_decision(decision: str = "APPROVED") -> dict:
+    approved_paise = 135000 if decision == "APPROVED" else 0
+    return {
+        "state": "DECIDED", "decision": decision,
+        "approved_amount": approved_paise / 100,
+        "approved_amount_paise": approved_paise,
+        "reasons": [{"code": "TEST_POLICY", "message": "The documented test policy outcome."}],
+        "correction_requests": [], "confidence_score": 0.95,
+        "trace": [{"stage": "policy", "rule_id": "test_policy", "status": "PASS"}],
+        "ledger": [{"description": "Test total", "amount_paise": approved_paise}],
+    }
 
 
 def _text_pdf(text: str) -> bytes:
@@ -208,8 +228,9 @@ def test_valid_candidate_recomputes_deterministic_decision(tmp_path, monkeypatch
     assert saved["result"]["approved_amount"] == 1350
     assert saved["request"]["claimed_amount"] == 1500.0
     assert saved["request"]["member_id"] == "EMP001"
-    assert saved["result"]["trace"][-1]["status"] == "CANDIDATES_APPLIED"
-    assert saved["result"]["trace"][-1]["candidate_evidence"][0]["fields"] == ["line_items", "total_paise"]
+    assert saved["result"]["trace"][0]["stage"] == "document_evidence"
+    assert saved["result"]["trace"][1]["status"] == "CANDIDATES_APPLIED"
+    assert saved["result"]["trace"][1]["candidate_evidence"][0]["fields"] == ["line_items", "total_paise"]
 
 
 def test_invalid_quote_keeps_arithmetic_conflict_fail_closed_and_redacts_data(tmp_path, monkeypatch):
@@ -300,11 +321,14 @@ def test_upload_decision_and_trace_are_persisted(tmp_path, monkeypatch):
             "decision": "APPROVED",
             "approved_amount": 1350,
             "approved_amount_paise": 135000,
-            "reasons": ["Covered consultation"],
+            "reasons": [{"code": "COVERED", "message": "Covered consultation"}],
             "correction_requests": [],
             "confidence_score": 0.95,
             "trace": [{"stage": "policy", "rule_id": "CONSULTATION", "status": "PASS"}],
-            "ledger": [{"description": "Co-pay", "amount_paise": -15000}],
+                "ledger": [
+                    {"description": "Consultation fee", "amount_paise": 150000},
+                    {"description": "Co-pay", "amount_paise": -15000},
+                ],
         }
 
     monkeypatch.setattr(web, "process_uploads", inspect)
@@ -325,8 +349,9 @@ def test_upload_decision_and_trace_are_persisted(tmp_path, monkeypatch):
         assert captured["ytd_claims_amount"] == 0
         assert captured["ytd_claims_source"] == "database_approved_decisions"
         assert saved["result"]["decision"] == "APPROVED"
-        assert saved["result"]["trace"][0]["rule_id"] == "CONSULTATION"
-        assert saved["result"]["ledger"][0]["amount_paise"] == -15000
+        assert saved["result"]["trace"][0]["rule_id"] == "extracted_facts"
+        assert any(step.get("rule_id") == "CONSULTATION" for step in saved["result"]["trace"])
+        assert saved["result"]["ledger"][1]["amount_paise"] == -15000
         assert client.get("/api/claims").json()["claims"][0]["id"] == claim_id
 
 
@@ -348,7 +373,7 @@ def test_identical_bill_on_another_claim_routes_to_review(tmp_path, monkeypatch)
 
     def decide(*_args):
         calls["adjudications"] += 1
-        return {"state": "DECIDED", "decision": "APPROVED", "approved_amount": 1350, "approved_amount_paise": 135000, "reasons": [], "trace": [], "ledger": []}
+        return _mock_decision()
 
     monkeypatch.setattr(web, "process_uploads", inspect)
     monkeypatch.setattr(web, "evaluate_claim", decide)
@@ -383,8 +408,8 @@ def test_duplicate_hash_of_nonpayable_claim_does_not_block_later_claim(tmp_path,
     def decide(*_args):
         calls["count"] += 1
         if calls["count"] == 1:
-            return {"state": "DECIDED", "decision": "REJECTED", "approved_amount": 0, "approved_amount_paise": 0, "reasons": [], "trace": [], "ledger": []}
-        return {"state": "DECIDED", "decision": "APPROVED", "approved_amount": 1350, "approved_amount_paise": 135000, "reasons": [], "trace": [], "ledger": []}
+            return _mock_decision("REJECTED")
+        return _mock_decision()
 
     monkeypatch.setattr(web, "process_uploads", inspect)
     monkeypatch.setattr(web, "evaluate_claim", decide)
@@ -415,7 +440,7 @@ def test_history_is_loaded_from_local_claims_for_annual_and_frequency_limits(tmp
 
     def decide(payload, _policy):
         observed.append(payload)
-        return {"state": "DECIDED", "decision": "APPROVED", "approved_amount": 1350, "approved_amount_paise": 135000, "reasons": [], "trace": [], "ledger": []}
+        return _mock_decision()
 
     monkeypatch.setattr(web, "process_uploads", inspect)
     monkeypatch.setattr(web, "evaluate_claim", decide)
@@ -448,7 +473,7 @@ def test_dependent_history_uses_primary_member_family_pool(tmp_path, monkeypatch
 
     def decide(payload, _policy):
         observed.append(payload)
-        return {"state": "DECIDED", "decision": "APPROVED", "approved_amount": 1350, "approved_amount_paise": 135000, "reasons": [], "trace": [], "ledger": []}
+        return _mock_decision()
 
     monkeypatch.setattr(web, "process_uploads", inspect)
     monkeypatch.setattr(web, "evaluate_claim", decide)

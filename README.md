@@ -10,12 +10,14 @@ Requires Python 3.12 or newer. Use `pip` as the package manager.
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 cp .env.example .env
-# Set SARVAM_API_KEY in .env for image and scanned-PDF extraction.
+# Set SARVAM_API_KEY for image/scanned-PDF extraction. Set GEMINI_API_KEY and
+# GEMINI_EVIDENCE_REVIEW_ENABLED=true only after approving external transmission.
+# Clear files need no Gemini call even while it is enabled.
 .venv/bin/python -m tools.generate_samples sample_documents
 .venv/bin/python -m uvicorn claims.web:app --reload
 ```
 
-Open <http://127.0.0.1:8000>. Local SQLite data and private uploads are stored under ignored `.data/`. Digital PDFs with selectable text can be processed locally; images and scanned PDFs require the Sarvam key. Exact repeats of an uploaded bill route to manual review, and the app derives claim frequency and prior approved benefit usage from its local history. Use synthetic documents for this demonstration.
+Open <http://127.0.0.1:8000> for claim submission and <http://127.0.0.1:8000/ops> for the local operations worklist. Local SQLite data and private uploads are stored under ignored `.data/`. Digital PDFs with selectable text can be processed locally; images and scanned PDFs require the Sarvam key. Exact repeats of an uploaded bill route to manual review, and the app derives claim frequency and prior approved benefit usage from its local history. Use synthetic documents for this demonstration. The operations page is a local prototype without authentication; add access controls before using real member data.
 
 ## Verification
 
@@ -35,6 +37,7 @@ For a terminal-based synthetic PDF/image upload, OCR expectations, and decision-
 
 ```text
 claims/
+  agent_pipeline.py  checked handoffs and fail-closed decision finalization
   core.py        policy rules, reconciliation, money ledger and trace
   fixtures.py    structured test-case adapter
   documents.py   actual image/PDF gate and extraction adapter
@@ -53,8 +56,10 @@ Selectable PDF text is extracted locally. Sarvam digitisation is used for images
 ## Submission artifacts
 
 - [Architecture and 10× load path](docs/ARCHITECTURE.md)
+- [Specialist architecture and prompts](docs/AGENT_ARCHITECTURE.md)
 - [Component contracts](docs/CONTRACTS.md)
 - [Eval report with all 12 traces](EVAL_REPORT.md)
+- [Edge-case audit and open risks](docs/EDGE_CASE_AUDIT.md)
 - [Demo outline](docs/DEMO.md)
 
 The app has clear local setup instructions; no deployment URL is supplied here. All implementation commits use Rishav Dewan's Git identity.

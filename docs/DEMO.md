@@ -1,27 +1,31 @@
 # Demo recording guide (target: 9–10 minutes)
 
-The assignment asks for an 8–12 minute recording. Use the synthetic files created with `.venv/bin/python -m tools.generate_samples sample_documents`. Keep the reviewer screen at normal browser zoom so the trace and ledger are readable. The [approval screenshot](screenshots/approval.png), [correction screenshot](screenshots/correction.png), and [duplicate-bill review screenshot](screenshots/duplicate-review.png) show the expected states.
+Record the local app after generating the synthetic PDFs with `.venv/bin/python -m tools.generate_samples sample_documents`. The demo uses two connected views: claim submission at `/` and the local operations worklist at `/ops`. The worklist has no production authentication, so use only synthetic files. The latest [approval](screenshots/approval.png), [correction](screenshots/correction.png), and [duplicate review](screenshots/duplicate-review.png) screenshots show the expected states.
 
-## 0:00–1:00 — What the system does
+## 0:00–1:00 — The two views
 
-Show the submission page and the two routes into one claim model: real PDF/image uploads for the app and the supplied structured fixtures for reproducible evaluation. State clearly that the fixture pass rate does not measure OCR accuracy. Point to the six required behaviors in `assignment.md`.
+Show the claim upload form and the operations worklist. Explain that applicants submit evidence; reviewers inspect escalations, model usage, extracted facts, rule trace, and amount ledger. The 12 JSON fixtures separately test deterministic behavior and do not measure OCR accuracy.
 
-## 1:00–3:00 — Document problem stops early
+## 1:00–2:30 — Stop early for a document problem
 
-Select EMP001, Consultation, 2024-11-01, and ₹1,500. Upload `synthetic_prescription.pdf` twice and submit. Show the correction screen: `decision` remains null, and the message names the uploaded prescription and required hospital/clinic bill. Expand the document-gate trace. Explain why no policy calculation ran.
+Select EMP001, Consultation, 2024-11-01, and ₹1,500. Upload `synthetic_prescription.pdf` twice. Show that the result has no decision or payable amount and asks specifically for the missing hospital or clinic bill. Expand the document-gate trace. Explain why policy adjudication did not run.
 
-## 3:00–5:30 — Successful claim and full trace
+## 2:30–4:30 — Complete approval and trace
 
-Submit a new claim with the same details, now uploading `synthetic_prescription.pdf` and `synthetic_hospital_bill.pdf`. Show APPROVED ₹1,350. Scroll through document requirements, identity and bill-total checks, waiting period, exclusions, pre-authorization, annual/per-claim limits, and the line-item ledger. Explain that ₹1,500 less the 10% consultation co-pay is ₹1,350. Show `NOT_EVALUATED` on submission deadline because the fixture has no submission timestamp, and `ASSUMPTION` on the consultation fee interpretation. Submit the identical bill again and show that the system sends it to manual review before adjudication.
+Submit the same details with `synthetic_prescription.pdf` and `synthetic_hospital_bill.pdf`. Show APPROVED ₹1,350. Walk through extracted facts, patient and amount reconciliation, waiting periods, exclusions, limits, and the ledger. ₹1,500 less the 10% consultation co-pay is ₹1,350. Point out `NOT_EVALUATED` on submission deadline: the current live intake does not pass a submission timestamp.
 
-## 5:30–7:00 — Design decision worth keeping
+## 4:30–6:30 — Internal review portal
 
-Open `claims/core.py`, `claims/documents.py`, and `docs/CONTRACTS.md`. The document adapter can be replaced, but the policy evaluator remains deterministic and records each rule with evidence and an integer-paise amount ledger. Explain how this makes a rejection or partial approval reproducible and keeps OCR/model errors from directly moving money. Show the cost counters and the Sarvam route: local digital PDF text first, ₹0.50/page digitisation for scans, ₹1/page schema extraction only when material fields are missing.
+Submit the same bill again to trigger duplicate-bill manual review. Open `/ops`, filter or select the escalated claim, and show its reason, events, document evidence, AI usage, and full decision trace. Contrast the zero-call Gemini path for clear digital PDFs with the guarded ambiguous-evidence path. A model can supply cited facts but cannot approve coverage or calculate payment. Show the direct link from worklist to the claim decision record.
 
-## 7:00–8:30 — Failure and honest limitation
+## 6:30–7:30 — Technical choice worth keeping
 
-Show TC011 in `EVAL_REPORT.md`: optional component failure is visible, the claim continues, and confidence falls. Then show the TC006/TC010 interpretation notes. Say what would change with more time: obtain authoritative insurer clarification, build a labelled Indian document benchmark, calibrate confidence and thresholds, and move background jobs to a separate worker/queue at higher load. If the Sarvam key is configured, submit the synthetic bill PNG once and show its extraction metrics. If it is not, demonstrate the manual-review path for unavailable image extraction and state that live OCR has not been verified.
+Open `claims/agent_pipeline.py`, `claims/core.py`, and [component contracts](CONTRACTS.md). Explain the typed, bounded evidence handoff; the deterministic money and policy reducer; and the final decision/amount validation that routes inconsistencies to manual review with zero payable amount. Provider calls are conditional to contain cost.
+
+## 7:30–8:30 — Technical choice to change
+
+The local prototype uses in-process jobs and SQLite. At larger load, use a durable queue, leased workers, Postgres, object storage, and a single finalizer per claim revision. Also add production access control to `/ops`, collect submission dates and pre-authorization evidence, resolve insurer policy conflicts, and benchmark labelled Indian document images before any accuracy claim.
 
 ## 8:30–9:30 — Evaluation and close
 
-Run `.venv/bin/python -m scripts.evaluate` and show 12/12 fixture expectations, then open one complete trace in `EVAL_REPORT.md`. Point to the tested browser flow and local setup commands in `README.md`. Leave the reviewer with the specific tradeoff: low cost by avoiding unnecessary provider calls, with human review for missing material evidence.
+Show [the full 12-case report](../EVAL_REPORT.md), including TC011's degraded optional component and the TC006/TC010 fixture interpretation notes. The target above 99% is not established by 12 structured fixtures. The real browser QA covers approval, correction, duplicate escalation, and reviewer screens; live Gemini transmission was blocked by automatic approval review for a synthetic patient-linked PDF, so provider accuracy remains unverified.
