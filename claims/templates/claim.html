@@ -4,14 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Claim review · Plum</title>
-  <link rel="stylesheet" href="/static/styles.css">
-  <script src="/static/app.js" defer></script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260925">
+  <script src="/static/app.js?v=20260925" defer></script>
 </head>
 <body data-page="claim" data-claim-id="{{ claim_id }}">
   <header class="site-header">
     <div class="site-header__inner">
       <a class="wordmark" href="/" aria-label="Plum claims home"><span class="wordmark__mark" aria-hidden="true">P</span><span>Plum <span class="wordmark__muted">Claims</span></span></a>
-      <a class="header-link" href="/">New claim <span aria-hidden="true">↗</span></a>
+      <nav class="product-nav" aria-label="Claims workspace">
+        <a class="product-nav__link" href="/">New claim</a>
+        <a class="product-nav__link" href="/ops">Review queue</a>
+      </nav>
     </div>
   </header>
 
@@ -35,7 +38,7 @@
     <div id="result-content" hidden>
       <section id="decision-panel" class="decision-panel" aria-labelledby="decision-heading">
         <div><p class="decision-panel__label">Outcome</p><h2 id="decision-heading">Decision</h2><p id="decision-reason" class="decision-panel__reason"></p></div>
-        <div class="decision-panel__amount"><span id="amount-label">Approved amount</span><strong id="approved-amount">—</strong><small id="confidence-value"></small></div>
+        <div class="decision-panel__amount"><span id="amount-label">Approved amount</span><strong id="approved-amount">Pending</strong><small id="confidence-value"></small></div>
       </section>
 
       <div id="correction-panel" class="notice notice--correction" hidden>
@@ -50,15 +53,15 @@
       <div class="review-layout">
         <div class="review-main">
           <section id="evidence-section" class="surface detail-section" aria-labelledby="evidence-heading">
-            <div class="section-heading"><div><span class="section-number">01</span><h2 id="evidence-heading">Evidence used</h2></div><span class="section-hint">Quoted source, page and resolved field</span></div>
+            <div class="section-heading"><div><h2 id="evidence-heading">Evidence used</h2></div><span class="section-hint">Quoted source, page and resolved field</span></div>
             <div id="evidence-list" class="evidence-list"></div>
           </section>
           <section class="surface detail-section" aria-labelledby="checks-heading">
-            <div class="section-heading"><div><span class="section-number">02</span><h2 id="checks-heading">Decision trace</h2></div><span class="section-hint">Checks in processing order</span></div>
+            <div class="section-heading"><div><h2 id="checks-heading">Decision trace</h2></div><span class="section-hint">Checks in processing order</span></div>
             <div id="trace-list" class="trace-list"></div>
           </section>
           <section class="surface detail-section" aria-labelledby="ledger-heading">
-            <div class="section-heading"><div><span class="section-number">03</span><h2 id="ledger-heading">Amount ledger</h2></div><span class="section-hint">How payable amount was calculated</span></div>
+            <div class="section-heading"><div><h2 id="ledger-heading">Amount ledger</h2></div><span class="section-hint">How payable amount was calculated</span></div>
             <div id="ledger-list" class="ledger-list"></div>
             <div id="ledger-total" class="ledger-total" hidden><span>Final adjudicated amount</span><strong id="ledger-payable"></strong></div>
           </section>

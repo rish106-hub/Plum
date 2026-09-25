@@ -524,6 +524,7 @@ def process_uploads(
     documents: list[dict[str, Any]] = []
     issues: list[dict[str, Any]] = []
     ocr_text_by_file_id: dict[str, str] = {}
+    provider_setup_warning: str | None = None
     metrics: dict[str, Any] = {
         "files": len(files), "pages": 0, "provider_calls": 0, "provider_failures": 0,
         "sarvam_digitise_calls": 0, "sarvam_digitise_pages": 0,
@@ -540,7 +541,11 @@ def process_uploads(
         return {"documents": [], "issues": [_issue("TOO_MANY_FILES", "", f"Upload at most {MAX_FILES} documents per claim.")], "metrics": metrics}
 
     if provider is None and os.getenv("SARVAM_API_KEY"):
-        provider = SarvamDocumentProvider()
+        try:
+            provider = SarvamDocumentProvider()
+        except Exception as exc:  # noqa: BLE001 - optional provider setup must not abort intake
+            metrics["provider_failures"] += 1
+            provider_setup_warning = f"Document extraction setup failed: {type(exc).__name__}"
 
     for index, raw in enumerate(files, 1):
         try:
@@ -584,7 +589,7 @@ def process_uploads(
         quality = "PARTIAL"
         content: dict[str, Any] = {}
         evidence: list[dict[str, Any]] = []
-        warnings: list[str] = []
+        warnings = [provider_setup_warning] if provider_setup_warning else []
         source = "unavailable"
         if len(text.strip()) >= 80:
             kind = _classify_text(text)

@@ -22,8 +22,11 @@ class ClaimCoreTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.policy = load_policy(ROOT / "policy_terms.json")
-        cls.cases = {case["case_id"]: case for case in load_cases(ROOT / "test_cases.json")}
+        cls.policy = load_policy(ROOT / "data" / "policy_terms.json")
+        cls.cases = {
+            case["case_id"]: case
+            for case in load_cases(ROOT / "tests" / "fixtures" / "test_cases.json")
+        }
 
     def evaluate(self, case_id: str) -> dict:
         case = self.cases[case_id]
@@ -83,6 +86,24 @@ class ClaimCoreTests(unittest.TestCase):
         self.assertEqual(pricing["network_discount_paise"], 90000)
         self.assertEqual(pricing["copay_paise"], 36000)
         self.assertEqual(pricing["payable_paise"], 324000)
+
+    def test_all_matching_bill_lines_are_used_for_pricing(self) -> None:
+        claim = normalize_fixture(self.cases["TC004"])
+        first_bill = claim["documents"][1]
+        first_bill["fields"]["total"] = 1000
+        first_bill["fields"]["line_items"] = [{"description": "Consultation Fee", "amount": 1000}]
+        second_bill = deepcopy(first_bill)
+        second_bill["file_id"] = "SECOND-BILL"
+        second_bill["fields"]["total"] = 500
+        second_bill["fields"]["line_items"] = [{"description": "CBC Test", "amount": 500}]
+        claim["documents"].append(second_bill)
+
+        result = evaluate_claim(claim, self.policy)
+
+        self.assertEqual(result["decision"], "APPROVED")
+        self.assertEqual(result["approved_amount_paise"], 135000)
+        bill_lines = [entry for entry in result["ledger"] if entry["kind"] == "line_item"]
+        self.assertEqual([entry["source_document"] for entry in bill_lines], [first_bill["file_id"], "SECOND-BILL"])
 
     def test_optional_failure_is_visible_without_changing_supported_decision(self) -> None:
         result = self.evaluate("TC011")
@@ -203,6 +224,21 @@ class ClaimCoreTests(unittest.TestCase):
         self.assertEqual(result["decision"], "REJECTED")
         self.assertIn("WAITING_PERIOD", {reason["code"] for reason in result["reasons"]})
 
+    def test_child_relationship_matches_plural_policy_term(self) -> None:
+        claim = self._consultation_claim()
+        claim["member_id"] = "DEP002"
+        for document in claim["documents"]:
+            document["patient_name"] = "Arjun Kumar"
+            document["fields"]["patient_name"] = "Arjun Kumar"
+
+        result = evaluate_claim(claim, self.policy)
+
+        self.assertEqual(result["decision"], "APPROVED")
+        self.assertNotIn("RELATIONSHIP_NOT_COVERED", {reason["code"] for reason in result["reasons"]})
+        relationship = next(step for step in result["trace"] if step["rule_id"] == "covered_relationship")
+        self.assertEqual(relationship["status"], "PASS")
+        self.assertEqual(relationship["evidence"]["covered_relationship"], "CHILDREN")
+
     def test_policy_period_and_minimum_claim_amount_are_enforced(self) -> None:
         claim = self._consultation_claim()
         claim["treatment_date"] = "2025-04-01"
@@ -308,6 +344,48 @@ class ClaimCoreTests(unittest.TestCase):
         pricing = next(step for step in result["trace"] if step["rule_id"] == "payable_amount")["evidence"]
         self.assertTrue(pricing["network_hospital"])
         self.assertEqual(result["approved_amount"], 3240)
+
+    def test_document_date_conflict_routes_to_review(self) -> None:
+        claim = normalize_fixture(self.cases["TC004"])
+        for document in claim["documents"]:
+            fields = document.get("fields") or {}
+            if "date" in fields:
+                fields["date"] = "2024-05-01"
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "MANUAL_REVIEW")
+        self.assertIn("DOCUMENT_DATE_CONFLICT", {reason["code"] for reason in result["reasons"]})
+
+    def test_common_extracted_document_date_format_is_compared(self) -> None:
+        claim = normalize_fixture(self.cases["TC004"])
+        for document in claim["documents"]:
+            document["fields"]["date"] = "01-Nov-2024"
+
+        result = evaluate_claim(claim, self.policy)
+
+        self.assertEqual(result["decision"], "APPROVED")
+        date_check = next(step for step in result["trace"] if step["rule_id"] == "document_treatment_date")
+        self.assertEqual(date_check["status"], "PASS")
+
+    def test_dental_item_outside_covered_list_is_removed(self) -> None:
+        claim = normalize_fixture(self.cases["TC006"])
+        bill = claim["documents"][0]["fields"]
+        bill["line_items"] = [
+            {"description": "Root Canal Treatment", "amount": 3000},
+            {"description": "Diamond Tooth Jewellery", "amount": 2000},
+        ]
+        bill["total"] = 5000
+        claim["claimed_amount"] = 5000
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "PARTIAL")
+        self.assertEqual(result["approved_amount"], 3000)
+        self.assertIn("NOT_ON_ALLOWLIST", {reason["code"] for reason in result["reasons"]})
+
+    def test_supplied_submission_date_enforces_deadline(self) -> None:
+        claim = normalize_fixture(self.cases["TC004"])
+        claim["submission_date"] = "2024-12-15"
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "REJECTED")
+        self.assertIn("SUBMISSION_LATE", {reason["code"] for reason in result["reasons"]})
 
     def test_fixture_limit_interpretations_are_explicit_and_not_general_rules(self) -> None:
         dental = normalize_fixture(self.cases["TC006"])

@@ -4,14 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>New OPD claim · Plum</title>
-  <link rel="stylesheet" href="/static/styles.css">
-  <script src="/static/app.js" defer></script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260925">
+  <script src="/static/app.js?v=20260925" defer></script>
 </head>
 <body data-page="intake">
   <header class="site-header">
     <div class="site-header__inner">
       <a class="wordmark" href="/" aria-label="Plum claims home"><span class="wordmark__mark" aria-hidden="true">P</span><span>Plum <span class="wordmark__muted">Claims</span></span></a>
-      <span class="header-context">OPD review workspace</span>
+      <nav class="product-nav" aria-label="Claims workspace">
+        <a class="product-nav__link product-nav__link--active" href="/" aria-current="page">New claim</a>
+        <a class="product-nav__link" href="/ops">Review queue</a>
+      </nav>
     </div>
   </header>
 
@@ -27,7 +30,7 @@
     <div class="intake-layout">
       <section class="surface intake-surface" aria-labelledby="claim-details-heading">
         <div class="section-heading">
-          <div><span class="section-number">01</span><h2 id="claim-details-heading">Claim details</h2></div>
+          <div><h2 id="claim-details-heading">Claim details</h2></div>
           <span class="section-hint">History calculated automatically</span>
         </div>
         <form id="claim-form" novalidate>
@@ -50,7 +53,7 @@
           <p class="field-note">Prior claims for this policy year are included automatically from the claim history.</p>
 
           <div class="section-heading section-heading--documents">
-            <div><span class="section-number">02</span><h2>Documents</h2></div>
+            <div><h2>Documents</h2></div>
             <span class="section-hint">PDF, JPG, PNG, or WebP</span>
           </div>
           <label class="upload-zone" for="claim-files">
@@ -84,7 +87,7 @@
     </div>
 
     <section class="recent-section" aria-labelledby="recent-heading">
-      <div class="recent-heading"><h2 id="recent-heading">Recent claims</h2><span>Stored locally in this workspace</span></div>
+      <div class="recent-heading"><h2 id="recent-heading">Recent claims</h2><a class="text-link" href="/ops">Open review queue</a></div>
       <div id="recent-claims" class="recent-list" aria-live="polite"><p class="muted">Loading recent claims…</p></div>
     </section>
   </main>

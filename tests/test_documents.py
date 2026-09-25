@@ -155,6 +155,25 @@ def test_provider_failure_is_visible_and_never_fabricates_evidence() -> None:
     assert result["documents"][0]["actual_type"] == "UNKNOWN"
 
 
+def test_provider_setup_failure_falls_back_to_actionable_issue(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_provider_setup() -> None:
+        raise RuntimeError("provider setup failed")
+
+    monkeypatch.setenv("SARVAM_API_KEY", "configured")
+    monkeypatch.setattr("claims.documents.SarvamDocumentProvider", fail_provider_setup)
+
+    result = process_uploads(
+        [{"file_name": "bill.png", "data": image_bytes()}],
+        "DENTAL",
+        "Rajesh Kumar",
+        POLICY,
+    )
+
+    assert result["metrics"]["provider_failures"] == 1
+    assert any(issue["code"] == "EXTRACTION_UNAVAILABLE" for issue in result["issues"])
+    assert result["documents"][0]["warnings"] == ["Document extraction setup failed: RuntimeError"]
+
+
 def test_provider_unreadable_bill_names_file_and_type() -> None:
     provider = StubProvider("blur")
     result = process_uploads([{"file_name": "blurry_bill.png", "data": image_bytes()}], "DENTAL", "Priya Singh", POLICY, provider)

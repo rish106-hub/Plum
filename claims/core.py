@@ -7,7 +7,7 @@ complete ordered trace, including rules that cannot be evaluated from evidence.
 from __future__ import annotations
 
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any, Callable
 
@@ -42,6 +42,21 @@ def _text(value: Any) -> str:
     return str(value or "").casefold().strip()
 
 
+def _parse_document_date(value: Any) -> date:
+    """Parse the explicit, unambiguous date formats emitted by local extraction."""
+    raw = str(value or "").strip()
+    try:
+        return date.fromisoformat(raw[:10])
+    except ValueError:
+        pass
+    for date_format in ("%d-%b-%Y", "%d %b %Y", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(raw, date_format).date()
+        except ValueError:
+            continue
+    raise ValueError(f"Unsupported document date: {raw!r}")
+
+
 def _normal_words(value: Any) -> str:
     return " ".join(re.findall(r"[^\W_]+", _text(value), flags=re.UNICODE))
 
@@ -69,10 +84,14 @@ def _rule_trace(
 
 
 def _line_items(documents: list[dict[str, Any]], fallback_paise: int) -> list[dict[str, Any]]:
+    lines: list[dict[str, Any]] = []
     for document in documents:
+        kind = str(document.get("doc_type") or document.get("actual_type") or "").upper()
+        if not kind.endswith("BILL"):
+            continue
         fields = document.get("fields") or document.get("content") or {}
         if fields.get("line_items"):
-            return [
+            lines.extend(
                 {
                     "description": str(item.get("description") or ""),
                     "amount_paise": _paise(item.get("amount", 0)),
@@ -81,7 +100,9 @@ def _line_items(documents: list[dict[str, Any]], fallback_paise: int) -> list[di
                     "source_document": document.get("file_id"),
                 }
                 for item in fields["line_items"]
-            ]
+            )
+    if lines:
+        return lines
     return [{"description": "Claimed treatment", "amount_paise": fallback_paise, "brand_status": "UNKNOWN", "brand_evidence": "", "source_document": None}]
 
 
@@ -259,6 +280,65 @@ def _evaluate_claim(
         join_date = date.fromisoformat(str(member.get("join_date") or owner["join_date"]))
     except (KeyError, TypeError, ValueError):
         join_date = None
+    document_dates: list[tuple[str, date]] = []
+    unreadable_document_dates: list[str] = []
+    for doc in documents:
+        fields = doc.get("fields") or doc.get("content") or {}
+        raw_date = fields.get("date")
+        if not raw_date:
+            continue
+        try:
+            document_dates.append((str(doc.get("file_id")), _parse_document_date(raw_date)))
+        except ValueError:
+            unreadable_document_dates.append(str(doc.get("file_id")))
+    if treatment_date and (document_dates or unreadable_document_dates):
+        conflicts = [file_id for file_id, document_date in document_dates if document_date != treatment_date]
+        date_status = "FAIL" if conflicts or unreadable_document_dates else "PASS"
+        trace.append(_rule_trace(
+            "document_treatment_date", date_status, "claim.treatment_date",
+            {"treatment_date": treatment_date.isoformat(), "document_dates": [{"file_id": file_id, "date": document_date.isoformat()} for file_id, document_date in document_dates], "unreadable_date_files": unreadable_document_dates},
+        ))
+        if conflicts or unreadable_document_dates:
+            reasons.append({"code": "DOCUMENT_DATE_CONFLICT", "message": "A document date does not match the submitted treatment date, or a document date could not be read. Review the episode before payment."})
+    else:
+        trace.append(_rule_trace("document_treatment_date", "NOT_EVALUATED", "claim.treatment_date", {}, "No comparable document date was extracted."))
+
+    coverage = policy.get("coverage", {})
+    holder = policy.get("policy_holder", {})
+    renewal = str(holder.get("renewal_status") or "")
+    trace.append(_rule_trace(
+        "policy_renewal_status", "FAIL" if renewal and renewal != "ACTIVE" else "PASS" if renewal == "ACTIVE" else "NOT_EVALUATED",
+        "policy_holder.renewal_status", {"renewal_status": renewal or None},
+    ))
+    if renewal and renewal != "ACTIVE":
+        reasons.append({"code": "POLICY_NOT_ACTIVE", "message": f"Policy renewal status is {renewal}; automatic payment is not allowed."})
+    relationships = {
+        str(value).strip().upper()
+        for value in coverage.get("family_floater", {}).get("covered_relationships", [])
+    }
+    relationship = str(member.get("relationship") or "").strip().upper()
+    # The roster uses the singular ``CHILD`` while the policy's family list
+    # uses ``CHILDREN``. Compare the policy meaning rather than rejecting a
+    # covered dependent because of that representation difference.
+    covered_relationship = {"CHILD": "CHILDREN"}.get(relationship, relationship)
+    relationship_ok = bool(covered_relationship) and covered_relationship in relationships
+    trace.append(_rule_trace(
+        "covered_relationship", "PASS" if relationship_ok else "FAIL" if relationship else "NOT_EVALUATED",
+        "coverage.family_floater.covered_relationships", {
+            "relationship": relationship or None,
+            "covered_relationship": covered_relationship or None,
+        },
+    ))
+    if relationship and not relationship_ok:
+        reasons.append({"code": "RELATIONSHIP_NOT_COVERED", "message": f"Relationship {relationship} is outside the covered family list."})
+    trace.append(_rule_trace("sum_insured", "NOT_EVALUATED", "coverage.sum_insured_per_employee", {"sum_insured": coverage.get("sum_insured_per_employee")}, "No hospitalisation utilisation feed is available in this OPD evaluator."))
+    trace.append(_rule_trace("family_floater_limit", "NOT_EVALUATED", "coverage.family_floater.combined_limit", {"combined_limit": coverage.get("family_floater", {}).get("combined_limit")}, "Family-floater consumption is not tracked separately from the annual OPD limit."))
+    trace.append(_rule_trace("pre_existing_condition_wait", "NOT_EVALUATED", "waiting_periods.pre_existing_conditions_days", {"days": policy.get("waiting_periods", {}).get("pre_existing_conditions_days")}, "No pre-existing-condition history was supplied with the claim."))
+    category_covered = category_policy.get("covered", True)
+    trace.append(_rule_trace("category_covered", "PASS" if category_covered else "FAIL", f"opd_categories.{category_key}.covered", {"covered": category_covered}))
+    if category_covered is False:
+        reasons.append({"code": "CATEGORY_NOT_COVERED", "message": f"{category} is not a covered OPD category under this policy."})
+
     if treatment_date and join_date:
         relevant = []
         aliases = policy.get("waiting_periods", {}).get("condition_aliases", {})
@@ -310,8 +390,12 @@ def _evaluate_claim(
             age = (date.fromisoformat(str(submission_date)) - treatment_date).days
             deadline = int(policy.get("submission_rules", {}).get("deadline_days_from_treatment", 0))
             late = age > deadline
-            trace.append({"stage": "policy", "rule_id": "submission_deadline", "status": "FAIL" if late else "PASS", "policy_ref": "submission_rules.deadline_days_from_treatment", "evidence": {"days_elapsed": age, "deadline_days": deadline}})
-            if late:
+            before_treatment = age < 0
+            deadline_status = "FAIL" if late or before_treatment else "PASS"
+            trace.append({"stage": "policy", "rule_id": "submission_deadline", "status": deadline_status, "policy_ref": "submission_rules.deadline_days_from_treatment", "evidence": {"days_elapsed": age, "deadline_days": deadline}})
+            if before_treatment:
+                reasons.append({"code": "SUBMISSION_BEFORE_TREATMENT", "message": f"Submission date is {abs(age)} days before the treatment date."})
+            elif late:
                 reasons.append({"code": "SUBMISSION_LATE", "message": f"Claim was submitted {age} days after treatment; deadline is {deadline} days."})
         except ValueError:
             trace.append({"stage": "policy", "rule_id": "submission_deadline", "status": "NOT_EVALUATED", "details": "Submission date invalid."})
@@ -406,8 +490,44 @@ def _evaluate_claim(
         if not special_document_compatibility:
             reasons.append({"code": "ADDITIONAL_DOCUMENT_MISSING", "message": f"The policy requires a {special_document_type}; upload it before adjudication."})
 
+    systems = category_policy.get("covered_systems") or []
+    if systems:
+        system_hits = [system for system in systems if _contains_phrase(content, system)]
+        trace.append(_rule_trace(
+            "covered_system", "PASS" if system_hits else "NOT_EVALUATED",
+            f"opd_categories.{category_key}.covered_systems",
+            {"matched": system_hits},
+            None if system_hits else "No listed medical system was named in the documents.",
+        ))
+    session_cap = category_policy.get("max_sessions_per_year")
+    session_match = re.search(r"(\d+)\s+sessions", content, flags=re.IGNORECASE)
+    if session_cap is not None:
+        if session_match:
+            sessions = int(session_match.group(1))
+            over_sessions = sessions > int(session_cap)
+            trace.append(_rule_trace("max_sessions", "FAIL" if over_sessions else "PASS", f"opd_categories.{category_key}.max_sessions_per_year", {"sessions": sessions, "max_sessions_per_year": session_cap}))
+            if over_sessions:
+                reasons.append({"code": "SESSION_LIMIT_EXCEEDED", "message": f"The claim describes {sessions} sessions; the annual cap is {session_cap}."})
+        else:
+            trace.append(_rule_trace("max_sessions", "NOT_EVALUATED", f"opd_categories.{category_key}.max_sessions_per_year", {"max_sessions_per_year": session_cap}, "Session count was not extracted."))
+    if category_policy.get("requires_registered_practitioner"):
+        registrations = [
+            str((doc.get("fields") or doc.get("content") or {}).get("doctor_registration") or "")
+            for doc in documents
+        ]
+        registered = any(value.strip() for value in registrations)
+        trace.append(_rule_trace(
+            "registered_practitioner", "PASS" if registered else "NOT_EVALUATED",
+            f"opd_categories.{category_key}.requires_registered_practitioner",
+            {},
+            None if registered else "Practitioner registration was not extracted.",
+        ))
+        if not registered and not fixture_evidence:
+            reasons.append({"code": "PRACTITIONER_REGISTRATION_UNKNOWN", "message": "The policy requires a registered practitioner, and registration was not extracted."})
+
     items = _line_items(documents, claimed)
     excluded_procedures = [*category_policy.get("excluded_procedures", []), *category_policy.get("excluded_items", [])]
+    affirmative_cover = [*category_policy.get("covered_procedures", []), *category_policy.get("covered_items", [])]
     eligible = 0
     eligible_before_limits = 0
     unknown_line_description = False
@@ -416,6 +536,7 @@ def _evaluate_claim(
     for item in items:
         description = str(item["description"] or "").strip()
         excluded = bool(description) and any(_contains_phrase(description, procedure) for procedure in excluded_procedures)
+        outside_allowlist = bool(affirmative_cover) and bool(description) and not excluded and not any(_contains_phrase(description, covered) for covered in affirmative_cover)
         amount = item["amount_paise"]
         if not description:
             unknown_line_description = True
@@ -427,9 +548,13 @@ def _evaluate_claim(
                 pharmacy_brand_unknown = True
             elif brand_status == "BRANDED":
                 branded_items_paise += amount
-        ledger.append({"kind": "line_item", "description": item["description"], "source_document": item["source_document"], "amount_paise": amount, "amount": _rupees(amount), "status": "EXCLUDED" if excluded else "UNKNOWN" if not description else "ELIGIBLE", "reason_code": "EXCLUDED_PROCEDURE" if excluded else "LINE_ITEM_DESCRIPTION_UNKNOWN" if not description else None, "brand_status": brand_status if category_policy.get("brand_status_field") else None, "brand_evidence": item["brand_evidence"] if category_policy.get("brand_status_field") else None, "policy_ref": f"opd_categories.{category_key}.excluded_procedures" if excluded else f"opd_categories.{category_key}.covered"})
+        line_status = "EXCLUDED" if excluded else "UNKNOWN" if not description else "NOT_COVERED" if outside_allowlist else "ELIGIBLE"
+        line_reason = "EXCLUDED_PROCEDURE" if excluded else "LINE_ITEM_DESCRIPTION_UNKNOWN" if not description else "NOT_ON_ALLOWLIST" if outside_allowlist else None
+        ledger.append({"kind": "line_item", "description": item["description"], "source_document": item["source_document"], "amount_paise": amount, "amount": _rupees(amount), "status": line_status, "reason_code": line_reason, "brand_status": brand_status if category_policy.get("brand_status_field") else None, "brand_evidence": item["brand_evidence"] if category_policy.get("brand_status_field") else None, "policy_ref": f"opd_categories.{category_key}.excluded_procedures" if excluded else f"opd_categories.{category_key}.covered_procedures" if outside_allowlist else f"opd_categories.{category_key}.covered"})
         if excluded:
             reasons.append({"code": "EXCLUDED_PROCEDURE", "message": f"{item['description']} is excluded; ₹{_rupees(amount)} removed."})
+        elif outside_allowlist:
+            reasons.append({"code": "NOT_ON_ALLOWLIST", "message": f"{item['description']} is not on the covered list for {category}; ₹{_rupees(amount)} removed."})
         elif not description:
             reasons.append({"code": "LINE_ITEM_DESCRIPTION_UNKNOWN", "message": "A bill line has no readable description; its eligibility cannot be determined safely."})
         else:
@@ -491,13 +616,13 @@ def _evaluate_claim(
     trace.append({"stage": "pricing", "rule_id": "payable_amount", "status": "CALCULATED", "evidence": {"eligible_paise": eligible, "network_hospital": network, "network_discount_paise": discount, "copay_paise": copay, "branded_basis_paise": branded_after_discount, "branded_copay_paise": branded_copay, "payable_paise": payable}, "details": "Network discount applied before co-pay."})
 
     codes = {reason["code"] for reason in reasons}
-    reject_priority = ["OUTSIDE_POLICY_PERIOD", "MINIMUM_CLAIM_AMOUNT", "EXCLUDED_CONDITION", "WAITING_PERIOD", "PRE_AUTH_MISSING", "SUBMISSION_LATE", "PER_CLAIM_EXCEEDED"]
+    reject_priority = ["POLICY_NOT_ACTIVE", "RELATIONSHIP_NOT_COVERED", "CATEGORY_NOT_COVERED", "OUTSIDE_POLICY_PERIOD", "MINIMUM_CLAIM_AMOUNT", "EXCLUDED_CONDITION", "WAITING_PERIOD", "SESSION_LIMIT_EXCEEDED", "PRE_AUTH_MISSING", "SUBMISSION_BEFORE_TREATMENT", "SUBMISSION_LATE", "PER_CLAIM_EXCEEDED"]
     primary = next((code for code in reject_priority if code in codes), None)
     if primary:
         decision, approved = "REJECTED", 0
-    elif fraud_flag or monthly_flag or (special_document_missing and not special_document_compatibility) or annual_usage_unknown or unknown_line_description or brand_status_needs_review or pre_auth_status_unknown or "MEMBER_START_DATE_UNKNOWN" in codes:
+    elif fraud_flag or monthly_flag or (special_document_missing and not special_document_compatibility) or annual_usage_unknown or unknown_line_description or brand_status_needs_review or pre_auth_status_unknown or "MEMBER_START_DATE_UNKNOWN" in codes or "DOCUMENT_DATE_CONFLICT" in codes or "PRACTITIONER_REGISTRATION_UNKNOWN" in codes:
         decision, approved = "MANUAL_REVIEW", 0
-    elif payable < claimed and any(item["status"] == "EXCLUDED" for item in ledger if item["kind"] == "line_item"):
+    elif payable < claimed and any(item["status"] in {"EXCLUDED", "NOT_COVERED"} for item in ledger if item["kind"] == "line_item"):
         decision, approved = "PARTIAL", payable
     elif payable <= 0:
         decision, approved = "REJECTED", 0

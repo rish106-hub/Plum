@@ -687,6 +687,10 @@ def resolve_evidence(
     if trigger is None:
         status = "NOT_NEEDED" if abstain_reason is None else "ABSTAINED"
         return {
+            "schema_version": 1,
+            "producer": "gemini_evidence",
+            "task": "resolve_document_facts",
+            "source_file_ids": [str(doc.get("file_id")) for doc in documents],
             "status": status,
             "candidates": [],
             "trace": {"stage": "gemini_evidence", "status": status, "reason": abstain_reason},
@@ -852,6 +856,10 @@ def _result(
     pages: int,
 ) -> dict[str, Any]:
     return {
+        "schema_version": 1,
+        "producer": "gemini_evidence",
+        "task": "resolve_document_facts",
+        "source_file_ids": list(trigger.file_ids),
         "status": status,
         "candidates": candidates,
         "trace": {

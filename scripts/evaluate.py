@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from claims.agent_pipeline import adjudicate_handoff
 from claims.core import evaluate_claim
 from claims.fixtures import load_cases, load_policy, normalize_fixture
 
@@ -35,15 +36,66 @@ def _matches(expected: dict, result: dict) -> tuple[bool, list[str]]:
     return not issues, issues
 
 
+def _behavior_checks(case: dict, policy: dict, result: dict, normal_confidence: float) -> list[str]:
+    """Check the concrete behaviors behind each case's prose requirements."""
+    case_id = case["case_id"]
+    failures: list[str] = []
+    corrections = result.get("correction_requests") or []
+    correction_text = " ".join(str(item.get("message", "")) for item in corrections if isinstance(item, dict)).casefold()
+    reason_text = " ".join(str(item.get("message", "")) for item in result.get("reasons", []) if isinstance(item, dict)).casefold()
+    reason_codes = {item.get("code") for item in result.get("reasons", []) if isinstance(item, dict)}
+    trace = result.get("trace") or []
+    ledger = result.get("ledger") or []
+
+    def require(condition: bool, description: str) -> None:
+        if not condition:
+            failures.append(description)
+
+    if case_id in {"TC001", "TC002", "TC003"}:
+        require(result.get("decision") is None and not any(step.get("stage") == "policy" for step in trace), "policy evaluation was not stopped")
+    if case_id == "TC001":
+        require("prescription" in correction_text and "hospital_bill" in correction_text, "correction does not name uploaded and required document types")
+    elif case_id == "TC002":
+        require("pharmacy_bill" in correction_text and "re-upload" in correction_text, "unreadable pharmacy bill correction is not actionable")
+    elif case_id == "TC003":
+        require("rajesh kumar" in correction_text and "arjun mehta" in correction_text, "patient mismatch does not name both patients")
+    elif case_id == "TC005":
+        waiting: dict = next((step for step in trace if step.get("rule_id") == "waiting_period"), {})
+        require(waiting.get("status") == "FAIL" and str(waiting.get("evidence", {}).get("eligible_from", "")) in reason_text, "eligibility date missing from waiting-period reason")
+    elif case_id == "TC006":
+        statuses = {item.get("status") for item in ledger if item.get("kind") == "line_item"}
+        require({"ELIGIBLE", "EXCLUDED"} <= statuses and "EXCLUDED_PROCEDURE" in reason_codes, "line-level dental inclusion or exclusion missing")
+    elif case_id == "TC007":
+        require("PRE_AUTH_MISSING" in reason_codes and "approval record" in reason_text, "pre-authorization reason or resubmission action missing")
+    elif case_id == "TC008":
+        claimed = str(case["input"]["claimed_amount"])
+        limit = str(policy["coverage"]["per_claim_limit"])
+        require(claimed in reason_text and limit in reason_text, "claimed amount and per-claim limit are not both stated")
+    elif case_id == "TC009":
+        signal: dict = next((step for step in trace if step.get("rule_id") == "same_day_claims"), {})
+        require(result.get("decision") == "MANUAL_REVIEW" and signal.get("status") == "FLAG" and signal.get("evidence", {}).get("same_day_claim_count_including_current", 0) > signal.get("evidence", {}).get("limit", 999999), "same-day review signal missing")
+    elif case_id == "TC010":
+        pricing: dict = next((step for step in trace if step.get("rule_id") == "payable_amount"), {})
+        adjustments = {item.get("description") for item in ledger if item.get("kind") == "adjustment"}
+        require(pricing.get("evidence", {}).get("network_discount_paise", 0) > 0 and {"Network discount", "Member co-pay"} <= adjustments, "network discount and co-pay breakdown missing")
+    elif case_id == "TC011":
+        degraded = any(step.get("status") == "SKIPPED_COMPONENT_FAILURE" for step in trace)
+        require(degraded and result.get("confidence_score", 1) < normal_confidence and "manual review" in reason_text, "graceful degradation is not fully visible")
+    return failures
+
+
 def main() -> int:
-    policy = load_policy(ROOT / "policy_terms.json")
-    cases = load_cases(ROOT / "test_cases.json")
+    policy = load_policy(ROOT / "data" / "policy_terms.json")
+    cases = load_cases(ROOT / "tests" / "fixtures" / "test_cases.json")
     records = []
     for case in cases:
         options = {}
         if case.get("input", {}).get("simulate_component_failure"):
             options["optional_risk_enricher"] = _raise_optional_enrichment_failure
-        result = evaluate_claim(normalize_fixture(case), policy, **options)
+        payload = normalize_fixture(case)
+        result = adjudicate_handoff(
+            payload, policy, lambda claim, terms: evaluate_claim(claim, terms, **options)
+        )
         matched, issues = _matches(case["expected"], result)
         records.append(
             {
@@ -56,7 +108,17 @@ def main() -> int:
             }
         )
 
-    output_path = ROOT / "docs" / "eval_outputs.json"
+    normal_confidence = next(
+        record["output"]["confidence_score"] for record in records if record["case_id"] == "TC004"
+    )
+    cases_by_id = {case["case_id"]: case for case in cases}
+    for record in records:
+        behavior_failures = _behavior_checks(cases_by_id[record["case_id"]], policy, record["output"], normal_confidence)
+        record["behavior_checks"] = {"matched": not behavior_failures, "mismatches": behavior_failures}
+        record["mismatches"].extend(behavior_failures)
+        record["matched"] = not record["mismatches"]
+
+    output_path = ROOT / "docs" / "reports" / "evaluation-data.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(records, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -64,9 +126,9 @@ def main() -> int:
     lines = [
         "# Evaluation report",
         "",
-        f"Policy: `{policy['policy_id']}`. Cases: {len(records)}. Expected decision/amount/reason/confidence checks matched: **{passed}/{len(records)}**.",
+        f"Policy: `{policy['policy_id']}`. Cases: {len(records)}. Expected decision, amount, reason, confidence, and explicitly checked behavior matched: **{passed}/{len(records)}**.",
         "",
-        "These are structured fixtures with no actual image or PDF bytes. A pass establishes policy-pipeline behavior, not OCR accuracy. The complete machine-readable outputs are also in [eval_outputs.json](docs/eval_outputs.json).",
+        "These are structured fixtures with no actual image or PDF bytes. A pass establishes policy-pipeline behavior, not OCR accuracy. The complete machine-readable outputs are also in [evaluation-data.json](evaluation-data.json).",
         "",
         "| Case | Expected | Produced | Amount | Match |",
         "| --- | --- | --- | ---: | --- |",
@@ -97,13 +159,15 @@ def main() -> int:
             "",
             f"Match: **{'Yes' if record['matched'] else 'No'}**. "
             + ("No discrepancies." if record["matched"] else "; ".join(record["mismatches"])),
+            f"Explicit behavior checks: **{'Passed' if record['behavior_checks']['matched'] else 'Failed'}**."
+            + ("" if record["behavior_checks"]["matched"] else " " + "; ".join(record["behavior_checks"]["mismatches"])),
             "",
             "```json",
             json.dumps(record["output"], indent=2, ensure_ascii=False),
             "```",
             "",
         ]
-    (ROOT / "EVAL_REPORT.md").write_text("\n".join(lines), encoding="utf-8")
+    (ROOT / "docs" / "reports" / "evaluation.md").write_text("\n".join(lines), encoding="utf-8")
     print(f"{passed}/{len(records)} fixture expectations matched")
     return 0 if passed == len(records) else 1
 
