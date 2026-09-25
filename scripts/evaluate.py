@@ -85,8 +85,8 @@ def _behavior_checks(case: dict, policy: dict, result: dict, normal_confidence: 
 
 
 def main() -> int:
-    policy = load_policy(ROOT / "policy_terms.json")
-    cases = load_cases(ROOT / "test_cases.json")
+    policy = load_policy(ROOT / "data" / "policy_terms.json")
+    cases = load_cases(ROOT / "tests" / "fixtures" / "test_cases.json")
     records = []
     for case in cases:
         options = {}
@@ -118,7 +118,7 @@ def main() -> int:
         record["mismatches"].extend(behavior_failures)
         record["matched"] = not record["mismatches"]
 
-    output_path = ROOT / "docs" / "eval_outputs.json"
+    output_path = ROOT / "docs" / "reports" / "evaluation-data.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(records, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -128,7 +128,7 @@ def main() -> int:
         "",
         f"Policy: `{policy['policy_id']}`. Cases: {len(records)}. Expected decision, amount, reason, confidence, and explicitly checked behavior matched: **{passed}/{len(records)}**.",
         "",
-        "These are structured fixtures with no actual image or PDF bytes. A pass establishes policy-pipeline behavior, not OCR accuracy. The complete machine-readable outputs are also in [eval_outputs.json](docs/eval_outputs.json).",
+        "These are structured fixtures with no actual image or PDF bytes. A pass establishes policy-pipeline behavior, not OCR accuracy. The complete machine-readable outputs are also in [evaluation-data.json](evaluation-data.json).",
         "",
         "| Case | Expected | Produced | Amount | Match |",
         "| --- | --- | --- | ---: | --- |",
@@ -167,7 +167,7 @@ def main() -> int:
             "```",
             "",
         ]
-    (ROOT / "EVAL_REPORT.md").write_text("\n".join(lines), encoding="utf-8")
+    (ROOT / "docs" / "reports" / "evaluation.md").write_text("\n".join(lines), encoding="utf-8")
     print(f"{passed}/{len(records)} fixture expectations matched")
     return 0 if passed == len(records) else 1
 

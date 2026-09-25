@@ -195,7 +195,7 @@ def _load_claim(claim_id: str) -> dict[str, Any] | None:
 
 
 def _read_policy() -> dict[str, Any]:
-    with (PROJECT_ROOT / "policy_terms.json").open(encoding="utf-8") as file:
+    with (PROJECT_ROOT / "data" / "policy_terms.json").open(encoding="utf-8") as file:
         return json.load(file)
 
 

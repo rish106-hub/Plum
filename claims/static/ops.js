@@ -73,6 +73,36 @@
     return Object.entries(value).map(([key, item]) => `${friendlyLabel(key)}: ${humanValue(item, key)}`).join(". ");
   }
 
+  function appendFactValue(parent, value, keyName) {
+    if (Array.isArray(value)) {
+      if (!value.length) {
+        parent.textContent = "None recorded";
+        return;
+      }
+      const list = make("ul", "ops-fact-list");
+      value.forEach((item) => {
+        const listItem = make("li");
+        appendFactValue(listItem, item, keyName);
+        list.append(listItem);
+      });
+      parent.append(list);
+      return;
+    }
+    if (value && typeof value === "object") {
+      const facts = make("dl", "ops-fact-grid ops-fact-grid--nested");
+      Object.entries(value).forEach(([key, item]) => {
+        const row = make("div");
+        const valueNode = make("dd");
+        appendFactValue(valueNode, item, key);
+        row.append(make("dt", "", friendlyLabel(key)), valueNode);
+        facts.append(row);
+      });
+      parent.append(facts);
+      return;
+    }
+    parent.textContent = humanValue(value, keyName);
+  }
+
   function shortId(id) { return String(id || "").slice(0, 8).toUpperCase(); }
 
   function formatMoney(value) {
@@ -250,7 +280,9 @@
       const facts = make("dl", "ops-fact-grid");
       Object.entries(record.fields || {}).forEach(([key, value]) => {
         const item = make("div");
-        item.append(make("dt", "", friendlyLabel(key)), make("dd", "", humanValue(value, key)));
+        const valueNode = make("dd");
+        appendFactValue(valueNode, value, key);
+        item.append(make("dt", "", friendlyLabel(key)), valueNode);
         facts.append(item);
       });
       if (facts.children.length) card.append(facts);
@@ -295,7 +327,9 @@
         const facts = make("dl", "ops-structured-facts");
         Object.entries(typeof evidence === "object" && !Array.isArray(evidence) ? evidence : { fact: evidence }).forEach(([key, value]) => {
           const row = make("div");
-          row.append(make("dt", "", friendlyLabel(key)), make("dd", "", humanValue(value, key)));
+          const valueNode = make("dd");
+          appendFactValue(valueNode, value, key);
+          row.append(make("dt", "", friendlyLabel(key)), valueNode);
           facts.append(row);
         });
         details.append(facts);

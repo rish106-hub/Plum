@@ -10,7 +10,7 @@ from playwright.sync_api import Page, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_URL = os.getenv("PLUM_BASE_URL", "http://127.0.0.1:8000")
-SAMPLES = ROOT / "sample_documents"
+SAMPLES = ROOT / ".data" / "samples"
 SCREENSHOTS = Path(os.getenv("PLUM_SCREENSHOT_DIR", ROOT / "docs" / "screenshots"))
 
 

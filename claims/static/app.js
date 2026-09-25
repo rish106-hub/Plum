@@ -81,10 +81,42 @@
     Object.entries(source).forEach(([key, value]) => {
       if (["schema_version", "candidate_evidence"].includes(key)) return;
       const row = make("div");
-      row.append(make("dt", "", friendlyLabel(key)), make("dd", "", humanValue(value, key)));
+      const valueNode = make("dd");
+      appendFactValue(valueNode, value, key);
+      row.append(make("dt", "", friendlyLabel(key)), valueNode);
       facts.append(row);
     });
     if (facts.children.length) parent.append(facts);
+  }
+
+  function appendFactValue(parent, value, keyName) {
+    if (Array.isArray(value)) {
+      if (!value.length) {
+        parent.textContent = "None recorded";
+        return;
+      }
+      const list = make("ul", "readable-facts__list");
+      value.forEach((item) => {
+        const listItem = make("li");
+        appendFactValue(listItem, item, keyName);
+        list.append(listItem);
+      });
+      parent.append(list);
+      return;
+    }
+    if (value && typeof value === "object") {
+      const nested = make("dl", "readable-facts readable-facts--nested");
+      Object.entries(value).forEach(([key, item]) => {
+        const row = make("div");
+        const valueNode = make("dd");
+        appendFactValue(valueNode, item, key);
+        row.append(make("dt", "", friendlyLabel(key)), valueNode);
+        nested.append(row);
+      });
+      parent.append(nested);
+      return;
+    }
+    parent.textContent = humanValue(value, keyName);
   }
 
   function messageFromError(response) {

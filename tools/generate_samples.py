@@ -69,6 +69,6 @@ def create_samples(directory: Path) -> list[Path]:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("output", nargs="?", default="sample_documents")
+    parser.add_argument("output", nargs="?", default=".data/samples")
     for path in create_samples(Path(parser.parse_args().output)):
         print(path)
