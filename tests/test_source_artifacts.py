@@ -58,6 +58,10 @@ def test_original_case_matches_expected(case: dict, policy: dict) -> None:
         assert result["approved_amount"] == expected["approved_amount"]
     codes = {reason["code"] for reason in result["reasons"]}
     assert set(expected.get("rejection_reasons", [])) <= codes
+    if expected.get("rejection_reasons"):
+        # The primary reason, not merely one of several, is the expected one.
+        assert result["reasons"][0]["code"] == expected["rejection_reasons"][0]
+        assert result["trace"][-1]["evidence"]["primary_reason"] == expected["rejection_reasons"][0]
     confidence_rule = expected.get("confidence_score")
     if isinstance(confidence_rule, str):
         assert confidence_rule.startswith("above ")

@@ -14,9 +14,11 @@ from claims.fixtures import load_cases, normalize_fixture
 from claims.policy import (
     CANONICAL_SCHEMA,
     PolicyConfigurationError,
+    canonical_fingerprint,
     ensure_canonical,
     load_policy,
     normalize_policy,
+    policy_fingerprint,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,6 +45,8 @@ def test_canonical_config_is_fingerprinted_and_deterministic(policy: dict) -> No
     assert policy["source"]["sha256"] == hashlib.sha256(POLICY_PATH.read_bytes()).hexdigest()
     assert load_policy(POLICY_PATH) == policy
     assert ensure_canonical(policy) is policy
+    assert policy["canonical_sha256"] == canonical_fingerprint(policy) == policy_fingerprint(policy)
+    assert policy_fingerprint(json.loads(POLICY_PATH.read_text(encoding="utf-8"))) == normalize_policy(json.loads(POLICY_PATH.read_text(encoding="utf-8")))["canonical_sha256"]
 
 
 @pytest.mark.parametrize("path", [
@@ -144,7 +148,12 @@ def test_pre_auth_rules_are_parsed_from_original_strings_and_diagnostic_list(pol
     assert rules["mri_scan"]["amount_greater_than_paise"] == 1_000_000
     assert rules["ct_scan"]["amount_greater_than_paise"] == 1_000_000
     assert "opd_categories.diagnostic.pre_auth_threshold" in rules["mri_scan"]["source_paths"]
-    assert {"text": "mri", "provenance": "policy_text"} in rules["mri_scan"]["terms"]
+    mri = next(term for term in rules["mri_scan"]["terms"] if term["text"] == "mri")
+    assert (mri["provenance"], mri["context"]) == ("policy_text", "test_or_line")
+    pet = next(term for term in rules["pet_scan"]["terms"] if term["text"] == "pet")
+    assert pet["context"] == "test_or_line" and "scan" in pet["requires_any"]
+    assert next(term for term in rules["mri_scan"]["terms"] if term["text"] == "mri scan")["context"] == "service"
+    assert _audit(policy, "PRE_AUTH_MATCH_SCOPE")
     # Global list says PET always; the diagnostic threshold says above Rs 10,000.
     assert rules["pet_scan"]["amount_greater_than_paise"] is None
     assert _audit(policy, "PRE_AUTH_THRESHOLD_CONFLICT.pet_scan")
@@ -210,3 +219,83 @@ def test_obesity_exclusion_is_grounded_in_policy_text(policy: dict) -> None:
     obesity = next(entry for entry in policy["exclusions"] if entry["label"] == "Obesity and weight loss programs")
     assert {"text": "obesity", "provenance": "policy_text"} in obesity["terms"]
     assert {"text": "bariatric", "provenance": "interpretation"} in obesity["terms"]
+
+
+# --------------------------------------------------------------------------
+# Audit round 2
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("mutation", ["content", "audit", "fingerprint", "schema"])
+def test_tampered_canonical_policy_is_refused(policy: dict, mutation: str) -> None:
+    tampered = deepcopy(policy)
+    if mutation == "content":
+        tampered["categories"]["CONSULTATION"]["per_claim_ceiling_paise"] = 10**9
+    elif mutation == "audit":
+        tampered["audit"] = tampered["audit"][1:]
+    elif mutation == "fingerprint":
+        tampered["canonical_sha256"] = "0" * 64
+    else:
+        tampered["schema_version"] = "plum.canonical_policy.v0"
+    with pytest.raises(PolicyConfigurationError):
+        ensure_canonical(tampered)
+
+
+def _mutated(raw: dict, mutate: object) -> dict:
+    broken = deepcopy(raw)
+    mutate(broken)  # type: ignore[operator]
+    return broken
+
+
+@pytest.mark.parametrize("label, mutate", [
+    ("per_claim_limit 0", lambda p: p["coverage"].__setitem__("per_claim_limit", 0)),
+    ("per_claim_limit negative", lambda p: p["coverage"].__setitem__("per_claim_limit", -1)),
+    ("sub_limit 0", lambda p: p["opd_categories"]["dental"].__setitem__("sub_limit", 0)),
+    ("whitespace member name", lambda p: p["members"][0].__setitem__("name", "   ")),
+    ("garbage exclusion", lambda p: p["exclusions"]["conditions"].append("(foo)")),
+    ("blank exclusion", lambda p: p["exclusions"]["dental_exclusions"].append("  ")),
+    ("unbalanced exclusion", lambda p: p["opd_categories"]["vision"]["excluded_items"].append("LASIK (cosmetic")),
+    ("case-duplicate category", lambda p: p["opd_categories"].__setitem__("CONSULTATION", deepcopy(p["opd_categories"]["consultation"]))),
+    ("renewal typo", lambda p: p["policy_holder"].__setitem__("renewal_status", "ACTVE")),
+    ("renewal lowercase", lambda p: p["policy_holder"].__setitem__("renewal_status", "active")),
+    ("currency", lambda p: p["submission_rules"].__setitem__("currency", "USD")),
+])
+def test_schema_rejects_unusable_values(raw: dict, label: str, mutate: object) -> None:
+    with pytest.raises(PolicyConfigurationError):
+        normalize_policy(_mutated(raw, mutate))
+
+
+def test_known_non_active_renewal_status_is_accepted_and_blocks_payment(raw: dict) -> None:
+    lapsed = normalize_policy(_mutated(raw, lambda p: p["policy_holder"].__setitem__("renewal_status", "LAPSED")))
+    result = evaluate_claim(normalize_fixture(next(case for case in load_cases(FIXTURE_PATH) if case["case_id"] == "TC004")), lapsed)
+    assert (result["decision"], result["reasons"][0]["code"]) == ("REJECTED", "POLICY_NOT_ACTIVE")
+
+
+def test_requires_prescription_is_enforced_through_the_document_matrix(raw: dict, policy: dict) -> None:
+    for category, item in raw["opd_categories"].items():
+        entry = _audit(policy, f"PRESCRIPTION_REQUIREMENT.{category.upper()}")
+        assert entry, category
+        assert ("PRESCRIPTION" in policy["document_requirements"][category.upper()]["required"]) == item["requires_prescription"]
+    # A policy that flags a prescription the matrix forgot still gets it required.
+    edited = normalize_policy(_mutated(raw, lambda p: p["opd_categories"]["dental"].__setitem__("requires_prescription", True)))
+    assert "PRESCRIPTION" in edited["document_requirements"]["DENTAL"]["required"]
+    assert "PRESCRIPTION" not in edited["document_requirements"]["DENTAL"]["optional"]
+    assert _audit(edited, "PRESCRIPTION_REQUIREMENT.DENTAL")[0]["kind"] == "conflict_resolution"
+
+
+def test_every_supplied_field_is_used_validated_or_audited(policy: dict) -> None:
+    informational = {entry["id"] for entry in policy["audit"] if entry["kind"] == "informational"}
+    assert "INFORMATIONAL_FIELD.policy_holder.employee_count" in informational
+    assert _audit(policy, "SUBMISSION_CURRENCY") and _audit(policy, "FRAUD_THRESHOLD_ROLES")
+    assert _audit(policy, "CATEGORY_SUB_LIMIT_RULE")[0]["kind"] == "conflict_resolution"
+    assert _audit(policy, "BENEFIT_ORDER")
+
+
+def test_covered_item_abbreviations_are_labelled_interpretation(policy: dict) -> None:
+    root_canal = policy["categories"]["DENTAL"]["covered_items"][0]
+    provenance = {term["text"]: term["provenance"] for term in root_canal["terms"]}
+    assert provenance["root canal"] == "policy_text"
+    assert provenance["rct"] == "interpretation"
+    assert _audit(policy, "COVERED_ITEM_TERMS.DENTAL.Root Canal Treatment")
+    assert policy["categories"]["CONSULTATION"]["service_scope"] == "matching_lines"
+    assert policy["categories"]["DENTAL"]["service_scope"] == "all_eligible_lines"

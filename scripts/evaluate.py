@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
+import re
+from decimal import Decimal
 from pathlib import Path
 
 from claims.agent_pipeline import adjudicate_handoff
 from claims.core import evaluate_claim
 from claims.fixtures import load_cases, load_policy, normalize_fixture
+from claims.policy import audit_fingerprint
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "data" / "policy_terms.json"
@@ -32,16 +36,31 @@ def _matches(expected: dict, result: dict) -> tuple[bool, list[str]]:
         issues.append(
             f"approved amount {result['approved_amount']!r} != {expected['approved_amount']!r}"
         )
-    wanted_codes = set(expected.get("rejection_reasons", []))
+    wanted = list(expected.get("rejection_reasons", []))
     actual_codes = {reason["code"] for reason in result["reasons"]}
-    if not wanted_codes.issubset(actual_codes):
-        issues.append(f"missing reason code(s): {sorted(wanted_codes - actual_codes)}")
+    if not set(wanted).issubset(actual_codes):
+        issues.append(f"missing reason code(s): {sorted(set(wanted) - actual_codes)}")
+    if wanted:
+        outcome: dict = next((step for step in reversed(result.get("trace") or []) if step.get("rule_id") == "outcome"), {})
+        primary = (outcome.get("evidence") or {}).get("primary_reason")
+        if primary != wanted[0]:
+            issues.append(f"primary reason {primary!r} != first expected reason {wanted[0]!r}")
+        if not result["reasons"] or result["reasons"][0].get("code") != wanted[0]:
+            issues.append(f"first listed reason is not the primary expected reason {wanted[0]!r}")
     confidence_rule = expected.get("confidence_score")
     if isinstance(confidence_rule, str) and confidence_rule.startswith("above "):
         threshold = float(confidence_rule.removeprefix("above "))
         if result["confidence_score"] <= threshold:
             issues.append(f"confidence {result['confidence_score']} is not above {threshold}")
     return not issues, issues
+
+
+def _rupee_amounts(text: str) -> set[Decimal]:
+    """Every rupee amount written in a message (₹7,500 / ₹7500 / Rs 7,500.00)."""
+    return {
+        Decimal(match.replace(",", ""))
+        for match in re.findall(r"(?:₹|rs\.?\s*|inr\s*)(\d[\d,]*(?:\.\d+)?)", text, flags=re.IGNORECASE)
+    }
 
 
 def _behavior_checks(case: dict, raw_policy: dict, result: dict, normal_confidence: float) -> list[str]:
@@ -83,9 +102,11 @@ def _behavior_checks(case: dict, raw_policy: dict, result: dict, normal_confiden
         require("PRE_AUTH_MISSING" in reason_codes and "approval record" in reason_text, "pre-authorization reason or resubmission action missing")
         require("resubmit" in reason_text, "resubmission instruction missing")
     elif case_id == "TC008":
-        claimed = str(case["input"]["claimed_amount"])
-        limit = str(raw_policy["coverage"]["per_claim_limit"])
-        require(claimed in reason_text and limit in reason_text, "claimed amount and per-claim limit are not both stated")
+        message = next((str(item.get("message", "")) for item in result.get("reasons", []) if item.get("code") == "PER_CLAIM_EXCEEDED"), "")
+        amounts = _rupee_amounts(message)
+        claimed = Decimal(str(case["input"]["claimed_amount"]))
+        limit = Decimal(str(raw_policy["coverage"]["per_claim_limit"]))
+        require(claimed in amounts and limit in amounts, "the PER_CLAIM_EXCEEDED message does not state both the claimed amount and the per-claim limit as rupee amounts")
     elif case_id == "TC009":
         signal: dict = next((step for step in trace if step.get("rule_id") == "same_day_claims"), {})
         require(result.get("decision") == "MANUAL_REVIEW" and signal.get("status") == "FLAG" and signal.get("evidence", {}).get("same_day_claim_count_including_current", 0) > signal.get("evidence", {}).get("limit", 999999), "same-day review signal missing")
@@ -103,8 +124,11 @@ def _behavior_checks(case: dict, raw_policy: dict, result: dict, normal_confiden
             "co-pay was not computed on the post-discount amount",
         )
     elif case_id == "TC011":
+        # ``normal_confidence`` is TC011's own confidence with the component working.
         degraded = any(step.get("status") == "SKIPPED_COMPONENT_FAILURE" for step in trace)
+        outcome: dict = next((step for step in trace if step.get("rule_id") == "outcome"), {})
         require(degraded and result.get("confidence_score", 1) < normal_confidence and "manual review" in reason_text, "graceful degradation is not fully visible")
+        require((outcome.get("evidence") or {}).get("post_decision_review_recommended") is True, "the decision does not carry the review recommendation")
     return failures
 
 
@@ -120,10 +144,14 @@ def main() -> int:
     if fingerprints["policy_sha256"] != policy["source"]["sha256"]:
         raise RuntimeError("policy file changed while it was being evaluated")
     records = []
+    baselines: dict[str, float] = {}
     for case in cases:
         options = {}
         if case.get("input", {}).get("simulate_component_failure"):
             options["optional_risk_enricher"] = _raise_optional_enrichment_failure
+            # The same claim with every component working is the "normal full-pipeline" comparison.
+            baseline = adjudicate_handoff(normalize_fixture(copy.deepcopy(case)), policy, evaluate_claim)
+            baselines[case["case_id"]] = baseline["confidence_score"]
         payload = normalize_fixture(case)
         result = adjudicate_handoff(
             payload, policy, lambda claim, terms: evaluate_claim(claim, terms, **options)
@@ -140,11 +168,11 @@ def main() -> int:
             }
         )
 
-    normal_confidence = next(
-        record["output"]["confidence_score"] for record in records if record["case_id"] == "TC004"
-    )
     cases_by_id = {case["case_id"]: case for case in cases}
     for record in records:
+        normal_confidence = baselines.get(record["case_id"], 1.0)
+        if record["case_id"] in baselines:
+            record["no_failure_baseline_confidence"] = normal_confidence
         behavior_failures = _behavior_checks(cases_by_id[record["case_id"]], raw_policy, record["output"], normal_confidence)
         record["behavior_checks"] = {"matched": not behavior_failures, "mismatches": behavior_failures}
         record["mismatches"].extend(behavior_failures)
@@ -182,15 +210,33 @@ def main() -> int:
         "",
         "- The engine reads only the canonical policy produced by `claims.policy` from the unmodified policy file; every interpretation, merge, and conflict resolution is listed in the canonical config's `audit` array and referenced from the trace.",
         "- Per-claim ceiling: max(global `per_claim_limit`, category `sub_limit`), tested on the eligible amount after excluded lines are removed. A matched pre-authorization rule governs amounts above the ceiling instead.",
-        "- Aggregate limits (annual OPD, sum insured, family floater, annual sessions) apply when utilisation accompanies the claim; otherwise they are `NOT_EVALUATED`, disclosed as advisory reasons on payable outcomes, and lower confidence.",
-        "- Fixture payloads without a submission timestamp retain `NOT_EVALUATED`; uploaded claims use their persisted creation date for the 30-day deadline check.",
-        "- The confidence values are a heuristic evidence-completeness rubric, not calibrated probabilities. Deductions apply only for unknowns material to the outcome reached. TC011's simulated optional failure lowers confidence and is recorded in the trace.",
+        "- Category `sub_limit`: an annual per-member cap on the net benefit (after discount and co-pay) for the category's own service lines; for consultation that is the consultation-fee lines, so tests and medicines billed with a consultation are not capped by it. The claim's own share is always checked; prior category usage (`category_ytd_claims_amount`) is applied when supplied.",
+        "- Aggregate limits (category sub-limit history, annual OPD, sum insured, family floater, annual sessions) are applied to the net payable after network discount and co-pay when utilisation accompanies the claim; otherwise they are `NOT_EVALUATED`, disclosed as advisory reasons on payable outcomes, and lower confidence.",
+        "- The supplied cases carry no submission date, so the 30-day submission deadline is `NOT_EVALUATED` for them. Web intake stamps a server-side `submission_date` at intake (the real clock; `PLUM_DEMO_CLOCK` only when `PLUM_ENV` is development or test, traced as `clock/demo_clock`) and the deadline is checked against it.",
+        "- The confidence values are a heuristic evidence-completeness rubric, not calibrated probabilities. Deductions apply only for unknowns material to the outcome reached. TC011's simulated failure of the risk-signal enrichment component (which runs by default) lowers confidence below the same claim's no-failure confidence, is recorded in the trace, and marks the decision `post_decision_review_recommended`.",
         "- Provider accuracy, handwriting, multilingual extraction, and image quality require a separately labelled image/PDF set. The fixture results make no claim about those capabilities.",
         "",
         "## Complete outputs and traces",
         "",
     ]
+    audit = policy["audit"]
+    lines += [
+        "### Normalizer audit trail",
+        "",
+        f"Every decision trace carries the same {len(audit)}-entry audit trail in its `policy_source` step "
+        f"(audit sha256 `{audit_fingerprint(audit)}`). It is listed once here and elided from the case outputs below; "
+        "`evaluation-data.json` keeps it in full.",
+        "",
+        "| Id | Kind | Description |",
+        "| --- | --- | --- |",
+        *(f"| `{entry['id']}` | {entry['kind']} | {entry['description'].replace('|', '/')} |" for entry in audit),
+        "",
+    ]
     for record in records:
+        shown = copy.deepcopy(record["output"])
+        for step in shown.get("trace", []):
+            if step.get("rule_id") == "policy_source" and "audit" in step.get("evidence", {}):
+                step["evidence"]["audit"] = f"<{len(audit)} entries; see 'Normalizer audit trail' above>"
         lines += [
             f"### {record['case_id']}: {record['case_name']}",
             "",
@@ -199,8 +245,9 @@ def main() -> int:
             f"Explicit behavior checks: **{'Passed' if record['behavior_checks']['matched'] else 'Failed'}**."
             + ("" if record["behavior_checks"]["matched"] else " " + "; ".join(record["behavior_checks"]["mismatches"])),
             "",
+            *( [f"TC011 confidence with the component working: {record['no_failure_baseline_confidence']}."] if "no_failure_baseline_confidence" in record else []),
             "```json",
-            json.dumps(record["output"], indent=2, ensure_ascii=False),
+            json.dumps(shown, indent=2, ensure_ascii=False),
             "```",
             "",
         ]

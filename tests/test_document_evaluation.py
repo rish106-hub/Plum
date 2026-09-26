@@ -69,7 +69,7 @@ def test_corpus_files_are_image_only_with_real_formats(corpus: list[dict]) -> No
                 assert all(not page.get_text().strip() for page in pdf), doc["file"]
         else:
             with Image.open(io.BytesIO(doc["data"])) as image:
-                assert Image.MIME[image.format] == doc["mime_type"]
+                assert Image.MIME.get(image.format or "") == doc["mime_type"]
 
 
 def test_load_corpus_rejects_a_file_that_drifted_from_its_label(tmp_path: Path) -> None:
@@ -144,7 +144,7 @@ def test_mandatory_ocr_failure_never_reaches_a_financial_decision(corpus: list[d
 
 def test_optional_gemini_cannot_clear_a_mandatory_ocr_failure(corpus: list[dict]) -> None:
     photo = next(doc for doc in corpus if doc["id"] == "bill_phone_photo_skewed")
-    failed = process_uploads([{"file_name": photo["file"], "data": photo["data"]}], "DENTAL", "Rajesh Kumar", POLICY, provider=_FailingOCR())  # type: ignore[arg-type]
+    failed = process_uploads([{"file_name": photo["file"], "data": photo["data"]}], "DENTAL", "Rajesh Kumar", POLICY, provider=_FailingOCR())
     handoff = resolve_document_handoff(
         failed, {"UPLOAD-1": {"data": photo["data"], "mime_type": photo["mime_type"]}}, failed["ocr_text_by_file_id"],
         "DENTAL", "Rajesh Kumar", ["Rajesh Kumar"], POLICY, evaluate_documents._fabricated_gemini,

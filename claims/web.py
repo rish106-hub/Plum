@@ -12,10 +12,10 @@ import sqlite3
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timezone
-from decimal import Decimal, InvalidOperation
+from datetime import date, datetime, timedelta, timezone, tzinfo
 from pathlib import Path
 from typing import Annotated, Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, Body, FastAPI, File, Form, HTTPException, UploadFile
@@ -30,8 +30,16 @@ from claims.agent_pipeline import (
     resolve_document_handoff,
 )
 from claims.ai_review import resolve_evidence
-from claims.core import evaluate_claim
-from claims.documents import process_uploads
+from claims.core import claim_provider, evaluate_claim
+from claims.documents import (
+    BILL_TYPES,
+    normal_name,
+    parse_document_date,
+    process_uploads,
+    sniff_media_type,
+)
+from claims.money import has_subpaise_precision, to_paise, to_rupees
+from claims.policy import PolicyConfigurationError, load_policy, policy_fingerprint
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PACKAGE_ROOT = Path(__file__).resolve().parent
@@ -51,7 +59,27 @@ CATEGORIES = (
 
 
 DEMO_CLOCK_ENVIRONMENTS = frozenset({"development", "test"})
+# The policy is issued and administered in India, so a claim's submission date is
+# the calendar date in this timezone, not the UTC date of the server clock.
+DEFAULT_POLICY_TIMEZONE = "Asia/Kolkata"
+_IST_FALLBACK = timezone(timedelta(hours=5, minutes=30), "IST")
 logger = logging.getLogger("claims.web")
+
+
+def _policy_timezone() -> tzinfo:
+    """Timezone for submission dates: PLUM_POLICY_TIMEZONE (IANA name), default Asia/Kolkata."""
+    name = os.getenv("PLUM_POLICY_TIMEZONE", "").strip() or DEFAULT_POLICY_TIMEZONE
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        if name == DEFAULT_POLICY_TIMEZONE:
+            return _IST_FALLBACK  # host without a tz database; India observes no DST
+        raise RuntimeError(f"PLUM_POLICY_TIMEZONE={name!r} is not a known IANA timezone name") from exc
+
+
+def _local_date(moment: datetime) -> str:
+    """Calendar date of an instant in the policy timezone."""
+    return moment.astimezone(_policy_timezone()).date().isoformat()
 
 
 def _now() -> str:
@@ -64,15 +92,22 @@ def _environment() -> str:
     return os.getenv("PLUM_ENV", "production").strip().casefold() or "production"
 
 
-def _parse_demo_clock(raw: str) -> datetime:
+def _parse_demo_clock(raw: str) -> tuple[datetime, str]:
+    """Return the demo instant (UTC) and the submission date it stands for.
+
+    A bare date is used exactly as given. A datetime without an offset is read
+    in the policy timezone; one with an offset is converted to it.
+    """
     value = raw.strip()
     try:
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
-            return datetime.combine(date.fromisoformat(value), datetime.min.time(), tzinfo=timezone.utc)
+            given = date.fromisoformat(value)
+            return datetime.combine(given, datetime.min.time(), tzinfo=timezone.utc), given.isoformat()
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:
         raise RuntimeError("PLUM_DEMO_CLOCK must be an ISO-8601 date (YYYY-MM-DD) or datetime") from exc
-    return (parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
+    aware = parsed if parsed.tzinfo else parsed.replace(tzinfo=_policy_timezone())
+    return aware.astimezone(timezone.utc), _local_date(aware)
 
 
 def _demo_clock() -> dict[str, Any] | None:
@@ -93,11 +128,16 @@ def _demo_clock() -> dict[str, Any] | None:
             environment,
         )
         return None
-    return {"source": "PLUM_DEMO_CLOCK", "value": raw, "applied_at": _parse_demo_clock(raw).isoformat(), "environment": environment}
+    applied_at, submission_date = _parse_demo_clock(raw)
+    return {
+        "source": "PLUM_DEMO_CLOCK", "value": raw, "applied_at": applied_at.isoformat(),
+        "submission_date": submission_date, "environment": environment,
+    }
 
 
 def _check_clock_configuration() -> None:
-    """Refuse to start when a demo clock would reach a non-development environment."""
+    """Refuse to start on an unknown policy timezone, or a demo clock outside development."""
+    _policy_timezone()
     raw = os.getenv("PLUM_DEMO_CLOCK", "").strip()
     if not raw:
         return
@@ -111,17 +151,24 @@ def _check_clock_configuration() -> None:
     logger.warning(
         "DEMO CLOCK ACTIVE: claims are stamped with submission time %s from PLUM_DEMO_CLOCK (PLUM_ENV=%s). "
         "Every affected claim records this in its decision trace.",
-        _parse_demo_clock(raw).isoformat(),
+        _parse_demo_clock(raw)[0].isoformat(),
         environment,
     )
 
 
 def _submission_clock() -> tuple[str, dict[str, Any] | None]:
-    """The adjudication-relevant submission time and, when overridden, its provenance."""
+    """The adjudication-relevant submission time (UTC ISO) and, when overridden, its provenance."""
     clock = _demo_clock()
     if clock is None:
         return _now(), None
     return clock["applied_at"], clock
+
+
+def _submission_date(submitted_at: str, clock: dict[str, Any] | None) -> str:
+    """Submission calendar date: the demo date as given, else the real instant in the policy timezone."""
+    if clock is not None:
+        return str(clock.get("submission_date") or str(clock["applied_at"])[:10])
+    return _local_date(datetime.fromisoformat(submitted_at))
 
 
 def _clock_trace(clock: dict[str, Any]) -> dict[str, Any]:
@@ -129,7 +176,7 @@ def _clock_trace(clock: dict[str, Any]) -> dict[str, Any]:
         "stage": "clock",
         "rule_id": "demo_clock",
         "status": "OVERRIDDEN",
-        "evidence": {"source": clock["source"], "value": clock["value"], "submission_date": str(clock["applied_at"])[:10], "environment": clock["environment"]},
+        "evidence": {"source": clock["source"], "value": clock["value"], "submission_date": str(clock.get("submission_date") or str(clock["applied_at"])[:10]), "environment": clock["environment"]},
         "details": "Submission date came from the development/test demo clock, not the real clock. This decision is not a production adjudication.",
     }
 
@@ -206,6 +253,7 @@ def init_db() -> None:
             ("decision", "TEXT"),
             ("approved_amount_paise", "INTEGER NOT NULL DEFAULT 0"),
             ("bill_fingerprints_json", "TEXT NOT NULL DEFAULT '[]'"),
+            ("adjudicated", "INTEGER NOT NULL DEFAULT 0"),
         ):
             if name not in columns:
                 connection.execute(f"ALTER TABLE claims ADD COLUMN {name} {definition}")
@@ -213,6 +261,12 @@ def init_db() -> None:
         # a bounded lookup instead of reparsing every saved claim on each request.
         connection.execute("CREATE INDEX IF NOT EXISTS idx_claims_member_treatment ON claims(member_id, treatment_date, state)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_documents_hash_claim ON documents(sha256, claim_id)")
+        # Earlier versions did not record whether a manual-review result came from the
+        # policy engine; the engine always emits a policy_source trace step.
+        connection.execute(
+            "UPDATE claims SET adjudicated=1 WHERE adjudicated=0 AND state='MANUAL_REVIEW' "
+            "AND result_json LIKE '%\"rule_id\": \"policy_source\"%'"
+        )
         # Backfill rows created by earlier local app versions.
         for row in connection.execute("SELECT id, request_json, result_json FROM claims WHERE member_id IS NULL OR treatment_date IS NULL OR decision IS NULL"):
             request_data = json.loads(row["request_json"])
@@ -243,14 +297,17 @@ def _set_state(
     result: dict[str, Any] | None = None,
     error: str | None = None,
     detail: dict[str, Any] | None = None,
+    adjudicated: bool | None = None,
 ) -> None:
+    """Persist a state change. ``adjudicated`` marks a result produced by the policy engine."""
     with _connect() as connection:
         if result is not None:
             row = connection.execute("SELECT request_json FROM claims WHERE id=?", (claim_id,)).fetchone()
             if row is not None:
                 result = _with_clock_trace(json.loads(row["request_json"]), result)
         connection.execute(
-            "UPDATE claims SET state=?, updated_at=?, result_json=?, error_message=?, decision=?, approved_amount_paise=? WHERE id=?",
+            "UPDATE claims SET state=?, updated_at=?, result_json=?, error_message=?, decision=?, approved_amount_paise=?, "
+            "adjudicated=COALESCE(?, adjudicated) WHERE id=?",
             (
                 state,
                 _now(),
@@ -258,6 +315,7 @@ def _set_state(
                 error,
                 result.get("decision") if result else None,
                 int(result.get("approved_amount_paise") or 0) if result else 0,
+                None if adjudicated is None else int(adjudicated),
                 claim_id,
             ),
         )
@@ -293,29 +351,54 @@ def _load_claim(claim_id: str) -> dict[str, Any] | None:
     }
 
 
+POLICY_PATH = PROJECT_ROOT / "data" / "policy_terms.json"
+
+
 def _read_policy() -> dict[str, Any]:
     """Validate and normalize the supplied policy; raises PolicyConfigurationError."""
-    from claims.policy import load_policy
+    return load_policy(POLICY_PATH)
 
-    return load_policy(PROJECT_ROOT / "data" / "policy_terms.json")
+
+def _check_policy_configuration() -> None:
+    """Refuse to start on a policy that cannot be adjudicated safely."""
+    try:
+        _read_policy()
+    except PolicyConfigurationError as exc:
+        raise RuntimeError(f"Refusing to start: {exc} (policy file {POLICY_PATH})") from exc
+
+
+def _policy_fingerprint(policy: dict[str, Any]) -> str:
+    """The loader's single policy fingerprint; the same value the decision trace reports."""
+    return policy_fingerprint(policy)
+
+
+def _legacy_policy_sha256(policy: dict[str, Any]) -> str:
+    """Hash stored by earlier app versions (``request.policy_sha256``); read-only compatibility."""
+    return hashlib.sha256(json.dumps(policy, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _member(policy: dict[str, Any], member_id: str) -> dict[str, Any] | None:
+    return next((item for item in policy.get("members", []) if item.get("member_id") == member_id), None)
 
 
 def _member_name(policy: dict[str, Any], member_id: str) -> str:
-    for member in policy.get("members", []):
-        if member.get("member_id") == member_id:
-            return str(member.get("name", ""))
-    return ""
+    member = _member(policy, member_id)
+    return str(member.get("name", "")) if member else ""
 
 
-def _covered_member_names(policy: dict[str, Any], member_id: str) -> list[str]:
-    members = policy.get("members", [])
-    member = next((item for item in members if item.get("member_id") == member_id), None)
+def _family_member_ids(policy: dict[str, Any], member_id: str) -> list[str]:
+    """The benefit pool a member draws on: the primary member plus their resolved dependents."""
+    member = _member(policy, member_id)
     if member is None:
         return []
     owner_id = str(member.get("primary_member_id") or member_id)
-    owner = next((item for item in members if item.get("member_id") == owner_id), member)
-    covered_ids = {owner_id, *[str(value) for value in owner.get("dependents", [])]}
-    return [str(item.get("name")) for item in members if item.get("member_id") in covered_ids and item.get("name")]
+    owner = _member(policy, owner_id) or member
+    return sorted({owner_id, *[str(value) for value in owner.get("dependents", [])]})
+
+
+def _covered_member_names(policy: dict[str, Any], member_id: str) -> list[str]:
+    covered_ids = set(_family_member_ids(policy, member_id))
+    return [str(item.get("name")) for item in policy.get("members", []) if item.get("member_id") in covered_ids and item.get("name")]
 
 
 def _gemini_opt_in() -> bool:
@@ -327,18 +410,6 @@ def _gemini_provider_failure(result: dict[str, Any]) -> bool:
         marker in str((result.get("trace") or {}).get("reason") or "")
         for marker in ("timeout", "connection_error", "provider_error", "rate_limited", "provider_unavailable", "provider_not_configured", "provider_dependency_unavailable", "resolver_failure", "candidate_application_failed")
     )
-
-
-def _media_type(data: bytes) -> str | None:
-    if data.startswith(b"%PDF-"):
-        return "application/pdf"
-    if data.startswith(b"\xff\xd8\xff"):
-        return "image/jpeg"
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "image/png"
-    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
-        return "image/webp"
-    return None
 
 
 def _safe_name(name: str | None) -> str:
@@ -356,7 +427,7 @@ async def _read_upload(upload: UploadFile) -> tuple[str, str, bytes]:
         raise _input_error(f"{_safe_name(upload.filename)} is empty. Upload a PDF or clear image.")
     if len(data) > MAX_FILE_BYTES:
         raise _input_error(f"{_safe_name(upload.filename)} exceeds the 10 MB file limit.")
-    actual_type = _media_type(data)
+    actual_type = sniff_media_type(data)
     if actual_type not in ALLOWED_TYPES:
         raise _input_error(f"{_safe_name(upload.filename)} is not a supported PDF, JPEG, PNG, or WebP file.")
     return _safe_name(upload.filename), actual_type, data
@@ -427,83 +498,127 @@ def _provider_review_result(issues: list[dict[str, Any]], metrics: dict[str, Any
     }
 
 
-def _member_claim_history(
-    claim_id: str, request_data: dict[str, Any], policy: dict[str, Any]
-) -> tuple[list[dict[str, str]], int, int]:
-    """Read family submission risk, benefit use, and member session history."""
+# A claim counts toward the member's claim history (same-day and monthly
+# frequency limits) only once it has been submitted as a valid claim: either the
+# policy engine adjudicated it (DECIDED, or MANUAL_REVIEW with adjudicated=1), or a
+# reviewer recorded a final decision. Uploads stopped at the document gate
+# (DOCUMENT_CORRECTION_REQUIRED), provider outages and duplicate-bill holds awaiting
+# review, queued/processing jobs, and failed jobs never count: they are attempts to
+# submit, not claims. Rejected claims do count; they were real submissions.
+COUNTED_CLAIM_SQL = "(state='DECIDED' OR (state='MANUAL_REVIEW' AND adjudicated=1))"
+# Benefit usage is the sum of approved amounts on decided payable claims. The
+# prototype has no insurer remittance feed, so adjudicated approvals stand in for
+# paid reimbursements, and the trace labels the figure's source accordingly.
+PAYABLE_CLAIM_SQL = "(state='DECIDED' AND decision IN ('APPROVED', 'PARTIAL') AND approved_amount_paise>0)"
+
+
+def _member_claim_history(claim_id: str, request_data: dict[str, Any], policy: dict[str, Any]) -> dict[str, Any]:
+    """Family claim frequency, benefit usage, and session history for the policy year."""
     member_id = str(request_data["member_id"])
-    member = next((item for item in policy.get("members", []) if item.get("member_id") == member_id), None)
-    if member is None:
-        return [], 0, 0
-    owner_id = str(member.get("primary_member_id") or member_id)
-    owner = next((item for item in policy.get("members", []) if item.get("member_id") == owner_id), member)
-    covered_ids = {owner_id, *[str(value) for value in owner.get("dependents", [])]}
+    category = str(request_data.get("claim_category") or "")
+    family_ids = _family_member_ids(policy, member_id)
+    usage: dict[str, Any] = {
+        "claims_history": [], "family_approved_paise": 0, "member_category_approved_paise": 0, "prior_sessions": 0,
+        # Exact per-member usage of the category sub-limit, summed from earlier decisions'
+        # own trace. None when any earlier payable decision predates that trace step.
+        "member_category_sub_limit_paise": 0,
+    }
+    if not family_ids:
+        return usage
     start = str(policy.get("policy_holder", {}).get("policy_start_date", "0001-01-01"))
     end = str(policy.get("policy_holder", {}).get("policy_end_date", "9999-12-31"))
+    marks = ",".join("?" for _ in family_ids)
     with _connect() as connection:
         rows = connection.execute(
-            """SELECT id, treatment_date, state, decision, approved_amount_paise
-               FROM claims WHERE id<>? AND member_id IN ({}) AND treatment_date BETWEEN ? AND ?
-               ORDER BY created_at""".format(",".join("?" for _ in covered_ids)),
-            (claim_id, *sorted(covered_ids), start, end),
+            f"""SELECT id, member_id, treatment_date, request_json, result_json, approved_amount_paise,
+                       {PAYABLE_CLAIM_SQL} AS payable
+                FROM claims WHERE id<>? AND member_id IN ({marks}) AND treatment_date BETWEEN ? AND ?
+                  AND {COUNTED_CLAIM_SQL}
+                ORDER BY created_at""",
+            (claim_id, *family_ids, start, end),
         ).fetchall()
-    history = [{"date": row["treatment_date"]} for row in rows if row["treatment_date"]]
-    # The prototype has adjudication records but no insurer remittance feed.
-    # Approved amounts are therefore the best available consumed-benefit proxy;
-    # the trace labels them as adjudicated amounts rather than paid reimbursements.
-    marks = ",".join("?" for _ in covered_ids)
-    with _connect() as connection:
-        benefit_rows = connection.execute(
-            f"""SELECT approved_amount_paise FROM claims WHERE id<>? AND member_id IN ({marks})
-                 AND treatment_date BETWEEN ? AND ? AND state='DECIDED'
-                 AND decision IN ('APPROVED', 'PARTIAL')""",
-            (claim_id, *sorted(covered_ids), start, end),
-        ).fetchall()
-    approved_ytd_paise = sum(int(row["approved_amount_paise"] or 0) for row in benefit_rows)
-    prior_sessions = 0
-    with _connect() as connection:
-        session_rows = connection.execute(
-            """SELECT request_json, result_json FROM claims
-               WHERE id<>? AND member_id=? AND treatment_date BETWEEN ? AND ?
-                 AND state='DECIDED' AND decision IN ('APPROVED', 'PARTIAL')""",
-            (claim_id, member_id, start, end),
-        ).fetchall()
-    for row in session_rows:
+    for row in rows:
         try:
-            request = json.loads(row["request_json"])
-            result = json.loads(row["result_json"])
+            prior_request = json.loads(row["request_json"])
+            prior_result = json.loads(row["result_json"] or "{}")
         except (TypeError, json.JSONDecodeError):
+            prior_request, prior_result = {}, {}
+        # Amount and provider feed the risk-signal enrichment (accumulated value, repeat billing).
+        usage["claims_history"].append({
+            "claim_id": row["id"], "date": row["treatment_date"],
+            "amount": prior_request.get("claimed_amount"), "provider": prior_result.get("provider") or None,
+        })
+        if not row["payable"]:
             continue
-        if request.get("claim_category") != "ALTERNATIVE_MEDICINE":
+        approved = int(row["approved_amount_paise"] or 0)
+        usage["family_approved_paise"] += approved
+        if row["member_id"] != member_id or prior_request.get("claim_category") != category:
             continue
-        for step in result.get("trace", []):
-            if step.get("rule_id") == "max_sessions":
-                prior_sessions += int((step.get("evidence") or {}).get("current_sessions") or 0)
-                break
-    return history, approved_ytd_paise, prior_sessions
+        usage["member_category_approved_paise"] += approved
+        sub_limit_step = next((step for step in prior_result.get("trace", []) if step.get("rule_id") == "category_sub_limit"), None)
+        counted = (sub_limit_step or {}).get("evidence", {}).get("counted_against_sub_limit_paise")
+        if usage["member_category_sub_limit_paise"] is not None:
+            usage["member_category_sub_limit_paise"] = None if counted is None else usage["member_category_sub_limit_paise"] + int(counted)
+        if category == "ALTERNATIVE_MEDICINE":
+            for step in prior_result.get("trace", []):
+                if step.get("rule_id") == "max_sessions":
+                    usage["prior_sessions"] += int((step.get("evidence") or {}).get("current_sessions") or 0)
+                    break
+    return usage
 
 
-def _bill_fingerprints(request_data: dict[str, Any], inspected_documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Stable evidence keys for reprinted bills; all four facts must be present."""
+def _normal_token(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
+
+
+def _bill_fingerprints(inspected_documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Document-derived keys that identify the same bill across re-renders and resubmissions.
+
+    Only facts printed on the bill are used, never the member-typed treatment date,
+    so changing the claim form cannot make a paid bill look new. A numbered bill is
+    keyed by bill number, provider, and total (plus its printed date when readable);
+    an unnumbered bill needs provider, total, printed date, and patient name.
+    """
     fingerprints: list[dict[str, Any]] = []
     for document in inspected_documents:
-        if not str(document.get("actual_type") or document.get("doc_type") or "").upper().endswith("BILL"):
+        if str(document.get("actual_type") or document.get("doc_type") or "").upper() not in BILL_TYPES:
             continue
         fields = document.get("content") or document.get("fields") or {}
-        bill_number = re.sub(r"[^a-z0-9]", "", str(fields.get("bill_number") or "").casefold())
-        provider = re.sub(r"[^a-z0-9]", "", str(fields.get("hospital_name") or "").casefold())
-        total = fields.get("total")
-        if not bill_number or not provider or total is None:
-            continue
+        provider = _normal_token(fields.get("hospital_name"))
         try:
-            total_paise = int(Decimal(str(total)) * 100)
-        except (InvalidOperation, ValueError):
+            total_paise = to_paise(fields.get("total"))
+        except ValueError:
             continue
-        fingerprints.append({
-            "bill_number": bill_number, "provider": provider, "total_paise": total_paise,
-            "treatment_date": str(request_data.get("treatment_date") or ""),
-        })
+        if not provider or total_paise <= 0:
+            continue
+        printed_date = parse_document_date(fields.get("date"))
+        document_date = printed_date.isoformat() if printed_date else None
+        bill_number = _normal_token(fields.get("bill_number"))
+        patient = normal_name(fields.get("patient_name") or document.get("patient_name_on_doc"))
+        if bill_number:
+            fingerprints.append({
+                "kind": "bill_number", "bill_number": bill_number, "provider": provider,
+                "total_paise": total_paise, "document_date": document_date,
+            })
+        elif document_date and patient:
+            fingerprints.append({
+                "kind": "unnumbered_bill", "provider": provider, "total_paise": total_paise,
+                "document_date": document_date, "patient": patient,
+            })
     return fingerprints
+
+
+def _fingerprints_match(new: dict[str, Any], saved: dict[str, Any]) -> bool:
+    kind = str(saved.get("kind") or "bill_number")  # rows from earlier versions carry no kind
+    if kind != new.get("kind"):
+        return False
+    if kind == "bill_number":
+        if any(new.get(key) != saved.get(key) for key in ("bill_number", "provider", "total_paise")):
+            return False
+        # A missing printed date cannot distinguish two bills; only two readable, different dates can.
+        new_date, saved_date = new.get("document_date"), saved.get("document_date")
+        return new_date is None or saved_date is None or new_date == saved_date
+    return all(new.get(key) == saved.get(key) for key in ("provider", "total_paise", "document_date", "patient"))
 
 
 def _save_bill_fingerprints(claim_id: str, fingerprints: list[dict[str, Any]]) -> None:
@@ -511,62 +626,101 @@ def _save_bill_fingerprints(claim_id: str, fingerprints: list[dict[str, Any]]) -
         connection.execute("UPDATE claims SET bill_fingerprints_json=? WHERE id=?", (json.dumps(fingerprints), claim_id))
 
 
-def _duplicate_bill_hits(
-    claim_id: str, request_data: dict[str, Any], inspected_documents: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
-    """Find paid exact-file or evidenced logical bill duplicates."""
+# Claims a new bill is compared against: paid claims, plus claims still in flight
+# or awaiting review (so two concurrent or back-to-back submissions of one bill
+# cannot both be paid). Rejected, failed, and correction-required claims are excluded.
+DUPLICATE_CANDIDATE_SQL = f"({PAYABLE_CLAIM_SQL} OR state IN ('PROCESSING', 'MANUAL_REVIEW'))"
+
+
+def _duplicate_bill_hits(claim_id: str, inspected_documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Find paid or pending claims with the same bill file or the same logical bill."""
     bill_hashes = {
         str(document.get("sha256"))
         for document in inspected_documents
-        if str(document.get("actual_type") or document.get("doc_type") or "").upper().endswith("BILL")
+        if str(document.get("actual_type") or document.get("doc_type") or "").upper() in BILL_TYPES
         and document.get("sha256")
     }
     hits: list[dict[str, Any]] = []
     with _connect() as connection:
         for digest in sorted(bill_hashes):
             rows = connection.execute(
-                """SELECT DISTINCT documents.claim_id
+                f"""SELECT DISTINCT claims.id, claims.state
                    FROM documents JOIN claims ON claims.id=documents.claim_id
-                   WHERE documents.sha256=? AND documents.claim_id<>?
-                     AND claims.state='DECIDED'
-                     AND claims.decision IN ('APPROVED', 'PARTIAL')
-                     AND claims.approved_amount_paise>0
-                   ORDER BY documents.claim_id""",
+                   WHERE documents.sha256=? AND documents.claim_id<>? AND {DUPLICATE_CANDIDATE_SQL}
+                   ORDER BY claims.id""",
                 (digest, claim_id),
             ).fetchall()
             if rows:
-                hits.append({"previous_claim_ids": [row["claim_id"] for row in rows]})
-        fingerprints = _bill_fingerprints(request_data, inspected_documents)
+                hits.append({
+                    "match_type": "identical_bill_file",
+                    "previous_claim_ids": [row["id"] for row in rows],
+                    "previous_states": {row["id"]: row["state"] for row in rows},
+                })
+        fingerprints = _bill_fingerprints(inspected_documents)
         if fingerprints:
             rows = connection.execute(
-                """SELECT id, bill_fingerprints_json FROM claims
-                   WHERE id<>? AND state='DECIDED' AND decision IN ('APPROVED', 'PARTIAL')
-                     AND approved_amount_paise>0""",
+                f"""SELECT id, state, bill_fingerprints_json FROM claims
+                   WHERE id<>? AND bill_fingerprints_json<>'[]' AND {DUPLICATE_CANDIDATE_SQL}
+                   ORDER BY id""",
                 (claim_id,),
             ).fetchall()
-            logical_ids = []
+            matched = []
             for row in rows:
                 saved = json.loads(row["bill_fingerprints_json"] or "[]")
-                if any(item in saved for item in fingerprints):
-                    logical_ids.append(row["id"])
-            if logical_ids:
-                hits.append({"previous_claim_ids": logical_ids, "match_type": "logical_bill_fingerprint"})
+                if any(_fingerprints_match(new, old) for new in fingerprints for old in saved):
+                    matched.append(row)
+            if matched:
+                hits.append({
+                    "match_type": "logical_bill_fingerprint",
+                    "previous_claim_ids": [row["id"] for row in matched],
+                    "previous_states": {row["id"]: row["state"] for row in matched},
+                })
     return hits
 
 
 def _duplicate_review_result(hits: list[dict[str, Any]], metrics: dict[str, Any]) -> dict[str, Any]:
     prior_ids = sorted({claim_id for hit in hits for claim_id in hit["previous_claim_ids"]})
+    states = {claim_id: state for hit in hits for claim_id, state in hit.get("previous_states", {}).items()}
     return {
         "state": "MANUAL_REVIEW",
         "decision": "MANUAL_REVIEW",
         "approved_amount": 0,
         "approved_amount_paise": 0,
-        "reasons": [{"code": "DUPLICATE_BILL", "message": "A previously paid claim has an identical bill file or matching bill number, provider, treatment date, and amount. Verify that the expense has not already been reimbursed."}],
+        "reasons": [{"code": "DUPLICATE_BILL", "message": "Another paid or pending claim has an identical bill file, or a bill with the same bill number, provider, and amount (and no different printed date). Verify that the expense has not already been reimbursed."}],
         "correction_requests": [],
         "confidence_score": 0.2,
         "ledger": [],
-        "trace": [{"stage": "duplicate_check", "rule_id": "previous_bill_match", "status": "FLAG", "evidence": {"matching_claim_count": len(prior_ids), "matching_claim_ids": prior_ids}, "details": "Exact-file and complete logical-bill fingerprints are checked against paid claims."}],
+        "trace": [{
+            "stage": "duplicate_check", "rule_id": "previous_bill_match", "status": "FLAG",
+            "evidence": {
+                "matching_claim_count": len(prior_ids), "matching_claim_ids": prior_ids,
+                "matching_claim_states": states, "match_types": sorted({hit["match_type"] for hit in hits}),
+            },
+            "details": "Bill files and document-derived bill fingerprints (never the claim-form treatment date) are checked against paid, in-flight, and under-review claims.",
+        }],
         "document_metrics": metrics,
+    }
+
+
+def _demo_clock_quarantine_result(clock: dict[str, Any], environment: str) -> dict[str, Any]:
+    """A claim stamped by the development demo clock must not be adjudicated outside development."""
+    return {
+        "state": "MANUAL_REVIEW",
+        "decision": "MANUAL_REVIEW",
+        "approved_amount": 0,
+        "approved_amount_paise": 0,
+        "reasons": [{"code": "DEMO_CLOCK_NOT_HONORED", "message": "This claim was stamped with a development demo-clock submission date and is being processed outside development. It was not adjudicated; a reviewer must confirm the real submission date."}],
+        "correction_requests": [],
+        "confidence_score": 0.0,
+        "ledger": [],
+        "trace": [{
+            "stage": "clock", "rule_id": "demo_clock_not_honored", "status": "FAIL",
+            "evidence": {
+                "stamped_submission_date": clock.get("submission_date") or str(clock.get("applied_at", ""))[:10],
+                "stamped_environment": clock.get("environment"), "processing_environment": environment,
+            },
+            "details": "Demo-clock dates are honored only when PLUM_ENV is development or test. The claim was routed to manual review instead of being adjudicated with the demo date.",
+        }],
     }
 
 
@@ -577,10 +731,29 @@ def process_claim(claim_id: str) -> None:
         return
     _set_state(claim_id, "PROCESSING", detail={"message": "Checking submitted documents"})
     try:
+        request_data = claim["request"]
+        environment = _environment()
+        stamped_clock = request_data.get("submission_clock")
+        if stamped_clock and environment not in DEMO_CLOCK_ENVIRONMENTS:
+            # A demo-clock claim recovered or retried outside development keeps its
+            # recorded provenance but is never adjudicated with the demo date.
+            logger.error("Claim %s carries a demo-clock submission date but PLUM_ENV=%s; routing to manual review.", claim_id, environment)
+            _set_state(
+                claim_id, "MANUAL_REVIEW", result=_demo_clock_quarantine_result(stamped_clock, environment),
+                detail={"reason": "demo_clock_outside_development", "processing_environment": environment},
+            )
+            return
         policy = _read_policy()
-        request_policy_hash = str((claim.get("request") or {}).get("policy_sha256") or "")
-        current_policy_hash = hashlib.sha256(json.dumps(policy, sort_keys=True).encode("utf-8")).hexdigest()
-        if request_policy_hash and request_policy_hash != current_policy_hash:
+        current_fingerprint = _policy_fingerprint(policy)
+        if request_data.get("policy_canonical_sha256"):
+            submitted_fingerprint = str(request_data["policy_canonical_sha256"])
+            policy_changed = submitted_fingerprint != current_fingerprint
+        elif request_data.get("policy_sha256"):
+            submitted_fingerprint = str(request_data["policy_sha256"])
+            policy_changed = submitted_fingerprint != _legacy_policy_sha256(policy)
+        else:
+            submitted_fingerprint, policy_changed = "", False
+        if policy_changed:
             snapshot_result: dict[str, Any] = {
                 "state": "MANUAL_REVIEW",
                 "decision": "MANUAL_REVIEW",
@@ -590,7 +763,7 @@ def process_claim(claim_id: str) -> None:
                 "correction_requests": [],
                 "confidence_score": 0.0,
                 "ledger": [],
-                "trace": [{"stage": "policy", "rule_id": "policy_snapshot", "status": "FAIL", "policy_ref": "claim.policy_sha256", "details": "The policy snapshot captured at intake does not match the current policy."}],
+                "trace": [{"stage": "policy", "rule_id": "policy_snapshot", "status": "FAIL", "policy_ref": "claim.policy_canonical_sha256", "evidence": {"submitted_fingerprint": submitted_fingerprint, "current_canonical_sha256": current_fingerprint}, "details": "The policy fingerprint captured at intake does not match the current policy."}],
             }
             _set_state(claim_id, "MANUAL_REVIEW", result=snapshot_result, detail={"reason": "policy_changed"})
             return
@@ -608,7 +781,6 @@ def process_claim(claim_id: str) -> None:
             }
             for row in file_rows
         ]
-        request_data = claim["request"]
         inspection = process_uploads(
             files,
             request_data["claim_category"],
@@ -649,6 +821,21 @@ def process_claim(claim_id: str) -> None:
         else:
             inspection.setdefault("metrics", {})["gemini"] = {"status": "DISABLED", "calls": 0, "pages": 0}
 
+        # Duplicate detection runs before the correction gate: a resubmitted bill that
+        # was already paid must reach a reviewer, not be sent back for a fresh date.
+        documents = inspection.get("documents", [])
+        _save_bill_fingerprints(claim_id, _bill_fingerprints(documents))
+        duplicate_hits = _duplicate_bill_hits(claim_id, documents)
+        if duplicate_hits:
+            result = _duplicate_review_result(duplicate_hits, inspection.get("metrics", {}))
+            result["trace"].extend(gemini_trace)
+            _set_state(
+                claim_id,
+                "MANUAL_REVIEW",
+                result=result,
+                detail={"duplicate_bill_match_count": len({cid for hit in duplicate_hits for cid in hit["previous_claim_ids"]})},
+            )
+            return
         if ai_result and _gemini_provider_failure(ai_result) and issues:
             result = _provider_review_result(issues, inspection.get("metrics", {}))
             result["trace"].extend(gemini_trace)
@@ -674,32 +861,33 @@ def process_claim(claim_id: str) -> None:
                 result = _correction_result(issues, metrics, gemini_trace)
                 _set_state(claim_id, "DOCUMENT_CORRECTION_REQUIRED", result=result, detail={"issue_count": len(issues)})
             return
-        fingerprints = _bill_fingerprints(request_data, inspection.get("documents", []))
-        _save_bill_fingerprints(claim_id, fingerprints)
-        duplicate_hits = _duplicate_bill_hits(claim_id, request_data, inspection.get("documents", []))
-        if duplicate_hits:
-            result = _duplicate_review_result(duplicate_hits, inspection.get("metrics", {}))
-            _set_state(
-                claim_id,
-                "MANUAL_REVIEW",
-                result=result,
-                detail={"duplicate_bill_match_count": sum(len(hit["previous_claim_ids"]) for hit in duplicate_hits)},
-            )
-            return
         payload = dict(request_data)
-        payload["documents"] = inspection.get("documents", [])
-        claims_history, approved_ytd_paise, prior_sessions = _member_claim_history(claim_id, request_data, policy)
-        payload["claims_history"] = claims_history
+        payload["documents"] = documents
+        usage = _member_claim_history(claim_id, request_data, policy)
+        family_used = to_rupees(usage["family_approved_paise"])
+        payload["claims_history"] = usage["claims_history"]
         payload["claims_history_source"] = "local_family_submission_database"
-        payload["ytd_claims_amount"] = approved_ytd_paise / 100
+        # Family pool (primary member + dependents), policy year, approved OPD decisions.
+        payload["ytd_claims_amount"] = family_used
         payload["ytd_claims_source"] = "database_approved_decisions"
-        payload["prior_sessions"] = prior_sessions
+        payload["sum_insured_used"] = family_used
+        payload["sum_insured_used_source"] = "database_approved_decisions"
+        payload["family_floater_used"] = family_used
+        payload["family_floater_used_source"] = "database_approved_decisions"
+        # This member, this category, policy year, approved decisions.
+        payload["category_ytd_claims_amount"] = to_rupees(usage["member_category_approved_paise"])
+        payload["category_ytd_claims_source"] = "database_approved_decisions"
+        if usage["member_category_sub_limit_paise"] is not None:
+            payload["category_sub_limit_used"] = to_rupees(usage["member_category_sub_limit_paise"])
+            payload["category_sub_limit_used_source"] = "database_decision_traces"
+        payload["prior_sessions"] = usage["prior_sessions"]
         payload["prior_sessions_source"] = "database_approved_alternative_medicine_decisions"
         result = adjudicate_handoff(payload, policy, evaluate_claim)
+        result.setdefault("provider", claim_provider(payload) or None)
         result.setdefault("document_metrics", inspection.get("metrics", {}))
-        result["trace"] = [document_evidence_trace(inspection.get("documents", []))] + gemini_trace + result.get("trace", [])
+        result["trace"] = [document_evidence_trace(documents)] + gemini_trace + result.get("trace", [])
         final_state = str(result.get("state") or result.get("decision") or "MANUAL_REVIEW")
-        _set_state(claim_id, final_state, result=result, detail={"decision": result.get("decision")})
+        _set_state(claim_id, final_state, result=result, detail={"decision": result.get("decision")}, adjudicated=True)
     except Exception as exc:  # noqa: BLE001 - isolate all provider and parser failures at the job boundary
         # Provider exceptions can contain document text, so retain the type only.
         _set_state(
@@ -713,6 +901,7 @@ def process_claim(claim_id: str) -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     _check_clock_configuration()
+    _check_policy_configuration()
     init_db()
     with _connect() as connection:
         pending = [row["id"] for row in connection.execute("SELECT id FROM claims WHERE state IN ('QUEUED', 'PROCESSING')")]
@@ -726,6 +915,16 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="Plum OPD Claims Review", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=PACKAGE_ROOT / "static", check_dir=False), name="static")
 templates = Jinja2Templates(directory=PACKAGE_ROOT / "templates")
+
+
+@app.exception_handler(PolicyConfigurationError)
+async def _policy_configuration_error(_: Request, exc: PolicyConfigurationError) -> JSONResponse:
+    # The policy was valid at startup but has since become unusable: fail closed, never 500.
+    logger.error("Policy configuration invalid: %s", exc)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": {"code": exc.code, "message": "The policy configuration is invalid; claims cannot be accepted until it is fixed."}},
+    )
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -777,11 +976,10 @@ async def submit_claim(
     except ValueError as exc:
         raise _input_error("Enter a treatment date in YYYY-MM-DD format.") from exc
     try:
-        amount = Decimal(claimed_amount)
-        if not amount.is_finite() or amount <= 0 or amount > 1_000_000 or amount * 100 != (amount * 100).to_integral_value():
-            raise InvalidOperation
-        amount_paise = int(amount * 100)
-    except (InvalidOperation, ValueError) as exc:
+        if has_subpaise_precision(claimed_amount):
+            raise ValueError("more than two decimal places")
+        amount_paise = to_paise(claimed_amount)
+    except ValueError as exc:
         raise _input_error("Enter a valid claimed amount.") from exc
     if amount_paise <= 0 or amount_paise > 100_000_000:
         raise _input_error("Enter a claimed amount greater than zero and below ₹10 lakh.")
@@ -807,11 +1005,13 @@ async def submit_claim(
     request_data = {
         "member_id": member_id,
         "policy_id": policy.get("policy_id"),
-        "policy_sha256": hashlib.sha256(json.dumps(policy, sort_keys=True).encode("utf-8")).hexdigest(),
+        "policy_canonical_sha256": _policy_fingerprint(policy),
         "claim_category": claim_category,
         "treatment_date": treatment_date,
-        "claimed_amount": float(Decimal(amount_paise) / 100),
-        "submission_date": submitted_at[:10],
+        "claimed_amount": to_rupees(amount_paise),
+        "submitted_at": submitted_at,
+        "submission_date": _submission_date(submitted_at, clock),
+        "submission_timezone": str(_policy_timezone()),
     }
     if clock is not None:
         # Provenance travels with the claim so the trace and UI can show the override.
@@ -858,17 +1058,17 @@ def resolve_manual_review(claim_id: str, disposition: dict[str, Any] = Body(...)
     if decision not in {"APPROVED", "PARTIAL", "REJECTED"}:
         raise _input_error("Reviewer decision must be APPROVED, PARTIAL, or REJECTED.")
     try:
-        amount = Decimal(str(disposition.get("approved_amount", 0)))
-        if not amount.is_finite() or amount * 100 != (amount * 100).to_integral_value():
-            raise InvalidOperation
-        amount_paise = int(amount * 100)
-    except (InvalidOperation, ValueError) as exc:
+        raw_amount = disposition.get("approved_amount", 0)
+        if has_subpaise_precision(raw_amount):
+            raise ValueError("more than two decimal places")
+        amount_paise = to_paise(raw_amount, allow_negative=True)
+    except ValueError as exc:
         raise _input_error("Reviewer approved amount must be a valid amount.") from exc
-    claimed_paise = int(Decimal(str(claim["request"]["claimed_amount"])) * 100)
+    claimed_paise = to_paise(claim["request"]["claimed_amount"])
     if amount_paise < 0 or amount_paise > claimed_paise or (decision == "REJECTED" and amount_paise != 0) or (decision != "REJECTED" and amount_paise <= 0):
         raise _input_error("Reviewer amount is inconsistent with the requested decision or claim amount.")
     result = dict(claim["result"] or {})
-    result.update({"state": "DECIDED", "decision": decision, "approved_amount_paise": amount_paise, "approved_amount": amount_paise / 100})
+    result.update({"state": "DECIDED", "decision": decision, "approved_amount_paise": amount_paise, "approved_amount": to_rupees(amount_paise)})
     result.setdefault("reasons", []).append({"code": "REVIEWER_DISPOSITION", "message": "A reviewer recorded the final decision after inspecting the escalated claim."})
     result.setdefault("trace", []).append({"stage": "manual_review", "rule_id": "reviewer_disposition", "status": decision, "evidence": {"approved_amount_paise": amount_paise}})
     _set_state(claim_id, "DECIDED", result=result, detail={"decision": decision, "source": "reviewer_disposition"})

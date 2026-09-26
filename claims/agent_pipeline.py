@@ -331,7 +331,8 @@ def resolve_document_handoff(
                 documents, candidate_list, ocr_text_by_file_id
             )
             updated_issues = revalidate_documents(
-                updated_documents, issues, claim_category, member_name, policy
+                updated_documents, issues, claim_category, member_name, policy,
+                allowed_patient_names=allowed_patient_names,
             )
         except Exception as exc:  # noqa: BLE001 - a bad candidate must preserve original evidence
             return {
@@ -475,8 +476,12 @@ def _decision_is_consistent(result: Any, payload: dict[str, Any]) -> bool:
                 return False
             if not isinstance(description, str) or not description.strip():
                 return False
-            if item.get("status") != "EXCLUDED":
-                ledger_total += item_amount
+            # Only payable lines and adjustments make up the approved amount;
+            # excluded, not-covered or otherwise unpaid lines are itemized for
+            # the member but contribute nothing.
+            if item.get("kind") == "line_item" and item.get("status") != "ELIGIBLE":
+                continue
+            ledger_total += item_amount
         if ledger_total != amount:
             return False
     score = result.get("confidence_score")

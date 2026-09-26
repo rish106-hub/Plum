@@ -19,7 +19,15 @@ from datetime import date
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 CANONICAL_SCHEMA = "plum.canonical_policy.v1"
 DEFAULT_POLICY_PATH = Path(__file__).resolve().parent.parent / "data" / "policy_terms.json"
@@ -41,12 +49,30 @@ class PolicyConfigurationError(ValueError):
 # silently ignored or silently honoured.
 # --------------------------------------------------------------------------
 
+def _not_blank(value: str) -> str:
+    if not value.strip():
+        raise ValueError("must contain non-whitespace text")
+    return value
+
+
+def _meaningful_label(value: str) -> str:
+    """An exclusion label must name something outside any parenthetical qualifier."""
+    if not re.search(r"[^\W_]", re.sub(r"\([^)]*\)", "", value)):
+        raise ValueError(f"label {value!r} has no text outside its parenthetical qualifier")
+    if value.count("(") != value.count(")"):
+        raise ValueError(f"label {value!r} has unbalanced parentheses")
+    return value
+
+
 Money = Annotated[int, Field(strict=True, ge=0)]
+PositiveMoney = Annotated[int, Field(strict=True, gt=0)]
 Percent = Annotated[int, Field(strict=True, ge=0, le=100)]
 Days = Annotated[int, Field(strict=True, ge=0)]
 Count = Annotated[int, Field(strict=True, ge=1)]
 Flag = Annotated[bool, Field(strict=True)]
-Text = Annotated[str, Field(strict=True, min_length=1)]
+Text = Annotated[str, Field(strict=True, min_length=1), AfterValidator(_not_blank)]
+Label = Annotated[str, Field(strict=True, min_length=1), AfterValidator(_not_blank), AfterValidator(_meaningful_label)]
+RenewalStatus = Literal["ACTIVE", "LAPSED", "EXPIRED", "CANCELLED", "SUSPENDED", "GRACE_PERIOD", "PENDING_RENEWAL"]
 DocumentType = Literal[
     "PRESCRIPTION", "HOSPITAL_BILL", "PHARMACY_BILL", "LAB_REPORT",
     "DIAGNOSTIC_REPORT", "DISCHARGE_SUMMARY", "DENTAL_REPORT",
@@ -62,24 +88,24 @@ class RawPolicyHolder(_Strict):
     employee_count: Count
     policy_start_date: date
     policy_end_date: date
-    renewal_status: Text
+    renewal_status: RenewalStatus
 
 
 class RawFamilyFloater(_Strict):
     enabled: Flag
-    combined_limit: Money
+    combined_limit: PositiveMoney
     covered_relationships: list[Text] = Field(min_length=1)
 
 
 class RawCoverage(_Strict):
-    sum_insured_per_employee: Money
-    annual_opd_limit: Money
-    per_claim_limit: Money
+    sum_insured_per_employee: PositiveMoney
+    annual_opd_limit: PositiveMoney
+    per_claim_limit: PositiveMoney
     family_floater: RawFamilyFloater
 
 
 class RawOpdCategory(_Strict):
-    sub_limit: Money
+    sub_limit: PositiveMoney
     copay_percent: Percent
     covered: Flag
     requires_prescription: Flag
@@ -91,9 +117,9 @@ class RawOpdCategory(_Strict):
     generic_mandatory: Flag | None = None
     requires_dental_report: Flag | None = None
     covered_procedures: list[Text] | None = None
-    excluded_procedures: list[Text] | None = None
+    excluded_procedures: list[Label] | None = None
     covered_items: list[Text] | None = None
-    excluded_items: list[Text] | None = None
+    excluded_items: list[Label] | None = None
     requires_registered_practitioner: Flag | None = None
     max_sessions_per_year: Count | None = None
     covered_systems: list[Text] | None = None
@@ -106,9 +132,9 @@ class RawWaitingPeriods(_Strict):
 
 
 class RawExclusions(_Strict):
-    conditions: list[Text]
-    dental_exclusions: list[Text]
-    vision_exclusions: list[Text]
+    conditions: list[Label]
+    dental_exclusions: list[Label]
+    vision_exclusions: list[Label]
 
 
 class RawPreAuthorization(_Strict):
@@ -181,7 +207,10 @@ class RawPolicy(_Strict):
     def _cross_references(self) -> RawPolicy:
         if self.policy_holder.policy_end_date <= self.policy_holder.policy_start_date:
             raise ValueError("policy_holder.policy_end_date must be after policy_start_date")
-        categories = {key.upper() for key in self.opd_categories}
+        folded = [key.upper() for key in self.opd_categories]
+        if len(folded) != len(set(folded)):
+            raise ValueError("opd_categories contains keys that differ only by letter case")
+        categories = set(folded)
         documented = set(self.document_requirements)
         if categories != documented:
             raise ValueError(
@@ -212,7 +241,7 @@ INTERPRETATION_EXCLUSION_TERMS: dict[str, list[str]] = {
     "Bariatric surgery": ["gastric bypass", "sleeve gastrectomy"],
     "Cosmetic or aesthetic procedures": ["aesthetic procedure", "cosmetic procedure", "cosmetic surgery", "cosmetic treatment"],
     "Health supplements and tonics": ["health supplement", "supplement", "tonic", "multivitamin"],
-    "Teeth whitening": ["tooth whitening"],
+    "Teeth whitening": ["tooth whitening", "whitening"],
     "Orthodontic Treatment (Braces)": ["orthodontic treatment", "braces"],
     "Implants (Cosmetic)": ["cosmetic implant"],
     "Vaccination (non-medically necessary)": ["vaccination", "vaccine"],
@@ -245,6 +274,57 @@ INTERPRETATION_PRE_AUTH_TERMS: dict[str, list[str]] = {
     "planned hospitalization": ["planned hospitalisation", "planned admission"],
 }
 """Short forms of the free-text pre-authorization items, keyed by normalized item label."""
+
+PRE_AUTH_SHORT_FORM_MAX_LENGTH = 4
+"""A single-word pre-auth term this short (MRI, CT, PET) is an acronym that also occurs in ordinary prose
+("pet", "ct" in a sentence), so it is matched only inside an ordered test, a test name or a bill line."""
+
+INTERPRETATION_PRE_AUTH_CONTEXT: dict[str, list[str]] = {
+    "pet": ["scan", "ct", "imaging", "tomography"],
+}
+"""Short forms that are also common English words must appear with one of these imaging words in the same
+test name or bill line ("PET scan", "PET-CT"), never on their own."""
+
+INTERPRETATION_COVERED_ITEM_TERMS: dict[str, list[str]] = {
+    "Root Canal Treatment": ["root canal", "RCT", "endodontic treatment"],
+    "Tooth Extraction": ["extraction", "tooth removal"],
+    "Dental Filling": ["filling", "composite restoration", "amalgam restoration"],
+    "Scaling and Polishing": ["scaling", "polishing", "oral prophylaxis", "teeth cleaning"],
+    "Dental X-Ray": ["x-ray", "xray", "IOPA", "OPG", "dental radiograph"],
+    "Crown Placement": ["crown", "dental cap"],
+    "Gum Treatment": ["periodontal treatment", "periodontal therapy", "gum surgery", "gingival treatment"],
+    "Glasses": ["spectacles", "eyeglasses", "spectacle lenses"],
+    "Contact Lenses": ["contact lens"],
+    "Eye Examination": ["eye exam", "eye test", "eye checkup", "refraction test"],
+    "Cataract Surgery": ["cataract", "phacoemulsification"],
+}
+"""Common billing names and abbreviations for allow-listed items (RCT, IOPA, "Root canal"). A line that
+matches neither the covered list nor an exclusion is UNRESOLVED and routes to review; it is never rejected on a
+string miss."""
+
+INTERPRETATION_LINE_EXCLUSION_TERMS: dict[str, list[str]] = {
+    "Cosmetic dental procedures": ["cosmetic", "aesthetic", "upgrade"],
+}
+"""Line-level markers for category-scoped exclusions. An "upgrade" (for example a gold or zirconia crown
+upgrade) is the elective, aesthetic increment over the covered standard procedure."""
+
+INTERPRETATION_CATEGORY_SERVICE_TERMS: dict[str, list[str]] = {
+    "CONSULTATION": [
+        "consultation", "consultation fee", "consultation charges", "consulting fee", "doctor fee",
+        "doctors fee", "physician fee", "opd fee", "opd charges", "visit fee", "teleconsultation",
+    ],
+}
+"""Bill lines that are the category's own service. A category sub_limit caps, per member and policy year, the net
+benefit on these lines. Categories not listed here treat every eligible line as their own service. Consultation bills
+routinely carry tests and medicines (TC004, TC008, TC010), which are not consultation services."""
+
+INFORMATIONAL_FIELDS: dict[str, str] = {
+    "policy_name": "Descriptive; shown in outputs only.",
+    "insurer": "Descriptive; shown in outputs only.",
+    "policy_holder.company_name": "Descriptive; shown in outputs only.",
+    "policy_holder.employee_count": "Group size is an underwriting fact; no claim rule in the policy depends on it.",
+}
+"""Supplied fields that carry no adjudication rule, recorded so no field is silently ignored."""
 
 INTERPRETATION_NETWORK_HOSPITAL_VARIANTS: dict[str, list[str]] = {
     "Apollo Hospitals": ["Apollo Hospital"],
@@ -347,6 +427,20 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _stable_json(value: Any) -> bytes:
+    return json.dumps(value, sort_keys=True, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+
+
+def canonical_fingerprint(canonical: dict[str, Any]) -> str:
+    """sha256 of every canonical field (including the audit trail) except the stored fingerprint itself."""
+    return sha256_bytes(_stable_json({key: value for key, value in canonical.items() if key != "canonical_sha256"}))
+
+
+def audit_fingerprint(audit: list[dict[str, Any]]) -> str:
+    """sha256 of the normalizer audit trail alone."""
+    return sha256_bytes(_stable_json(audit))
+
+
 class PolicyNormalizer:
     """Convert a validated raw policy into the canonical engine configuration."""
 
@@ -374,10 +468,7 @@ class PolicyNormalizer:
             },
             "limits": self._limits(),
             "categories": self._categories(),
-            "document_requirements": {
-                category: {"required": list(item.required), "optional": list(item.optional)}
-                for category, item in raw.document_requirements.items()
-            },
+            "document_requirements": self._document_requirements(),
             "waiting_periods": self._waiting_periods(),
             "exclusions": self._exclusions(),
             "pre_authorization": self._pre_authorization(),
@@ -401,20 +492,80 @@ class PolicyNormalizer:
             "NETWORK_MATCH_RULE", "interpretation", ["network_hospitals"],
             "Provider names match a network hospital exactly, or before a comma/dash branch or city suffix.",
         )
-        canonical["audit"] = self.audit
-        canonical["canonical_sha256"] = sha256_bytes(
-            json.dumps({k: v for k, v in canonical.items() if k != "audit"}, sort_keys=True).encode("utf-8")
+        self._record(
+            "SUBMISSION_CURRENCY", "derived", ["submission_rules.currency"],
+            "The schema accepts only INR. All money is converted to integer paise; a claim that states a "
+            "different currency is rejected as malformed input.",
         )
+        self._record(
+            "FRAUD_THRESHOLD_ROLES", "interpretation",
+            ["fraud_thresholds.high_value_claim_threshold", "fraud_thresholds.auto_manual_review_above"],
+            "auto_manual_review_above routes a single claim above it to manual review. high_value_claim_threshold "
+            "(the same amount in the supplied policy) marks a single claim as high value in the risk trace and is "
+            "the limit on the member family's trailing 30-day claimed value used by the risk-signal enrichment "
+            "component; exceeding it routes to review (RISK_SIGNAL_REVIEW).",
+        )
+        for field, note in INFORMATIONAL_FIELDS.items():
+            self._record(f"INFORMATIONAL_FIELD.{field}", "informational", [field], note)
+        canonical["audit"] = self.audit
+        canonical["canonical_sha256"] = canonical_fingerprint(canonical)
         return canonical
+
+    def _document_requirements(self) -> dict[str, Any]:
+        """The document matrix, with each category's ``requires_prescription`` flag enforced through it."""
+        raw = self.raw
+        flags = {key.upper(): item.requires_prescription for key, item in raw.opd_categories.items()}
+        requirements: dict[str, Any] = {}
+        for category, item in raw.document_requirements.items():
+            required = list(item.required)
+            optional = list(item.optional)
+            flag = flags[category]
+            listed = "PRESCRIPTION" in required
+            if flag and not listed:
+                required.append("PRESCRIPTION")
+                optional = [value for value in optional if value != "PRESCRIPTION"]
+                self._record(
+                    f"PRESCRIPTION_REQUIREMENT.{category}", "conflict_resolution",
+                    [f"opd_categories.{category.lower()}.requires_prescription", f"document_requirements.{category}"],
+                    "requires_prescription=true but the document matrix does not require a PRESCRIPTION; the stricter "
+                    "reading (required) is enforced by the document gate.",
+                )
+            elif listed and not flag:
+                self._record(
+                    f"PRESCRIPTION_REQUIREMENT.{category}", "conflict_resolution",
+                    [f"opd_categories.{category.lower()}.requires_prescription", f"document_requirements.{category}"],
+                    "requires_prescription=false but the document matrix requires a PRESCRIPTION; the stricter "
+                    "reading (required) is enforced by the document gate.",
+                )
+            else:
+                self._record(
+                    f"PRESCRIPTION_REQUIREMENT.{category}", "derived",
+                    [f"opd_categories.{category.lower()}.requires_prescription", f"document_requirements.{category}"],
+                    f"requires_prescription={str(flag).lower()} agrees with the document matrix "
+                    f"(PRESCRIPTION {'required' if listed else 'not required'}); the document gate enforces it.",
+                )
+            requirements[category] = {"required": required, "optional": optional}
+        return requirements
 
     def _limits(self) -> dict[str, Any]:
         coverage = self.raw.coverage
         self._record(
             "AGGREGATE_LIMITS_NEED_UTILISATION", "interpretation",
             ["coverage.annual_opd_limit", "coverage.sum_insured_per_employee", "coverage.family_floater.combined_limit"],
-            "Annual OPD limit, sum insured and family floater are cross-claim aggregates. They are applied when a "
-            "utilisation figure accompanies the claim; otherwise the rule is NOT_EVALUATED, disclosed as an advisory "
-            "reason, and lowers confidence on payable outcomes. They never block an otherwise decidable claim.",
+            "Annual OPD limit, sum insured and family floater are cross-claim aggregates of benefit paid. They are "
+            "applied to the net payable (after network discount and co-pay) when a utilisation figure accompanies "
+            "the claim; otherwise the rule is NOT_EVALUATED, disclosed as an advisory reason, and lowers confidence on "
+            "payable outcomes. They never block an otherwise decidable claim.",
+        )
+        self._record(
+            "BENEFIT_ORDER", "interpretation",
+            ["coverage.per_claim_limit", "opd_categories.*.sub_limit", "opd_categories.*.network_discount_percent",
+             "opd_categories.*.copay_percent", "coverage.annual_opd_limit", "coverage.sum_insured_per_employee",
+             "coverage.family_floater.combined_limit"],
+            "Order: (1) line eligibility; (2) per-claim ceiling on the eligible amount (admissibility, rejects); "
+            "(3) pre-authorized amount cap; (4) network discount; (5) co-pay on the discounted amount; (6) benefit "
+            "caps on the resulting net payable, in order: category sub_limit on the category's own service lines, "
+            "remaining annual OPD limit, remaining sum insured, remaining family floater.",
         )
         return {
             "per_claim_limit_paise": coverage.per_claim_limit * 100,
@@ -440,14 +591,23 @@ class PolicyNormalizer:
             else:
                 ceiling, ceiling_ref = global_limit, "coverage.per_claim_limit"
                 note = (
-                    "global per-claim limit applies; the lower category sub_limit is not applied as a per-claim cap "
-                    "(see PER_CLAIM_CEILING_RULE)" if item.sub_limit < global_limit else "sub_limit equals the global limit"
+                    "the global per-claim limit is the claim ceiling; the lower category sub_limit caps the net benefit "
+                    "on the category's own service lines (see CATEGORY_SUB_LIMIT_RULE)"
+                    if item.sub_limit < global_limit else "sub_limit equals the global limit"
                 )
             self._record(
                 f"PER_CLAIM_CEILING.{category}", "derived", ["coverage.per_claim_limit", f"{ref}.sub_limit"],
                 f"{category} per-claim ceiling is Rs {ceiling}: {note}.",
                 ceiling=ceiling,
             )
+            service_terms = INTERPRETATION_CATEGORY_SERVICE_TERMS.get(category, [])
+            if service_terms:
+                self._record(
+                    f"CATEGORY_SERVICE_TERMS.{category}", "interpretation", [f"{ref}.sub_limit"],
+                    f"{category} sub_limit applies to bill lines that are the category's own service, recognised by: "
+                    f"{', '.join(service_terms)}. Other eligible lines on the same bill fall under the global per-claim "
+                    "limit only.",
+                )
             if item.network_discount_percent is None:
                 self._record(
                     f"NO_NETWORK_DISCOUNT.{category}", "absent_optional_field", [f"{ref}.network_discount_percent"],
@@ -501,7 +661,9 @@ class PolicyNormalizer:
                 "branded_drug_copay_percent": item.branded_drug_copay_percent,
                 "generic_mandatory": bool(item.generic_mandatory),
                 "brand_status_values": list(INTERPRETATION_BRAND_STATUS_VALUES) if brand else [],
-                "covered_items": [{"label": label, "terms": _terms([label], [label])} for label in covered_items],
+                "covered_items": self._covered_items(category, ref, covered_items),
+                "service_scope": "matching_lines" if service_terms else "all_eligible_lines",
+                "service_terms": _terms(service_terms, [key.replace("_", " ")]) if service_terms else [],
                 "covered_items_ref": f"{ref}.covered_procedures" if item.covered_procedures else f"{ref}.covered_items",
                 "requires_registered_practitioner": bool(item.requires_registered_practitioner),
                 "max_sessions_per_year": item.max_sessions_per_year,
@@ -514,10 +676,39 @@ class PolicyNormalizer:
             "Each category's per-claim ceiling is max(coverage.per_claim_limit, category sub_limit), tested against the "
             "eligible amount after excluded/non-covered lines are removed; exceeding it rejects the claim "
             "(PER_CLAIM_EXCEEDED). Where a matched pre-authorization rule governs the treatment, the pre-authorization "
-            "decides instead. Consultation's sub_limit (Rs 2,000) is below the global limit and is therefore not a "
-            "per-claim cap; a literal cap would contradict the supplied network consultation outcome.",
+            "decides instead. The ceiling cannot be the lower consultation sub_limit: the supplied network consultation "
+            "case pays Rs 3,240 on a Rs 4,500 bill.",
+        )
+        self._record(
+            "CATEGORY_SUB_LIMIT_RULE", "conflict_resolution",
+            ["opd_categories.*.sub_limit", "coverage.per_claim_limit"],
+            "A category sub_limit is an annual, per-member cap on the net benefit (after network discount and co-pay) "
+            "paid for the category's own service lines. This claim's own service benefit is always capped; earlier "
+            "usage this policy year (category_sub_limit_used, else category_ytd_claims_amount as an upper bound) "
+            "reduces what remains, and when neither is supplied the history is NOT_EVALUATED and disclosed. Any "
+            "excess is removed and the claim is PARTIAL. For consultation the service lines are consultation-fee "
+            "lines (CATEGORY_SERVICE_TERMS.CONSULTATION); tests and medicines billed with a consultation are not "
+            "consultation services. For every other category all eligible lines are the category's service. If the "
+            "service share of an unitemized bill cannot be established and the net payable exceeds what remains, a "
+            "claim that could otherwise pay routes to review (CATEGORY_SUB_LIMIT_UNVERIFIED). A governing "
+            "pre-authorization supersedes the cap. Rejected alternative: an annual aggregate over the whole claim. "
+            "The supplied network consultation case pays Rs 3,240 in one consultation claim, above an annual Rs 2,000 "
+            "consultation cap, so that reading would either break the fixture or pay more when category history is "
+            "absent than when it is zero.",
         )
         return categories
+
+    def _covered_items(self, category: str, ref: str, labels: list[str]) -> list[dict[str, Any]]:
+        items = []
+        for label in labels:
+            extra = INTERPRETATION_COVERED_ITEM_TERMS.get(label, [])
+            items.append({"label": label, "terms": _terms([label, *extra], [label])})
+            if extra:
+                self._record(
+                    f"COVERED_ITEM_TERMS.{category}.{label}", "interpretation", [ref],
+                    f"'{label}' is also recognised on a bill line as: {', '.join(extra)}.",
+                )
+        return items
 
     def _waiting_periods(self) -> dict[str, Any]:
         waiting = self.raw.waiting_periods
@@ -593,6 +784,13 @@ class PolicyNormalizer:
             qualifier = None
             for label in labels:
                 texts.extend(INTERPRETATION_EXCLUSION_TERMS.get(label, []))
+                if label in INTERPRETATION_LINE_EXCLUSION_TERMS:
+                    texts.extend(INTERPRETATION_LINE_EXCLUSION_TERMS[label])
+                    self._record(
+                        f"EXCLUSION_LINE_TERMS.{label}", "interpretation", entry["source_paths"],
+                        f"'{label}' also matches bill lines containing: "
+                        f"{', '.join(INTERPRETATION_LINE_EXCLUSION_TERMS[label])}.",
+                    )
                 if "(" in label and label not in INTERPRETATION_EXCLUSION_TERMS:
                     texts.append(_strip_parenthetical(label))
                 if label in INTERPRETATION_QUALIFIED_EXCLUSIONS:
@@ -693,13 +891,29 @@ class PolicyNormalizer:
                 rule["amount_greater_than"] = stricter
         canonical_rules = []
         for rule in rules:
+            terms: list[dict[str, Any]] = []
+            for term in _terms(rule["texts"], rule["grounding"]):
+                short = " " not in term["text"] and len(term["text"]) <= PRE_AUTH_SHORT_FORM_MAX_LENGTH
+                terms.append({
+                    **term,
+                    "context": "test_or_line" if short else "service",
+                    "requires_any": INTERPRETATION_PRE_AUTH_CONTEXT.get(term["text"], []),
+                })
             canonical_rules.append({
                 "id": rule["id"],
                 "label": rule["label"],
-                "terms": _terms(rule["texts"], rule["grounding"]),
+                "terms": terms,
                 "amount_greater_than_paise": None if rule["amount_greater_than"] is None else rule["amount_greater_than"] * 100,
                 "source_paths": list(dict.fromkeys(rule["source_paths"] + rule["threshold_sources"])),
             })
+        self._record(
+            "PRE_AUTH_MATCH_SCOPE", "interpretation", ["pre_authorization.required_for"],
+            "Pre-authorization rules match the services in the claim (treatment, ordered tests, test names, bill "
+            "lines), never the diagnosis, and ignore negated mentions. Single-word short forms of "
+            f"{PRE_AUTH_SHORT_FORM_MAX_LENGTH} letters or fewer (MRI, CT, PET) match only as whole words inside an "
+            "ordered test, a test name or a bill line; 'PET' additionally needs an imaging word in the same entry "
+            f"({', '.join(INTERPRETATION_PRE_AUTH_CONTEXT['pet'])}).",
+        )
         return {"validity_days": raw.pre_authorization.validity_days, "rules": canonical_rules}
 
     def _network_hospitals(self) -> list[dict[str, Any]]:
@@ -812,7 +1026,28 @@ def load_policy(path: str | Path = DEFAULT_POLICY_PATH) -> dict[str, Any]:
 
 
 def ensure_canonical(policy: dict[str, Any]) -> dict[str, Any]:
-    """Return canonical config, normalizing a raw policy mapping if needed."""
-    if isinstance(policy, dict) and policy.get("schema_version") == CANONICAL_SCHEMA:
+    """Return a verified canonical config, normalizing a raw policy mapping if needed.
+
+    A mapping that claims the canonical schema is accepted only when its stored
+    ``canonical_sha256`` equals the fingerprint recomputed from its content, so a
+    trace can never report a fingerprint for configuration it did not evaluate.
+    """
+    if isinstance(policy, dict) and "schema_version" in policy:
+        if policy.get("schema_version") != CANONICAL_SCHEMA:
+            raise PolicyConfigurationError(f"unsupported canonical schema_version {policy.get('schema_version')!r}")
+        stored = policy.get("canonical_sha256")
+        try:
+            actual = canonical_fingerprint(policy)
+        except (TypeError, ValueError) as exc:
+            raise PolicyConfigurationError(f"canonical policy is not serializable: {type(exc).__name__}") from None
+        if not isinstance(stored, str) or stored != actual:
+            raise PolicyConfigurationError(
+                "canonical policy content does not match its canonical_sha256; it was modified after normalization"
+            )
         return policy
     return normalize_policy(policy)
+
+
+def policy_fingerprint(policy: dict[str, Any]) -> str:
+    """The one policy fingerprint used by the engine trace and the intake snapshot (verified canonical sha256)."""
+    return str(ensure_canonical(policy)["canonical_sha256"])

@@ -40,6 +40,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from claims.agent_pipeline import resolve_document_handoff
 from claims.documents import DocumentProvider, process_uploads
+from claims.policy import load_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 CORPUS_DIR = ROOT / "tests" / "fixtures" / "documents"
@@ -51,10 +52,9 @@ ADJUDICATION_ELIGIBLE = "ADJUDICATION_ELIGIBLE"
 
 
 def _load_policy() -> dict[str, Any]:
-    # Only ``document_requirements`` is needed here, so read the supplied file
-    # directly instead of coupling the benchmark to a policy-loader API.
-    with (ROOT / "data" / "policy_terms.json").open(encoding="utf-8") as handle:
-        return json.load(handle)
+    # The same validated, canonical configuration the web worker and the policy
+    # engine use (for example, requires_prescription is enforced through it).
+    return load_policy(ROOT / "data" / "policy_terms.json")
 
 
 @contextmanager
@@ -149,7 +149,7 @@ def _intake_routing(output_dir: Path, policy: dict[str, Any]) -> dict[str, Any]:
         output_dir / "amount-conflict-bill.pdf",
     )
     multipage_bill = _pdf(
-        ["HOSPITAL BILL", "Patient: Rajesh Kumar", "Consultation Fee 1000.00", "CBC Test 500.00", "Total Amount: 1500.00"],
+        ["HOSPITAL BILL", "Patient: Rajesh Kumar", "Date: 01-Nov-2024", "Consultation Fee 1000.00", "CBC Test 500.00", "Total Amount: 1500.00"],
         output_dir / "multi-page-bill.pdf",
         pages=2,
     )
