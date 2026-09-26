@@ -508,12 +508,8 @@ Explicit behavior checks: **Passed**.
           "Rajesh Kumar",
           "Rajesh Kumar"
         ],
-        "allowed_names": [
-          "arjun kumar",
-          "rajesh kumar",
-          "sunita kumar"
-        ],
-        "unresolved_roster_dependents": []
+        "benefit_member_id": "EMP001",
+        "benefit_member_name": "Rajesh Kumar"
       }
     },
     {
@@ -1061,10 +1057,8 @@ Explicit behavior checks: **Passed**.
           "Vikram Joshi",
           "Vikram Joshi"
         ],
-        "allowed_names": [
-          "vikram joshi"
-        ],
-        "unresolved_roster_dependents": []
+        "benefit_member_id": "EMP005",
+        "benefit_member_name": "Vikram Joshi"
       }
     },
     {
@@ -1600,10 +1594,8 @@ Explicit behavior checks: **Passed**.
         "document_names": [
           "Priya Singh"
         ],
-        "allowed_names": [
-          "priya singh"
-        ],
-        "unresolved_roster_dependents": []
+        "benefit_member_id": "EMP002",
+        "benefit_member_name": "Priya Singh"
       }
     },
     {
@@ -2191,13 +2183,8 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "members",
       "evidence": {
         "document_names": [],
-        "allowed_names": [
-          "suresh patil"
-        ],
-        "unresolved_roster_dependents": [
-          "DEP004",
-          "DEP005"
-        ]
+        "benefit_member_id": "EMP007",
+        "benefit_member_name": "Suresh Patil"
       }
     },
     {
@@ -2507,7 +2494,7 @@ Explicit behavior checks: **Passed**.
     {
       "stage": "policy",
       "rule_id": "category_sub_limit",
-      "status": "DEFERRED_TO_PRE_AUTH",
+      "status": "LIMITED",
       "policy_ref": "opd_categories.diagnostic.sub_limit",
       "evidence": {
         "sub_limit": 10000,
@@ -2517,11 +2504,12 @@ Explicit behavior checks: **Passed**.
         "usage_basis": null,
         "used": null,
         "remaining_before_claim": 10000,
-        "service_net_payable": null,
-        "counted_against_sub_limit_paise": null,
-        "net_payable_after": 15000,
+        "service_net_payable": 15000,
+        "counted_against_sub_limit_paise": 1000000,
+        "net_payable_after": 10000,
         "interpretation": "CATEGORY_SUB_LIMIT_RULE"
-      }
+      },
+      "details": "Prior category usage not supplied; this claim was checked against the full sub_limit on its own."
     },
     {
       "stage": "policy",
@@ -2533,7 +2521,7 @@ Explicit behavior checks: **Passed**.
         "ytd_claims_amount": null,
         "ytd_source": null,
         "remaining": null,
-        "net_payable_before_limit": 15000
+        "net_payable_before_limit": 10000
       },
       "details": "Year-to-date OPD usage was not supplied; the annual limit is applied at settlement against the utilisation ledger."
     },
@@ -2546,7 +2534,7 @@ Explicit behavior checks: **Passed**.
         "sum_insured_paise": 50000000,
         "used_paise": null,
         "remaining_paise": null,
-        "net_payable_before_limit_paise": 1500000
+        "net_payable_before_limit_paise": 1000000
       },
       "details": "Aggregate limit on the net payable; applied only when utilisation is supplied with the claim."
     },
@@ -2560,7 +2548,7 @@ Explicit behavior checks: **Passed**.
         "combined_limit_paise": 15000000,
         "used_paise": null,
         "remaining_paise": null,
-        "net_payable_before_limit_paise": 1500000
+        "net_payable_before_limit_paise": 1000000
       },
       "details": "Aggregate limit on the net payable; applied only when family utilisation is supplied with the claim."
     },
@@ -2591,6 +2579,14 @@ Explicit behavior checks: **Passed**.
             "applies_to": [
               "payable",
               "date_dependent_rejection"
+            ],
+            "applied": false
+          },
+          {
+            "reason": "category_usage_not_evaluated",
+            "points": 0.03,
+            "applies_to": [
+              "payable"
             ],
             "applied": false
           },
@@ -2654,6 +2650,14 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "opd_categories.diagnostic.copay_percent",
       "basis_paise": 1500000,
       "percent": 0
+    },
+    {
+      "kind": "adjustment",
+      "description": "Diagnostic sub-limit",
+      "amount_paise": -500000,
+      "amount": -5000,
+      "policy_ref": "opd_categories.diagnostic.sub_limit",
+      "rule_id": "category_sub_limit"
     }
   ]
 }
@@ -2753,12 +2757,8 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "members",
       "evidence": {
         "document_names": [],
-        "allowed_names": [
-          "amit verma"
-        ],
-        "unresolved_roster_dependents": [
-          "DEP003"
-        ]
+        "benefit_member_id": "EMP003",
+        "benefit_member_name": "Amit Verma"
       }
     },
     {
@@ -3303,10 +3303,8 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "members",
       "evidence": {
         "document_names": [],
-        "allowed_names": [
-          "ravi menon"
-        ],
-        "unresolved_roster_dependents": []
+        "benefit_member_id": "EMP008",
+        "benefit_member_name": "Ravi Menon"
       }
     },
     {
@@ -3860,12 +3858,8 @@ Explicit behavior checks: **Passed**.
           "Deepak Shah",
           "Deepak Shah"
         ],
-        "allowed_names": [
-          "deepak shah"
-        ],
-        "unresolved_roster_dependents": [
-          "DEP006"
-        ]
+        "benefit_member_id": "EMP010",
+        "benefit_member_name": "Deepak Shah"
       }
     },
     {
@@ -4423,10 +4417,8 @@ TC011 confidence with the component working: 0.79.
       "policy_ref": "members",
       "evidence": {
         "document_names": [],
-        "allowed_names": [
-          "kavita nair"
-        ],
-        "unresolved_roster_dependents": []
+        "benefit_member_id": "EMP006",
+        "benefit_member_name": "Kavita Nair"
       }
     },
     {
@@ -5028,10 +5020,8 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "members",
       "evidence": {
         "document_names": [],
-        "allowed_names": [
-          "anita desai"
-        ],
-        "unresolved_roster_dependents": []
+        "benefit_member_id": "EMP009",
+        "benefit_member_name": "Anita Desai"
       }
     },
     {
