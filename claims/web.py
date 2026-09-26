@@ -335,12 +335,12 @@ def _provider_review_result(issues: list[dict[str, Any]], metrics: dict[str, Any
 
 def _member_claim_history(
     claim_id: str, request_data: dict[str, Any], policy: dict[str, Any]
-) -> tuple[list[dict[str, str]], int]:
-    """Read the covered employee's policy-year claims for risk and limit checks."""
+) -> tuple[list[dict[str, str]], int, int]:
+    """Read family submission risk, benefit use, and member session history."""
     member_id = str(request_data["member_id"])
     member = next((item for item in policy.get("members", []) if item.get("member_id") == member_id), None)
     if member is None:
-        return [], 0
+        return [], 0, 0
     owner_id = str(member.get("primary_member_id") or member_id)
     owner = next((item for item in policy.get("members", []) if item.get("member_id") == owner_id), member)
     covered_ids = {owner_id, *[str(value) for value in owner.get("dependents", [])]}
@@ -349,10 +349,9 @@ def _member_claim_history(
     with _connect() as connection:
         rows = connection.execute(
             """SELECT id, treatment_date, state, decision, approved_amount_paise
-               FROM claims WHERE id<>? AND member_id=? AND treatment_date BETWEEN ? AND ?
-                 AND state='DECIDED' AND decision IN ('APPROVED', 'PARTIAL')
-                 AND approved_amount_paise>0 ORDER BY created_at""",
-            (claim_id, member_id, start, end),
+               FROM claims WHERE id<>? AND member_id IN ({}) AND treatment_date BETWEEN ? AND ?
+               ORDER BY created_at""".format(",".join("?" for _ in covered_ids)),
+            (claim_id, *sorted(covered_ids), start, end),
         ).fetchall()
     history = [{"date": row["treatment_date"]} for row in rows if row["treatment_date"]]
     # The prototype has adjudication records but no insurer remittance feed.
@@ -367,7 +366,27 @@ def _member_claim_history(
             (claim_id, *sorted(covered_ids), start, end),
         ).fetchall()
     approved_ytd_paise = sum(int(row["approved_amount_paise"] or 0) for row in benefit_rows)
-    return history, approved_ytd_paise
+    prior_sessions = 0
+    with _connect() as connection:
+        session_rows = connection.execute(
+            """SELECT request_json, result_json FROM claims
+               WHERE id<>? AND member_id=? AND treatment_date BETWEEN ? AND ?
+                 AND state='DECIDED' AND decision IN ('APPROVED', 'PARTIAL')""",
+            (claim_id, member_id, start, end),
+        ).fetchall()
+    for row in session_rows:
+        try:
+            request = json.loads(row["request_json"])
+            result = json.loads(row["result_json"])
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if request.get("claim_category") != "ALTERNATIVE_MEDICINE":
+            continue
+        for step in result.get("trace", []):
+            if step.get("rule_id") == "max_sessions":
+                prior_sessions += int((step.get("evidence") or {}).get("current_sessions") or 0)
+                break
+    return history, approved_ytd_paise, prior_sessions
 
 
 def _bill_fingerprints(request_data: dict[str, Any], inspected_documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -575,11 +594,13 @@ def process_claim(claim_id: str) -> None:
             return
         payload = dict(request_data)
         payload["documents"] = inspection.get("documents", [])
-        claims_history, approved_ytd_paise = _member_claim_history(claim_id, request_data, policy)
+        claims_history, approved_ytd_paise, prior_sessions = _member_claim_history(claim_id, request_data, policy)
         payload["claims_history"] = claims_history
-        payload["claims_history_source"] = "local_claim_database"
+        payload["claims_history_source"] = "local_family_submission_database"
         payload["ytd_claims_amount"] = approved_ytd_paise / 100
         payload["ytd_claims_source"] = "database_approved_decisions"
+        payload["prior_sessions"] = prior_sessions
+        payload["prior_sessions_source"] = "database_approved_alternative_medicine_decisions"
         result = adjudicate_handoff(payload, policy, evaluate_claim)
         result.setdefault("document_metrics", inspection.get("metrics", {}))
         result["trace"] = [document_evidence_trace(inspection.get("documents", []))] + gemini_trace + result.get("trace", [])

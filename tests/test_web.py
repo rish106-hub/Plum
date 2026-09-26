@@ -521,7 +521,8 @@ def test_dependent_history_uses_primary_member_family_pool(tmp_path, monkeypatch
         assert client.get(f"/api/claims/{dependent['id']}").json()["result"]["decision"] == "APPROVED"
     assert observed[1]["member_id"] == "DEP001"
     assert observed[1]["ytd_claims_amount"] == 1350
-    assert observed[1]["claims_history"] == []
+    assert observed[1]["claims_history"] == [{"date": "2024-11-01"}]
+    assert observed[1]["claims_history_source"] == "local_family_submission_database"
 
 
 def test_older_local_database_is_migrated_and_history_is_backfilled(tmp_path, monkeypatch):

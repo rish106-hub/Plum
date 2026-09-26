@@ -3314,8 +3314,11 @@ Explicit behavior checks: **Passed**.
       "status": "PASS",
       "policy_ref": "opd_categories.alternative_medicine.max_sessions_per_year",
       "evidence": {
-        "sessions": 5,
-        "max_sessions_per_year": 20
+        "current_sessions": 5,
+        "prior_sessions": 0,
+        "total_sessions": 5,
+        "max_sessions_per_year": 20,
+        "history_source": "fixture_metadata"
       }
     },
     {

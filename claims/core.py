@@ -474,6 +474,7 @@ def _evaluate_claim(
     pre_auth_required = bool(category_policy.get("requires_pre_auth", False)) or bool(matched_pre_auth_rules)
     pre_auth_status_unknown = False
     pre_auth_invalid = False
+    pre_auth_conflict = False
     if pre_auth_required:
         pre_auth = payload.get("pre_authorization")
         explicit_status = isinstance(pre_auth, bool) or (
@@ -501,15 +502,23 @@ def _evaluate_claim(
                 issued_date = _parse_document_date(document_fields.get("date") or issued_date)
             except ValueError:
                 issued_date = None
-        if obtained and (approval_document is None or issued_date is None or not approval_reference or treatment_date is None):
+        documented_approval = approval_document is not None and issued_date is not None and bool(approval_reference)
+        if explicit_status and not obtained and documented_approval:
+            # A member attestation and a dated approval document disagree. Neither
+            # source may silently override the other for a payment decision.
+            pre_auth_conflict = True
+            pre_auth_status_unknown = True
+        elif obtained and (approval_document is None or issued_date is None or not approval_reference or treatment_date is None):
             pre_auth_status_unknown = True
         elif obtained and treatment_date is not None and issued_date is not None:
             pre_auth_invalid = issued_date > treatment_date or (
                 validity_days > 0 and (treatment_date - issued_date).days > validity_days
             )
         status = "NOT_EVALUATED" if pre_auth_status_unknown else "FAIL" if pre_auth_invalid or not obtained else "PASS"
-        trace.append({"stage": "policy", "rule_id": "pre_authorization", "status": status, "policy_ref": "pre_authorization.required_for / opd_categories.requires_pre_auth / pre_authorization.validity_days", "evidence": {"matched_rules": matched_pre_auth_rules, "claimed_amount": _rupees(claimed), "obtained": obtained, "approval_document": (approval_document or {}).get("file_id"), "issued_date": issued_date.isoformat() if issued_date else None, "approval_reference": approval_reference or None, "validity_days": validity_days, "status_source": "document_backed_dated_approval" if approval_document and issued_date and approval_reference else "missing_or_unconfirmed"}})
-        if pre_auth_status_unknown:
+        trace.append({"stage": "policy", "rule_id": "pre_authorization", "status": status, "policy_ref": "pre_authorization.required_for / opd_categories.requires_pre_auth / pre_authorization.validity_days", "evidence": {"matched_rules": matched_pre_auth_rules, "claimed_amount": _rupees(claimed), "obtained": obtained, "approval_document": (approval_document or {}).get("file_id"), "issued_date": issued_date.isoformat() if issued_date else None, "approval_reference": approval_reference or None, "validity_days": validity_days, "status_source": "form_document_conflict" if pre_auth_conflict else "document_backed_dated_approval" if documented_approval else "missing_or_unconfirmed"}})
+        if pre_auth_conflict:
+            reasons.append({"code": "PRE_AUTH_CONFLICT", "message": "The form says pre-authorization was not obtained, but the uploaded dated approval record says it was. An operator must resolve the conflict before payment."})
+        elif pre_auth_status_unknown:
             reasons.append({"code": "PRE_AUTH_STATUS_UNKNOWN", "message": "Required pre-authorization needs an uploaded, dated approval record with a reference before it can be verified."})
         elif pre_auth_invalid:
             reasons.append({"code": "PRE_AUTH_INVALID", "message": "The pre-authorization was issued after treatment or outside the policy validity period."})
@@ -592,23 +601,40 @@ def _evaluate_claim(
         reasons.append({"code": "ADDITIONAL_DOCUMENT_MISSING", "message": f"The policy requires a {special_document_type}; upload it before adjudication."})
 
     systems = category_policy.get("covered_systems") or []
+    covered_system_unknown = False
     if systems:
         system_hits = [system for system in systems if _contains_phrase(content, system)]
+        # Structured fixtures do not carry a separately extracted treatment-system
+        # field. Live uploads must establish it; fixtures continue to test their
+        # supplied policy outcome without pretending to be OCR evidence.
+        covered_system_unknown = not system_hits and not fixture_evidence
         trace.append(_rule_trace(
             "covered_system", "PASS" if system_hits else "NOT_EVALUATED",
             f"opd_categories.{category_key}.covered_systems",
             {"matched": system_hits},
             None if system_hits else "No listed medical system was named in the documents.",
         ))
+        if covered_system_unknown:
+            reasons.append({"code": "COVERED_SYSTEM_UNKNOWN", "message": "The documents do not establish a medical system covered by this policy. An operator must verify it before payment."})
     session_cap = category_policy.get("max_sessions_per_year")
     session_match = re.search(r"(\d+)\s+sessions", content, flags=re.IGNORECASE)
     if session_cap is not None:
         if session_match:
             sessions = int(session_match.group(1))
-            over_sessions = sessions > int(session_cap)
-            trace.append(_rule_trace("max_sessions", "FAIL" if over_sessions else "PASS", f"opd_categories.{category_key}.max_sessions_per_year", {"sessions": sessions, "max_sessions_per_year": session_cap}))
+            prior_sessions_raw = payload.get("prior_sessions", 0 if fixture_evidence else None)
+            if prior_sessions_raw is None:
+                prior_sessions: int | None = None
+                total_sessions: int | None = None
+            else:
+                prior_sessions = int(prior_sessions_raw)
+                total_sessions = sessions + prior_sessions
+            sessions_unknown = prior_sessions is None
+            over_sessions = total_sessions is not None and total_sessions > int(session_cap)
+            trace.append(_rule_trace("max_sessions", "NOT_EVALUATED" if sessions_unknown else "FAIL" if over_sessions else "PASS", f"opd_categories.{category_key}.max_sessions_per_year", {"current_sessions": sessions, "prior_sessions": prior_sessions, "total_sessions": total_sessions, "max_sessions_per_year": session_cap, "history_source": payload.get("prior_sessions_source", "fixture_metadata" if fixture_evidence else "unavailable")}))
             if over_sessions:
-                reasons.append({"code": "SESSION_LIMIT_EXCEEDED", "message": f"The claim describes {sessions} sessions; the annual cap is {session_cap}."})
+                reasons.append({"code": "SESSION_LIMIT_EXCEEDED", "message": f"The claim would bring annual sessions to {total_sessions}; the annual cap is {session_cap}."})
+            elif sessions_unknown:
+                reasons.append({"code": "SESSION_HISTORY_UNKNOWN", "message": "Prior approved sessions are unavailable, so the annual session cap needs review."})
         else:
             trace.append(_rule_trace("max_sessions", "NOT_EVALUATED", f"opd_categories.{category_key}.max_sessions_per_year", {"max_sessions_per_year": session_cap}, "Session count was not extracted."))
     if category_policy.get("requires_registered_practitioner"):
@@ -676,6 +702,20 @@ def _evaluate_claim(
         eligible = annual_remaining
         ledger.append({"kind": "adjustment", "description": "Annual OPD remaining limit", "amount_paise": -reduction, "amount": _rupees(-reduction), "policy_ref": "coverage.annual_opd_limit"})
 
+    benefit_limit_applied = False
+    if sum_insured_remaining is not None and eligible > sum_insured_remaining:
+        reduction = eligible - sum_insured_remaining
+        eligible = sum_insured_remaining
+        benefit_limit_applied = True
+        reasons.append({"code": "SUM_INSURED_LIMITED", "message": f"The remaining sum insured limits this claim by ₹{_rupees(reduction)}."})
+        ledger.append({"kind": "adjustment", "description": "Remaining sum insured limit", "amount_paise": -reduction, "amount": _rupees(-reduction), "policy_ref": "coverage.sum_insured_per_employee"})
+    if bool(floater.get("enabled", False)) and floater_remaining is not None and eligible > floater_remaining:
+        reduction = eligible - floater_remaining
+        eligible = floater_remaining
+        benefit_limit_applied = True
+        reasons.append({"code": "FAMILY_FLOATER_LIMITED", "message": f"The remaining family-floater benefit limits this claim by ₹{_rupees(reduction)}."})
+        ledger.append({"kind": "adjustment", "description": "Family floater remaining limit", "amount_paise": -reduction, "amount": _rupees(-reduction), "policy_ref": "coverage.family_floater.combined_limit"})
+
     brand_scale = Decimal(0) if eligible_before_limits <= 0 else Decimal(eligible) / Decimal(eligible_before_limits)
     branded_eligible = int((Decimal(branded_items_paise) * brand_scale).quantize(Decimal(1), rounding=ROUND_HALF_UP))
 
@@ -720,9 +760,9 @@ def _evaluate_claim(
     primary = next((code for code in reject_priority if code in codes), None)
     if primary:
         decision, approved = "REJECTED", 0
-    elif fraud_flag or monthly_flag or auto_review_flag or fraud_score_flag or special_document_missing or annual_usage_unknown or unknown_line_description or brand_status_needs_review or "GENERIC_SUBSTITUTION_REVIEW" in codes or pre_auth_status_unknown or "MEMBER_START_DATE_UNKNOWN" in codes or "TREATMENT_DATE_REQUIRED" in codes or "DOCUMENT_DATE_CONFLICT" in codes or "PRACTITIONER_REGISTRATION_UNKNOWN" in codes:
+    elif fraud_flag or monthly_flag or auto_review_flag or fraud_score_flag or special_document_missing or annual_usage_unknown or unknown_line_description or brand_status_needs_review or "GENERIC_SUBSTITUTION_REVIEW" in codes or pre_auth_status_unknown or covered_system_unknown or "SESSION_HISTORY_UNKNOWN" in codes or "MEMBER_START_DATE_UNKNOWN" in codes or "TREATMENT_DATE_REQUIRED" in codes or "DOCUMENT_DATE_CONFLICT" in codes or "PRACTITIONER_REGISTRATION_UNKNOWN" in codes:
         decision, approved = "MANUAL_REVIEW", 0
-    elif payable < claimed and any(item["status"] in {"EXCLUDED", "NOT_COVERED"} for item in ledger if item["kind"] == "line_item"):
+    elif payable < claimed and (benefit_limit_applied or any(item["status"] in {"EXCLUDED", "NOT_COVERED"} for item in ledger if item["kind"] == "line_item")):
         decision, approved = "PARTIAL", payable
     elif payable <= 0:
         decision, approved = "REJECTED", 0

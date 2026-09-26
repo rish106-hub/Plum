@@ -52,7 +52,7 @@ All checks below were run against the current checkout on 26 September 2026. The
 
 | Check | Expected result | Final result |
 | --- | --- | --- |
-| Full test suite | Exit 0; all tests pass | **109 passed**, 7 dependency deprecation warnings |
+| Full test suite | Exit 0; all tests pass | **115 passed**, 7 dependency warnings |
 | Ruff | Exit 0; no lint findings | **All checks passed** |
 | mypy | Exit 0; no type errors | **Success: no issues found in 10 source files** |
 | compileall | Exit 0 | **Passed** |
@@ -236,9 +236,9 @@ The current architecture is suitable for a narrow, explainable MVP with explicit
 - The 12 fixtures contain no actual images/PDFs; handwriting, stamps, multilingual extraction, and image-quality accuracy remain unmeasured.
 - Policy data and expected fixture behavior conflict in places, including TC006 and TC010. The compatibility interpretation is recorded in the trace and reports; an insurer policy owner must resolve it before automatic payment.
 - The prototype has no insurer remittance feed. Approved/partial history is only a local consumption proxy and does not model reversals or actual payment.
-- Exact SHA-256 duplicate detection does not catch cropped, recompressed, or re-scanned copies. Similarity matching needs a review threshold and false-positive measurement.
+- Logical bill fingerprints reduce transformed-copy risk only when bill number, provider, amount, and treatment date are all extracted; cropped or re-scanned copies can still evade detection.
 - Confidence is heuristic and not calibrated.
-- The intake UI does not yet collect every field supported by the evaluator, including independent patient selection, provider, pre-authorization evidence/status, and submission date.
+- The intake UI collects a dated pre-authorization attestation/reference and server-side submission date. Independent patient selection and insurer-provided benefit/remittance data remain outside this prototype.
 - The local operations page has no authentication.
 - Gemini and Sarvam live accuracy, cost distribution, and human-review reduction require a labelled held-out evaluation. A synthetic accepted Gemini candidate proves validation works, not general accuracy.
 - No deployment URL or demo video is included in this checkout; the local runbook and browser evidence are the available delivery artifacts.
