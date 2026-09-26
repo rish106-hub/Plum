@@ -457,6 +457,22 @@ def process_claim(claim_id: str) -> None:
     _set_state(claim_id, "PROCESSING", detail={"message": "Checking submitted documents"})
     try:
         policy = _read_policy()
+        request_policy_hash = str((claim.get("request") or {}).get("policy_sha256") or "")
+        current_policy_hash = hashlib.sha256(json.dumps(policy, sort_keys=True).encode("utf-8")).hexdigest()
+        if request_policy_hash and request_policy_hash != current_policy_hash:
+            snapshot_result: dict[str, Any] = {
+                "state": "MANUAL_REVIEW",
+                "decision": "MANUAL_REVIEW",
+                "approved_amount": 0,
+                "approved_amount_paise": 0,
+                "reasons": [{"code": "POLICY_CHANGED", "message": "The policy changed after this claim was submitted. A reviewer must re-evaluate it against the current policy."}],
+                "correction_requests": [],
+                "confidence_score": 0.0,
+                "ledger": [],
+                "trace": [{"stage": "policy", "rule_id": "policy_snapshot", "status": "FAIL", "policy_ref": "claim.policy_sha256", "details": "The policy snapshot captured at intake does not match the current policy."}],
+            }
+            _set_state(claim_id, "MANUAL_REVIEW", result=snapshot_result, detail={"reason": "policy_changed"})
+            return
         _, upload_root = _paths()
         with _connect() as connection:
             file_rows = connection.execute(

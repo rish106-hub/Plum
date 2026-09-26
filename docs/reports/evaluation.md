@@ -377,9 +377,10 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "waiting_periods.pre_existing_conditions_days",
       "evidence": {
-        "days": 365
+        "days": 365,
+        "conditions": []
       },
-      "details": "No pre-existing-condition history was supplied with the claim."
+      "details": "No explicit pre-existing-condition evidence was supplied with the claim."
     },
     {
       "stage": "policy",
@@ -743,9 +744,10 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "waiting_periods.pre_existing_conditions_days",
       "evidence": {
-        "days": 365
+        "days": 365,
+        "conditions": []
       },
-      "details": "No pre-existing-condition history was supplied with the claim."
+      "details": "No explicit pre-existing-condition evidence was supplied with the claim."
     },
     {
       "stage": "policy",
@@ -1077,9 +1079,10 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "waiting_periods.pre_existing_conditions_days",
       "evidence": {
-        "days": 365
+        "days": 365,
+        "conditions": []
       },
-      "details": "No pre-existing-condition history was supplied with the claim."
+      "details": "No explicit pre-existing-condition evidence was supplied with the claim."
     },
     {
       "stage": "policy",
@@ -1431,9 +1434,10 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "waiting_periods.pre_existing_conditions_days",
       "evidence": {
-        "days": 365
+        "days": 365,
+        "conditions": []
       },
-      "details": "No pre-existing-condition history was supplied with the claim."
+      "details": "No explicit pre-existing-condition evidence was supplied with the claim."
     },
     {
       "stage": "policy",
@@ -1780,9 +1784,10 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "waiting_periods.pre_existing_conditions_days",
       "evidence": {
-        "days": 365
+        "days": 365,
+        "conditions": []
       },
-      "details": "No pre-existing-condition history was supplied with the claim."
+      "details": "No explicit pre-existing-condition evidence was supplied with the claim."
     },
     {
       "stage": "policy",
@@ -2135,9 +2140,10 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "waiting_periods.pre_existing_conditions_days",
       "evidence": {
-        "days": 365
+        "days": 365,
+        "conditions": []
       },
-      "details": "No pre-existing-condition history was supplied with the claim."
+      "details": "No explicit pre-existing-condition evidence was supplied with the claim."
     },
     {
       "stage": "policy",
@@ -2472,9 +2478,10 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "waiting_periods.pre_existing_conditions_days",
       "evidence": {
-        "days": 365
+        "days": 365,
+        "conditions": []
       },
-      "details": "No pre-existing-condition history was supplied with the claim."
+      "details": "No explicit pre-existing-condition evidence was supplied with the claim."
     },
     {
       "stage": "policy",
@@ -2823,9 +2830,10 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "waiting_periods.pre_existing_conditions_days",
       "evidence": {
-        "days": 365
+        "days": 365,
+        "conditions": []
       },
-      "details": "No pre-existing-condition history was supplied with the claim."
+      "details": "No explicit pre-existing-condition evidence was supplied with the claim."
     },
     {
       "stage": "policy",
@@ -3215,9 +3223,10 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "waiting_periods.pre_existing_conditions_days",
       "evidence": {
-        "days": 365
+        "days": 365,
+        "conditions": []
       },
-      "details": "No pre-existing-condition history was supplied with the claim."
+      "details": "No explicit pre-existing-condition evidence was supplied with the claim."
     },
     {
       "stage": "policy",

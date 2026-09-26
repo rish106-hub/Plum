@@ -305,6 +305,12 @@ def _evaluate_claim(
         join_date = date.fromisoformat(str(member.get("join_date") or owner["join_date"]))
     except (KeyError, TypeError, ValueError):
         join_date = None
+    if treatment_date is None:
+        trace.append(_rule_trace(
+            "treatment_date", "FAIL", "claim.treatment_date", {},
+            "A treatment date is required before policy timing can be evaluated.",
+        ))
+        reasons.append({"code": "TREATMENT_DATE_REQUIRED", "message": "Provide the treatment date before this claim can be adjudicated."})
     document_dates: list[tuple[str, date]] = []
     unreadable_document_dates: list[str] = []
     for doc in documents:
@@ -358,7 +364,29 @@ def _evaluate_claim(
         reasons.append({"code": "RELATIONSHIP_NOT_COVERED", "message": f"Relationship {relationship} is outside the covered family list."})
     trace.append(_rule_trace("sum_insured", "NOT_EVALUATED", "coverage.sum_insured_per_employee", {"sum_insured": coverage.get("sum_insured_per_employee")}, "No hospitalisation utilisation feed is available in this OPD evaluator."))
     trace.append(_rule_trace("family_floater_limit", "NOT_EVALUATED", "coverage.family_floater.combined_limit", {"combined_limit": coverage.get("family_floater", {}).get("combined_limit")}, "Family-floater consumption is not tracked separately from the annual OPD limit."))
-    trace.append(_rule_trace("pre_existing_condition_wait", "NOT_EVALUATED", "waiting_periods.pre_existing_conditions_days", {"days": policy.get("waiting_periods", {}).get("pre_existing_conditions_days")}, "No pre-existing-condition history was supplied with the claim."))
+    pre_existing_days = int(policy.get("waiting_periods", {}).get("pre_existing_conditions_days", 0))
+    pre_existing_evidence = payload.get("pre_existing_conditions")
+    pre_existing_names = [
+        str(item.get("condition") if isinstance(item, dict) else item)
+        for item in (pre_existing_evidence or [])
+        if str(item.get("condition") if isinstance(item, dict) else item).strip()
+    ] if isinstance(pre_existing_evidence, list) else []
+    pre_existing_hits = [
+        name for name in pre_existing_names
+        if _contains_phrase(content, name)
+    ]
+    if treatment_date and join_date and pre_existing_hits and pre_existing_days:
+        eligible_from = join_date + timedelta(days=pre_existing_days)
+        pre_existing_fail = treatment_date < eligible_from
+        trace.append(_rule_trace(
+            "pre_existing_condition_wait", "FAIL" if pre_existing_fail else "PASS",
+            "waiting_periods.pre_existing_conditions_days",
+            {"conditions": pre_existing_hits, "days": pre_existing_days, "join_date": str(join_date), "treatment_date": str(treatment_date), "eligible_from": str(eligible_from)},
+        ))
+        if pre_existing_fail:
+            reasons.append({"code": "PRE_EXISTING_WAITING_PERIOD", "message": f"The pre-existing-condition waiting period ends on {eligible_from.isoformat()}; treatment was on {treatment_date.isoformat()}."})
+    else:
+        trace.append(_rule_trace("pre_existing_condition_wait", "NOT_EVALUATED", "waiting_periods.pre_existing_conditions_days", {"days": pre_existing_days, "conditions": pre_existing_names}, "No explicit pre-existing-condition evidence was supplied with the claim."))
     category_covered = category_policy.get("covered", True)
     trace.append(_rule_trace("category_covered", "PASS" if category_covered else "FAIL", f"opd_categories.{category_key}.covered", {"covered": category_covered}))
     if category_covered is False:
@@ -628,11 +656,11 @@ def _evaluate_claim(
     trace.append({"stage": "pricing", "rule_id": "payable_amount", "status": "CALCULATED", "evidence": {"eligible_paise": eligible, "network_hospital": network, "network_discount_paise": discount, "copay_paise": copay, "branded_basis_paise": branded_after_discount, "branded_copay_paise": branded_copay, "payable_paise": payable}, "details": "Network discount applied before co-pay."})
 
     codes = {reason["code"] for reason in reasons}
-    reject_priority = ["POLICY_NOT_ACTIVE", "RELATIONSHIP_NOT_COVERED", "CATEGORY_NOT_COVERED", "OUTSIDE_POLICY_PERIOD", "MINIMUM_CLAIM_AMOUNT", "EXCLUDED_CONDITION", "WAITING_PERIOD", "SESSION_LIMIT_EXCEEDED", "PRE_AUTH_MISSING", "SUBMISSION_BEFORE_TREATMENT", "SUBMISSION_LATE", "PER_CLAIM_EXCEEDED"]
+    reject_priority = ["POLICY_NOT_ACTIVE", "RELATIONSHIP_NOT_COVERED", "CATEGORY_NOT_COVERED", "OUTSIDE_POLICY_PERIOD", "MINIMUM_CLAIM_AMOUNT", "EXCLUDED_CONDITION", "PRE_EXISTING_WAITING_PERIOD", "WAITING_PERIOD", "SESSION_LIMIT_EXCEEDED", "PRE_AUTH_MISSING", "SUBMISSION_BEFORE_TREATMENT", "SUBMISSION_LATE", "PER_CLAIM_EXCEEDED"]
     primary = next((code for code in reject_priority if code in codes), None)
     if primary:
         decision, approved = "REJECTED", 0
-    elif fraud_flag or monthly_flag or special_document_missing or annual_usage_unknown or unknown_line_description or brand_status_needs_review or pre_auth_status_unknown or "MEMBER_START_DATE_UNKNOWN" in codes or "DOCUMENT_DATE_CONFLICT" in codes or "PRACTITIONER_REGISTRATION_UNKNOWN" in codes:
+    elif fraud_flag or monthly_flag or special_document_missing or annual_usage_unknown or unknown_line_description or brand_status_needs_review or pre_auth_status_unknown or "MEMBER_START_DATE_UNKNOWN" in codes or "TREATMENT_DATE_REQUIRED" in codes or "DOCUMENT_DATE_CONFLICT" in codes or "PRACTITIONER_REGISTRATION_UNKNOWN" in codes:
         decision, approved = "MANUAL_REVIEW", 0
     elif payable < claimed and any(item["status"] in {"EXCLUDED", "NOT_COVERED"} for item in ledger if item["kind"] == "line_item"):
         decision, approved = "PARTIAL", payable

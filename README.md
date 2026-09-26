@@ -52,7 +52,7 @@ All checks below were run against the current checkout on 26 September 2026. The
 
 | Check | Expected result | Final result |
 | --- | --- | --- |
-| Full test suite | Exit 0; all tests pass | **102 passed**, 7 dependency deprecation warnings |
+| Full test suite | Exit 0; all tests pass | **109 passed**, 7 dependency deprecation warnings |
 | Ruff | Exit 0; no lint findings | **All checks passed** |
 | mypy | Exit 0; no type errors | **Success: no issues found in 10 source files** |
 | compileall | Exit 0 | **Passed** |
@@ -78,10 +78,10 @@ The expected and produced outcomes matched for all 12 supplied structured cases:
 | TC001–TC003 | `NEEDS_CORRECTION`, with `decision: null` |
 | TC004 | `APPROVED`, ₹1,350 |
 | TC005 | `REJECTED`, ₹0 |
-| TC006 | `PARTIAL`, ₹8,000 |
+| TC006 | `REJECTED`, ₹0 (line-level exclusion remains visible in the trace) |
 | TC007–TC008 | `REJECTED`, ₹0 |
 | TC009 | `MANUAL_REVIEW`, ₹0 |
-| TC010–TC011 | `APPROVED`, ₹3,240 and ₹4,000 respectively |
+| TC010–TC011 | `APPROVED`, ₹1,440 and ₹4,000 respectively |
 | TC012 | `REJECTED`, ₹0 |
 
 These fixtures contain structured metadata rather than actual PDF/image bytes. Therefore, 12/12 is a regression result for normalization, reconciliation, policy rules, money arithmetic, traces, and failure branches—not an OCR benchmark.
