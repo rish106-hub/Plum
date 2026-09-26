@@ -1,7 +1,7 @@
 {
   "fingerprints": {
     "policy_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-    "policy_canonical_sha256": "f2d68a0002d7b2f924d4fa6a44fa45c623444bccc860e3128a65f4e204db35ae",
+    "policy_canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
     "fixture_sha256": "4b9b9a047ec6a6479a81f6b2767f00f931920ad7bedb3f547abb54b771034e63"
   },
   "records": [
@@ -45,9 +45,9 @@
               "policy_id": "PLUM_GHI_2024",
               "schema_version": "plum.canonical_policy.v1",
               "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-              "canonical_sha256": "f2d68a0002d7b2f924d4fa6a44fa45c623444bccc860e3128a65f4e204db35ae",
+              "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
               "canonical_sha256_verified": true,
-              "audit_sha256": "3cdebb5887cee9331eca7f5a0d8f2f870182dcc05adf8275e3ab34beb024b232",
+              "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
               "audit_entries": 100,
               "interpretation_entries": 56,
               "conflict_resolutions": [
@@ -101,7 +101,7 @@
                   "source_paths": [
                     "opd_categories.consultation.sub_limit"
                   ],
-                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Other eligible lines on the same bill fall under the global per-claim limit only."
+                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Lines recognised as tests or medicines (test, lab, laboratory, cbc, blood, urine, profile, panel, culture, x-ray, xray, scan, ultrasound, ecg, medicine, medicines, drug, tablet, capsule, syrup, injection, pharmacy) fall under the global per-claim limit only; any other eligible line counts against the sub_limit."
                 },
                 {
                   "id": "PER_CLAIM_CEILING.DIAGNOSTIC",
@@ -985,9 +985,9 @@
               "policy_id": "PLUM_GHI_2024",
               "schema_version": "plum.canonical_policy.v1",
               "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-              "canonical_sha256": "f2d68a0002d7b2f924d4fa6a44fa45c623444bccc860e3128a65f4e204db35ae",
+              "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
               "canonical_sha256_verified": true,
-              "audit_sha256": "3cdebb5887cee9331eca7f5a0d8f2f870182dcc05adf8275e3ab34beb024b232",
+              "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
               "audit_entries": 100,
               "interpretation_entries": 56,
               "conflict_resolutions": [
@@ -1041,7 +1041,7 @@
                   "source_paths": [
                     "opd_categories.consultation.sub_limit"
                   ],
-                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Other eligible lines on the same bill fall under the global per-claim limit only."
+                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Lines recognised as tests or medicines (test, lab, laboratory, cbc, blood, urine, profile, panel, culture, x-ray, xray, scan, ultrasound, ecg, medicine, medicines, drug, tablet, capsule, syrup, injection, pharmacy) fall under the global per-claim limit only; any other eligible line counts against the sub_limit."
                 },
                 {
                   "id": "PER_CLAIM_CEILING.DIAGNOSTIC",
@@ -1931,9 +1931,9 @@
               "policy_id": "PLUM_GHI_2024",
               "schema_version": "plum.canonical_policy.v1",
               "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-              "canonical_sha256": "f2d68a0002d7b2f924d4fa6a44fa45c623444bccc860e3128a65f4e204db35ae",
+              "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
               "canonical_sha256_verified": true,
-              "audit_sha256": "3cdebb5887cee9331eca7f5a0d8f2f870182dcc05adf8275e3ab34beb024b232",
+              "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
               "audit_entries": 100,
               "interpretation_entries": 56,
               "conflict_resolutions": [
@@ -1987,7 +1987,7 @@
                   "source_paths": [
                     "opd_categories.consultation.sub_limit"
                   ],
-                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Other eligible lines on the same bill fall under the global per-claim limit only."
+                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Lines recognised as tests or medicines (test, lab, laboratory, cbc, blood, urine, profile, panel, culture, x-ray, xray, scan, ultrasound, ecg, medicine, medicines, drug, tablet, capsule, syrup, injection, pharmacy) fall under the global per-claim limit only; any other eligible line counts against the sub_limit."
                 },
                 {
                   "id": "PER_CLAIM_CEILING.DIAGNOSTIC",
@@ -2873,9 +2873,9 @@
               "policy_id": "PLUM_GHI_2024",
               "schema_version": "plum.canonical_policy.v1",
               "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-              "canonical_sha256": "f2d68a0002d7b2f924d4fa6a44fa45c623444bccc860e3128a65f4e204db35ae",
+              "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
               "canonical_sha256_verified": true,
-              "audit_sha256": "3cdebb5887cee9331eca7f5a0d8f2f870182dcc05adf8275e3ab34beb024b232",
+              "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
               "audit_entries": 100,
               "interpretation_entries": 56,
               "conflict_resolutions": [
@@ -2929,7 +2929,7 @@
                   "source_paths": [
                     "opd_categories.consultation.sub_limit"
                   ],
-                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Other eligible lines on the same bill fall under the global per-claim limit only."
+                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Lines recognised as tests or medicines (test, lab, laboratory, cbc, blood, urine, profile, panel, culture, x-ray, xray, scan, ultrasound, ecg, medicine, medicines, drug, tablet, capsule, syrup, injection, pharmacy) fall under the global per-claim limit only; any other eligible line counts against the sub_limit."
                 },
                 {
                   "id": "PER_CLAIM_CEILING.DIAGNOSTIC",
@@ -4280,9 +4280,9 @@
               "policy_id": "PLUM_GHI_2024",
               "schema_version": "plum.canonical_policy.v1",
               "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-              "canonical_sha256": "f2d68a0002d7b2f924d4fa6a44fa45c623444bccc860e3128a65f4e204db35ae",
+              "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
               "canonical_sha256_verified": true,
-              "audit_sha256": "3cdebb5887cee9331eca7f5a0d8f2f870182dcc05adf8275e3ab34beb024b232",
+              "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
               "audit_entries": 100,
               "interpretation_entries": 56,
               "conflict_resolutions": [
@@ -4336,7 +4336,7 @@
                   "source_paths": [
                     "opd_categories.consultation.sub_limit"
                   ],
-                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Other eligible lines on the same bill fall under the global per-claim limit only."
+                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Lines recognised as tests or medicines (test, lab, laboratory, cbc, blood, urine, profile, panel, culture, x-ray, xray, scan, ultrasound, ecg, medicine, medicines, drug, tablet, capsule, syrup, injection, pharmacy) fall under the global per-claim limit only; any other eligible line counts against the sub_limit."
                 },
                 {
                   "id": "PER_CLAIM_CEILING.DIAGNOSTIC",
@@ -5680,9 +5680,9 @@
               "policy_id": "PLUM_GHI_2024",
               "schema_version": "plum.canonical_policy.v1",
               "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-              "canonical_sha256": "f2d68a0002d7b2f924d4fa6a44fa45c623444bccc860e3128a65f4e204db35ae",
+              "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
               "canonical_sha256_verified": true,
-              "audit_sha256": "3cdebb5887cee9331eca7f5a0d8f2f870182dcc05adf8275e3ab34beb024b232",
+              "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
               "audit_entries": 100,
               "interpretation_entries": 56,
               "conflict_resolutions": [
@@ -5736,7 +5736,7 @@
                   "source_paths": [
                     "opd_categories.consultation.sub_limit"
                   ],
-                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Other eligible lines on the same bill fall under the global per-claim limit only."
+                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Lines recognised as tests or medicines (test, lab, laboratory, cbc, blood, urine, profile, panel, culture, x-ray, xray, scan, ultrasound, ecg, medicine, medicines, drug, tablet, capsule, syrup, injection, pharmacy) fall under the global per-claim limit only; any other eligible line counts against the sub_limit."
                 },
                 {
                   "id": "PER_CLAIM_CEILING.DIAGNOSTIC",
@@ -7108,9 +7108,9 @@
               "policy_id": "PLUM_GHI_2024",
               "schema_version": "plum.canonical_policy.v1",
               "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-              "canonical_sha256": "f2d68a0002d7b2f924d4fa6a44fa45c623444bccc860e3128a65f4e204db35ae",
+              "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
               "canonical_sha256_verified": true,
-              "audit_sha256": "3cdebb5887cee9331eca7f5a0d8f2f870182dcc05adf8275e3ab34beb024b232",
+              "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
               "audit_entries": 100,
               "interpretation_entries": 56,
               "conflict_resolutions": [
@@ -7164,7 +7164,7 @@
                   "source_paths": [
                     "opd_categories.consultation.sub_limit"
                   ],
-                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Other eligible lines on the same bill fall under the global per-claim limit only."
+                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Lines recognised as tests or medicines (test, lab, laboratory, cbc, blood, urine, profile, panel, culture, x-ray, xray, scan, ultrasound, ecg, medicine, medicines, drug, tablet, capsule, syrup, injection, pharmacy) fall under the global per-claim limit only; any other eligible line counts against the sub_limit."
                 },
                 {
                   "id": "PER_CLAIM_CEILING.DIAGNOSTIC",
@@ -8531,9 +8531,9 @@
               "policy_id": "PLUM_GHI_2024",
               "schema_version": "plum.canonical_policy.v1",
               "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-              "canonical_sha256": "f2d68a0002d7b2f924d4fa6a44fa45c623444bccc860e3128a65f4e204db35ae",
+              "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
               "canonical_sha256_verified": true,
-              "audit_sha256": "3cdebb5887cee9331eca7f5a0d8f2f870182dcc05adf8275e3ab34beb024b232",
+              "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
               "audit_entries": 100,
               "interpretation_entries": 56,
               "conflict_resolutions": [
@@ -8587,7 +8587,7 @@
                   "source_paths": [
                     "opd_categories.consultation.sub_limit"
                   ],
-                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Other eligible lines on the same bill fall under the global per-claim limit only."
+                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Lines recognised as tests or medicines (test, lab, laboratory, cbc, blood, urine, profile, panel, culture, x-ray, xray, scan, ultrasound, ecg, medicine, medicines, drug, tablet, capsule, syrup, injection, pharmacy) fall under the global per-claim limit only; any other eligible line counts against the sub_limit."
                 },
                 {
                   "id": "PER_CLAIM_CEILING.DIAGNOSTIC",
@@ -9934,9 +9934,9 @@
               "policy_id": "PLUM_GHI_2024",
               "schema_version": "plum.canonical_policy.v1",
               "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-              "canonical_sha256": "f2d68a0002d7b2f924d4fa6a44fa45c623444bccc860e3128a65f4e204db35ae",
+              "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
               "canonical_sha256_verified": true,
-              "audit_sha256": "3cdebb5887cee9331eca7f5a0d8f2f870182dcc05adf8275e3ab34beb024b232",
+              "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
               "audit_entries": 100,
               "interpretation_entries": 56,
               "conflict_resolutions": [
@@ -9990,7 +9990,7 @@
                   "source_paths": [
                     "opd_categories.consultation.sub_limit"
                   ],
-                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Other eligible lines on the same bill fall under the global per-claim limit only."
+                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Lines recognised as tests or medicines (test, lab, laboratory, cbc, blood, urine, profile, panel, culture, x-ray, xray, scan, ultrasound, ecg, medicine, medicines, drug, tablet, capsule, syrup, injection, pharmacy) fall under the global per-claim limit only; any other eligible line counts against the sub_limit."
                 },
                 {
                   "id": "PER_CLAIM_CEILING.DIAGNOSTIC",
@@ -11348,9 +11348,9 @@
               "policy_id": "PLUM_GHI_2024",
               "schema_version": "plum.canonical_policy.v1",
               "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-              "canonical_sha256": "f2d68a0002d7b2f924d4fa6a44fa45c623444bccc860e3128a65f4e204db35ae",
+              "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
               "canonical_sha256_verified": true,
-              "audit_sha256": "3cdebb5887cee9331eca7f5a0d8f2f870182dcc05adf8275e3ab34beb024b232",
+              "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
               "audit_entries": 100,
               "interpretation_entries": 56,
               "conflict_resolutions": [
@@ -11404,7 +11404,7 @@
                   "source_paths": [
                     "opd_categories.consultation.sub_limit"
                   ],
-                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Other eligible lines on the same bill fall under the global per-claim limit only."
+                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Lines recognised as tests or medicines (test, lab, laboratory, cbc, blood, urine, profile, panel, culture, x-ray, xray, scan, ultrasound, ecg, medicine, medicines, drug, tablet, capsule, syrup, injection, pharmacy) fall under the global per-claim limit only; any other eligible line counts against the sub_limit."
                 },
                 {
                   "id": "PER_CLAIM_CEILING.DIAGNOSTIC",
@@ -12761,9 +12761,9 @@
               "policy_id": "PLUM_GHI_2024",
               "schema_version": "plum.canonical_policy.v1",
               "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-              "canonical_sha256": "f2d68a0002d7b2f924d4fa6a44fa45c623444bccc860e3128a65f4e204db35ae",
+              "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
               "canonical_sha256_verified": true,
-              "audit_sha256": "3cdebb5887cee9331eca7f5a0d8f2f870182dcc05adf8275e3ab34beb024b232",
+              "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
               "audit_entries": 100,
               "interpretation_entries": 56,
               "conflict_resolutions": [
@@ -12817,7 +12817,7 @@
                   "source_paths": [
                     "opd_categories.consultation.sub_limit"
                   ],
-                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Other eligible lines on the same bill fall under the global per-claim limit only."
+                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Lines recognised as tests or medicines (test, lab, laboratory, cbc, blood, urine, profile, panel, culture, x-ray, xray, scan, ultrasound, ecg, medicine, medicines, drug, tablet, capsule, syrup, injection, pharmacy) fall under the global per-claim limit only; any other eligible line counts against the sub_limit."
                 },
                 {
                   "id": "PER_CLAIM_CEILING.DIAGNOSTIC",
@@ -14219,9 +14219,9 @@
               "policy_id": "PLUM_GHI_2024",
               "schema_version": "plum.canonical_policy.v1",
               "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-              "canonical_sha256": "f2d68a0002d7b2f924d4fa6a44fa45c623444bccc860e3128a65f4e204db35ae",
+              "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
               "canonical_sha256_verified": true,
-              "audit_sha256": "3cdebb5887cee9331eca7f5a0d8f2f870182dcc05adf8275e3ab34beb024b232",
+              "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
               "audit_entries": 100,
               "interpretation_entries": 56,
               "conflict_resolutions": [
@@ -14275,7 +14275,7 @@
                   "source_paths": [
                     "opd_categories.consultation.sub_limit"
                   ],
-                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Other eligible lines on the same bill fall under the global per-claim limit only."
+                  "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Lines recognised as tests or medicines (test, lab, laboratory, cbc, blood, urine, profile, panel, culture, x-ray, xray, scan, ultrasound, ecg, medicine, medicines, drug, tablet, capsule, syrup, injection, pharmacy) fall under the global per-claim limit only; any other eligible line counts against the sub_limit."
                 },
                 {
                   "id": "PER_CLAIM_CEILING.DIAGNOSTIC",
@@ -15436,7 +15436,7 @@
           {
             "stage": "policy",
             "rule_id": "category_sub_limit",
-            "status": "PASS",
+            "status": "LIMITED",
             "policy_ref": "opd_categories.consultation.sub_limit",
             "evidence": {
               "sub_limit": 2000,
@@ -15446,9 +15446,9 @@
               "usage_basis": null,
               "used": null,
               "remaining_before_claim": 2000,
-              "service_net_payable": 0,
-              "counted_against_sub_limit_paise": 0,
-              "net_payable_after": 4500,
+              "service_net_payable": 4500,
+              "counted_against_sub_limit_paise": 200000,
+              "net_payable_after": 2000,
               "interpretation": "CATEGORY_SUB_LIMIT_RULE"
             },
             "details": "Prior category usage not supplied; this claim was checked against the full sub_limit on its own."
@@ -15463,7 +15463,7 @@
               "ytd_claims_amount": null,
               "ytd_source": null,
               "remaining": null,
-              "net_payable_before_limit": 4500
+              "net_payable_before_limit": 2000
             },
             "details": "Year-to-date OPD usage was not supplied; the annual limit is applied at settlement against the utilisation ledger."
           },
@@ -15476,7 +15476,7 @@
               "sum_insured_paise": 50000000,
               "used_paise": null,
               "remaining_paise": null,
-              "net_payable_before_limit_paise": 450000
+              "net_payable_before_limit_paise": 200000
             },
             "details": "Aggregate limit on the net payable; applied only when utilisation is supplied with the claim."
           },
@@ -15490,7 +15490,7 @@
               "combined_limit_paise": 15000000,
               "used_paise": null,
               "remaining_paise": null,
-              "net_payable_before_limit_paise": 450000
+              "net_payable_before_limit_paise": 200000
             },
             "details": "Aggregate limit on the net payable; applied only when family utilisation is supplied with the claim."
           },
@@ -15634,6 +15634,14 @@
             "policy_ref": "opd_categories.consultation.copay_percent",
             "basis_paise": 500000,
             "percent": 10
+          },
+          {
+            "kind": "adjustment",
+            "description": "Consultation sub-limit",
+            "amount_paise": -250000,
+            "amount": -2500,
+            "policy_ref": "opd_categories.consultation.sub_limit",
+            "rule_id": "category_sub_limit"
           }
         ]
       },
