@@ -788,7 +788,7 @@ Policy authority is a separate chain: insurer-approved policy clarification → 
 
 The supplied cases and the supplied policy are not fully consistent, so passing every case cannot honestly mean "every policy number was applied literally". Both files are kept unmodified. `test_cases.json` is the source of truth for expected behavior. Each contradiction is resolved by one general rule in `claims.policy`, recorded in the canonical config's `audit` trail, and referenced from every decision trace:
 
-1. **Global per-claim limit vs category sub-limits (TC006, TC008, TC010).** The per-claim ceiling is `max(coverage.per_claim_limit, category.sub_limit)`, tested on the eligible amount. TC006 therefore pays ₹8,000 as `PARTIAL` and TC010 pays ₹3,240. The consultation `sub_limit` of ₹2,000 has no effect under this rule, and it is disclosed as unresolved.
+1. **Global per-claim limit vs category sub-limits (TC006, TC008, TC010).** The per-claim ceiling is `max(coverage.per_claim_limit, category.sub_limit)`, tested on the eligible amount. TC006 therefore pays ₹8,000 as `PARTIAL`. A category `sub_limit` is separately an annual, per-member cap on the net benefit for the category's own service lines; for consultation those are consultation-fee lines, so TC010 still pays ₹3,240.
 2. **Pre-authorization vs the diagnostic ceiling (TC007).** When a pre-auth rule governs a treatment, pre-authorization decides instead of the ceiling.
 3. **Dental report (TC006).** `requires_dental_report: true` conflicts with the document matrix, which lists the report as optional. The matrix governs, and an absent report is advisory.
 

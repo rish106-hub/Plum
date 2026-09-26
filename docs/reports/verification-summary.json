@@ -1,12 +1,12 @@
 {
   "schema": "plum.verification_summary.v1",
-  "started_at": "2026-09-26T13:59:33+00:00",
-  "finished_at": "2026-09-26T13:59:37+00:00",
+  "started_at": "2026-09-26T17:14:54+00:00",
+  "finished_at": "2026-09-26T17:15:00+00:00",
   "git": {
-    "head": "7c088a8d46c95741a4cbc6703981f96473ac5261",
+    "head": "f29b4a43894e5e6fe79f4880ff407b1a39d81f17",
     "branch": "fix/source-of-truth-remediation",
     "worktree_dirty": true,
-    "changed_paths": 29
+    "changed_paths": 28
   },
   "python": "3.14.7",
   "platform": "Darwin arm64",
@@ -46,14 +46,14 @@
       "command": "python -m ruff check .",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.09
+      "seconds": 0.08
     },
     {
       "name": "mypy",
       "command": "python -m mypy claims scripts tools",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.47
+      "seconds": 0.54
     },
     {
       "name": "compileall",
@@ -67,39 +67,39 @@
       "command": "python -m pytest -q -p no:cacheprovider",
       "exit_code": 0,
       "ok": true,
-      "seconds": 3.04
+      "seconds": 4.1
     },
     {
       "name": "supplied-case evaluation",
       "command": "python -m scripts.evaluate",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.14
+      "seconds": 0.19
     },
     {
       "name": "offline document suites",
       "command": "python -m scripts.evaluate_documents",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.34
+      "seconds": 0.5
     },
     {
       "name": "live OCR status (keys stripped)",
       "command": "python -m scripts.evaluate_documents --providers live",
       "exit_code": 2,
       "ok": true,
-      "seconds": 0.17
+      "seconds": 0.23
     }
   ],
   "lint_ok": true,
   "typecheck_ok": true,
   "compile_ok": true,
   "tests": {
-    "passed": 189,
+    "passed": 260,
     "failed": 0,
     "errors": 0,
     "skipped": 0,
-    "subtests_passed": 77,
+    "subtests_passed": 103,
     "subtests_failed": 0,
     "warnings": 7
   },
@@ -110,7 +110,7 @@
     "total": 12,
     "fingerprints": {
       "policy_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-      "policy_canonical_sha256": "1f1299e97fc82a28c0c02042b69e1daacf5e686fe81588975f81399f4c07bbf0",
+      "policy_canonical_sha256": "f2d68a0002d7b2f924d4fa6a44fa45c623444bccc860e3128a65f4e204db35ae",
       "fixture_sha256": "4b9b9a047ec6a6479a81f6b2767f00f931920ad7bedb3f547abb54b771034e63"
     },
     "cases": [
@@ -147,7 +147,7 @@
         "decision": "APPROVED",
         "expected_amount": 1350,
         "approved_amount": 1350,
-        "confidence": 0.96,
+        "confidence": 0.93,
         "matched": true
       },
       {
@@ -165,7 +165,7 @@
         "decision": "PARTIAL",
         "expected_amount": 8000,
         "approved_amount": 8000,
-        "confidence": 0.89,
+        "confidence": 0.83,
         "matched": true
       },
       {
@@ -192,7 +192,7 @@
         "decision": "MANUAL_REVIEW",
         "expected_amount": null,
         "approved_amount": 0,
-        "confidence": 0.96,
+        "confidence": 0.92,
         "matched": true
       },
       {
@@ -201,7 +201,7 @@
         "decision": "APPROVED",
         "expected_amount": 3240,
         "approved_amount": 3240,
-        "confidence": 0.96,
+        "confidence": 0.9,
         "matched": true
       },
       {
@@ -210,7 +210,7 @@
         "decision": "APPROVED",
         "expected_amount": null,
         "approved_amount": 4000,
-        "confidence": 0.62,
+        "confidence": 0.56,
         "matched": true
       },
       {
@@ -253,15 +253,16 @@
   },
   "policy_audit": {
     "report": "docs/reports/policy-audit.md",
-    "entries": 72,
+    "entries": 100,
     "by_kind": {
-      "interpretation": 40,
-      "derived": 13,
+      "interpretation": 56,
+      "derived": 20,
       "absent_optional_field": 8,
-      "conflict_resolution": 7,
-      "reference_repair": 4
+      "conflict_resolution": 8,
+      "reference_repair": 4,
+      "informational": 4
     },
-    "canonical_sha256": "1f1299e97fc82a28c0c02042b69e1daacf5e686fe81588975f81399f4c07bbf0"
+    "canonical_sha256": "f2d68a0002d7b2f924d4fa6a44fa45c623444bccc860e3128a65f4e204db35ae"
   },
   "readme_block_updated": true,
   "docs_drift": [],

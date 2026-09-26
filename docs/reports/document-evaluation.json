@@ -79,6 +79,7 @@
           "expected": "PATIENT_MISMATCH",
           "matched": true,
           "issue_codes": [
+            "MATERIAL_FIELD_UNVERIFIED",
             "PATIENT_MISMATCH"
           ],
           "route": "DOCUMENT_CORRECTION_REQUIRED",
@@ -115,7 +116,8 @@
           "expected": "BILL_ARITHMETIC_CONFLICT",
           "matched": true,
           "issue_codes": [
-            "BILL_ARITHMETIC_CONFLICT"
+            "BILL_ARITHMETIC_CONFLICT",
+            "MATERIAL_FIELD_UNVERIFIED"
           ],
           "route": "DOCUMENT_CORRECTION_REQUIRED",
           "metrics": {

@@ -9,12 +9,12 @@ The Sarvam Extract schema asks for most fields the guide lists and retains sourc
 | Document | Adjudication material (a missing value holds the claim) | Extracted with evidence when present | Shown to reviewers only |
 | --- | --- | --- | --- |
 | Prescription | patient name, diagnosis | doctor name and registration, date, treatment | specialization, clinic address, medicine dosage text |
-| Hospital / clinic bill | patient name, total, itemized line items (sum must equal total) | bill number, date, GST | GSTIN, address, payment mode |
-| Pharmacy bill | patient name, total, line items; brand status only with an exact printed phrase | drug licence, bill number | batch, expiry, MRP, pharmacist |
+| Hospital / clinic bill | patient name, printed date (must parse), total, itemized line items (sum must equal total) | bill number, GST | GSTIN, address, payment mode |
+| Pharmacy bill | patient name, printed date (must parse), total, line items; brand status only with an exact printed phrase | drug licence, bill number | batch, expiry, MRP, pharmacist |
 | Lab / diagnostic report | patient name, date, test name | NABL status, pathologist registration | reference ranges, remarks |
 | Dental report | patient name, date, diagnosis | — | everything else |
 
-These are the `material_fields` in `claims/documents.py::revalidate_documents`. Any value the reader cannot establish is left empty and raises `MATERIAL_FIELD_UNVERIFIED`; the pipeline never fills a gap from context or from the claim form.
+These are the `material_fields` in `claims/documents.py::revalidate_documents`. Any value the reader cannot establish is left empty and raises `MATERIAL_FIELD_UNVERIFIED`; the pipeline never fills a gap from context or from the claim form. A bill's date is material because it anchors the treatment episode and the duplicate-bill fingerprint: a bill date that is missing or does not parse (`documents.parse_document_date`, the same formats the policy engine accepts) raises `MATERIAL_FIELD_UNVERIFIED` with `field: date`, a member correction. The policy engine adds its own fail-closed checks on what reaches it (for example `BILL_AMOUNT_UNVERIFIED` and `DOCUMENT_QUALITY_INSUFFICIENT`); see [policy interpretation](policy-interpretation.md#11-evidence-gaps-one-rule-for-every-source).
 
 ## How the guide's variations are handled
 
