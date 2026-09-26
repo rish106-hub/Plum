@@ -1,10 +1,10 @@
 {
   "schema": "plum.verification_summary.v1",
-  "started_at": "2026-09-26T18:17:03+00:00",
-  "finished_at": "2026-09-26T18:17:09+00:00",
+  "started_at": "2026-09-26T19:05:05+00:00",
+  "finished_at": "2026-09-26T19:05:11+00:00",
   "git": {
-    "head": "0d2ce6971031bc8ccae11dc2c1dc75c0ffccfd84",
-    "branch": "fix/audit-remediation",
+    "head": "4fbf9e95e7636835aa63ffb9ce5651cf069d0098",
+    "branch": "fix/operational-integrity",
     "worktree_dirty": false,
     "changed_paths": 0
   },
@@ -46,14 +46,14 @@
       "command": "python -m ruff check .",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.07
+      "seconds": 0.06
     },
     {
       "name": "mypy",
       "command": "python -m mypy claims scripts tools",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.47
+      "seconds": 0.37
     },
     {
       "name": "compileall",
@@ -67,35 +67,35 @@
       "command": "python -m pytest -q -p no:cacheprovider",
       "exit_code": 0,
       "ok": true,
-      "seconds": 4.06
+      "seconds": 4.38
     },
     {
       "name": "supplied-case evaluation",
       "command": "python -m scripts.evaluate",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.12
+      "seconds": 0.13
     },
     {
       "name": "offline document suites",
       "command": "python -m scripts.evaluate_documents",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.31
+      "seconds": 0.47
     },
     {
       "name": "live OCR status (keys stripped)",
       "command": "python -m scripts.evaluate_documents --providers live",
       "exit_code": 2,
       "ok": true,
-      "seconds": 0.17
+      "seconds": 0.16
     }
   ],
   "lint_ok": true,
   "typecheck_ok": true,
   "compile_ok": true,
   "tests": {
-    "passed": 277,
+    "passed": 282,
     "failed": 0,
     "errors": 0,
     "skipped": 0,
@@ -110,7 +110,7 @@
     "total": 12,
     "fingerprints": {
       "policy_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-      "policy_canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
+      "policy_canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4",
       "fixture_sha256": "4b9b9a047ec6a6479a81f6b2767f00f931920ad7bedb3f547abb54b771034e63"
     },
     "cases": [
@@ -262,7 +262,7 @@
       "reference_repair": 4,
       "informational": 4
     },
-    "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160"
+    "canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4"
   },
   "readme_block_updated": true,
   "docs_drift": [],

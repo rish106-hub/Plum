@@ -145,13 +145,34 @@ def test_image_provider_returns_typed_fields_and_mismatch() -> None:
     assert any(issue["code"] == "MEMBER_MISMATCH" and "Arjun Mehta" in issue["message"] for issue in result["issues"])
 
 
-def test_dependent_name_and_honorific_are_accepted_for_the_covered_family() -> None:
+def test_other_covered_member_is_distinguished_from_selected_member() -> None:
     provider = StubProvider("HOSPITAL BILL / RECEIPT\nPatient: Mr. Arjun Mehta\nConsultation Fee 1500.00\nTotal Amount: 1500.00\nCity Clinic Bengaluru")
     result = process_uploads(
         [{"file_name": "bill.png", "data": image_bytes()}], "DENTAL", "Rajesh Kumar", POLICY,
         provider, allowed_patient_names=["Rajesh Kumar", "Arjun Mehta"],
     )
-    assert not any(issue["code"] == "MEMBER_MISMATCH" for issue in result["issues"])
+    assert result["documents"][0]["identity_match"] == "MATCH_OTHER_COVERED_MEMBER"
+    assert any(issue["code"] == "OTHER_COVERED_MEMBER" for issue in result["issues"])
+
+
+def test_document_alteration_and_duplicate_stamp_are_review_signals() -> None:
+    provider = StubProvider(
+        "HOSPITAL BILL / RECEIPT\nPatient: Rajesh Kumar\nConsultation and charges are in an obscured table.\nCity Clinic Bengaluru",
+        {
+            "date": "01-Nov-2024", "total": 1500,
+            "line_items": [{"description": "Consultation Fee", "amount": 1500}],
+            "alteration_detected": True,
+            "crossed_out_amount": True,
+            "duplicate_stamp_detected": True,
+            "alteration_confidence": 0.91,
+        },
+    )
+    result = process_uploads(
+        [{"file_name": "altered.png", "data": image_bytes()}],
+        "DENTAL", "Rajesh Kumar", POLICY, provider,
+    )
+    assert {issue["code"] for issue in result["issues"]} >= {"DOCUMENT_ALTERATION", "DUPLICATE_STAMP"}
+    assert result["documents"][0]["document_signals"]["alteration_confidence"] == 0.91
 
 
 def test_blurry_or_tiny_image_gets_specific_correction() -> None:

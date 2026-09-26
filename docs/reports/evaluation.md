@@ -3,7 +3,7 @@
 Policy: `PLUM_GHI_2024`. Cases: 12. Expected decision, amount, reason, confidence, and explicitly checked behavior matched: **12/12**.
 
 - Policy file sha256: `1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce`
-- Canonical policy sha256: `36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160`
+- Canonical policy sha256: `d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4`
 - Fixture file sha256: `4b9b9a047ec6a6479a81f6b2767f00f931920ad7bedb3f547abb54b771034e63`
 
 These are structured fixtures with no actual image or PDF bytes. A pass establishes policy-pipeline behavior, not OCR accuracy. The complete machine-readable outputs are also in [evaluation-data.json](evaluation-data.json).
@@ -37,7 +37,7 @@ These are structured fixtures with no actual image or PDF bytes. A pass establis
 
 ### Normalizer audit trail
 
-Every decision trace carries the same 100-entry audit trail in its `policy_source` step (audit sha256 `18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8`). It is listed once here and elided from the case outputs below; `evaluation-data.json` keeps it in full.
+Every decision trace carries the same 100-entry audit trail in its `policy_source` step (audit sha256 `88819fb1497e773ab6d71c3021548df8049548839f63c0c41a8c77fbe86f8a0d`). It is listed once here and elided from the case outputs below; `evaluation-data.json` keeps it in full.
 
 | Id | Kind | Description |
 | --- | --- | --- |
@@ -76,7 +76,7 @@ Every decision trace carries the same 100-entry audit trail in its `policy_sourc
 | `COVERED_SYSTEM_TERMS.Unani` | interpretation | Unani is also recognised from: hakim. |
 | `COVERED_SYSTEM_TERMS.Naturopathy` | interpretation | Naturopathy is also recognised from: naturopathic, nature cure. |
 | `PER_CLAIM_CEILING_RULE` | conflict_resolution | Each category's per-claim ceiling is max(coverage.per_claim_limit, category sub_limit), tested against the eligible amount after excluded/non-covered lines are removed; exceeding it rejects the claim (PER_CLAIM_EXCEEDED). Where a matched pre-authorization rule governs the treatment, the pre-authorization decides instead. The ceiling cannot be the lower consultation sub_limit: the supplied network consultation case pays Rs 3,240 on a Rs 4,500 bill. |
-| `CATEGORY_SUB_LIMIT_RULE` | conflict_resolution | A category sub_limit is an annual, per-member cap on the net benefit (after network discount and co-pay) paid for the category's own service lines. This claim's own service benefit is always capped; earlier usage this policy year (category_sub_limit_used, else category_ytd_claims_amount as an upper bound) reduces what remains, and when neither is supplied the history is NOT_EVALUATED and disclosed. Any excess is removed and the claim is PARTIAL. For consultation the service lines are consultation-fee lines (CATEGORY_SERVICE_TERMS.CONSULTATION); tests and medicines billed with a consultation are not consultation services. For every other category all eligible lines are the category's service. If the service share of an unitemized bill cannot be established and the net payable exceeds what remains, a claim that could otherwise pay routes to review (CATEGORY_SUB_LIMIT_UNVERIFIED). A governing pre-authorization supersedes the cap. Rejected alternative: an annual aggregate over the whole claim. The supplied network consultation case pays Rs 3,240 in one consultation claim, above an annual Rs 2,000 consultation cap, so that reading would either break the fixture or pay more when category history is absent than when it is zero. |
+| `CATEGORY_SUB_LIMIT_RULE` | conflict_resolution | A category sub_limit is an annual, per-member cap on the net benefit (after network discount and co-pay) paid for the category's own service lines. This claim's own service benefit is always capped; earlier usage this policy year (category_sub_limit_used, else category_ytd_claims_amount as an upper bound) reduces what remains, and when neither is supplied the history is NOT_EVALUATED and disclosed. Any excess is removed and the claim is PARTIAL. For consultation the service lines are consultation-fee lines (CATEGORY_SERVICE_TERMS.CONSULTATION); tests and medicines billed with a consultation are not consultation services. For every other category all eligible lines are the category's service. If the service share of an unitemized bill cannot be established and the net payable exceeds what remains, a claim that could otherwise pay routes to review (CATEGORY_SUB_LIMIT_UNVERIFIED). A governing pre-authorization may satisfy the authorization requirement and govern its explicitly authorized amount, but it never removes this category cap or any annual, sum-insured, or family benefit cap. Rejected alternative: an annual aggregate over the whole claim. The supplied network consultation case pays Rs 3,240 in one consultation claim, above an annual Rs 2,000 consultation cap, so that reading would either break the fixture or pay more when category history is absent than when it is zero. |
 | `PRESCRIPTION_REQUIREMENT.CONSULTATION` | derived | requires_prescription=true agrees with the document matrix (PRESCRIPTION required); the document gate enforces it. |
 | `PRESCRIPTION_REQUIREMENT.DIAGNOSTIC` | derived | requires_prescription=true agrees with the document matrix (PRESCRIPTION required); the document gate enforces it. |
 | `PRESCRIPTION_REQUIREMENT.PHARMACY` | derived | requires_prescription=true agrees with the document matrix (PRESCRIPTION required); the document gate enforces it. |
@@ -175,9 +175,9 @@ Explicit behavior checks: **Passed**.
         "policy_id": "PLUM_GHI_2024",
         "schema_version": "plum.canonical_policy.v1",
         "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-        "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
+        "canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4",
         "canonical_sha256_verified": true,
-        "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
+        "audit_sha256": "88819fb1497e773ab6d71c3021548df8049548839f63c0c41a8c77fbe86f8a0d",
         "audit_entries": 100,
         "interpretation_entries": 56,
         "conflict_resolutions": [
@@ -262,9 +262,9 @@ Explicit behavior checks: **Passed**.
         "policy_id": "PLUM_GHI_2024",
         "schema_version": "plum.canonical_policy.v1",
         "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-        "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
+        "canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4",
         "canonical_sha256_verified": true,
-        "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
+        "audit_sha256": "88819fb1497e773ab6d71c3021548df8049548839f63c0c41a8c77fbe86f8a0d",
         "audit_entries": 100,
         "interpretation_entries": 56,
         "conflict_resolutions": [
@@ -355,9 +355,9 @@ Explicit behavior checks: **Passed**.
         "policy_id": "PLUM_GHI_2024",
         "schema_version": "plum.canonical_policy.v1",
         "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-        "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
+        "canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4",
         "canonical_sha256_verified": true,
-        "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
+        "audit_sha256": "88819fb1497e773ab6d71c3021548df8049548839f63c0c41a8c77fbe86f8a0d",
         "audit_entries": 100,
         "interpretation_entries": 56,
         "conflict_resolutions": [
@@ -446,9 +446,9 @@ Explicit behavior checks: **Passed**.
         "policy_id": "PLUM_GHI_2024",
         "schema_version": "plum.canonical_policy.v1",
         "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-        "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
+        "canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4",
         "canonical_sha256_verified": true,
-        "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
+        "audit_sha256": "88819fb1497e773ab6d71c3021548df8049548839f63c0c41a8c77fbe86f8a0d",
         "audit_entries": 100,
         "interpretation_entries": 56,
         "conflict_resolutions": [
@@ -995,9 +995,9 @@ Explicit behavior checks: **Passed**.
         "policy_id": "PLUM_GHI_2024",
         "schema_version": "plum.canonical_policy.v1",
         "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-        "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
+        "canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4",
         "canonical_sha256_verified": true,
-        "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
+        "audit_sha256": "88819fb1497e773ab6d71c3021548df8049548839f63c0c41a8c77fbe86f8a0d",
         "audit_entries": 100,
         "interpretation_entries": 56,
         "conflict_resolutions": [
@@ -1540,9 +1540,9 @@ Explicit behavior checks: **Passed**.
         "policy_id": "PLUM_GHI_2024",
         "schema_version": "plum.canonical_policy.v1",
         "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-        "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
+        "canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4",
         "canonical_sha256_verified": true,
-        "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
+        "audit_sha256": "88819fb1497e773ab6d71c3021548df8049548839f63c0c41a8c77fbe86f8a0d",
         "audit_entries": 100,
         "interpretation_entries": 56,
         "conflict_resolutions": [
@@ -2111,9 +2111,9 @@ Explicit behavior checks: **Passed**.
         "policy_id": "PLUM_GHI_2024",
         "schema_version": "plum.canonical_policy.v1",
         "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-        "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
+        "canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4",
         "canonical_sha256_verified": true,
-        "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
+        "audit_sha256": "88819fb1497e773ab6d71c3021548df8049548839f63c0c41a8c77fbe86f8a0d",
         "audit_entries": 100,
         "interpretation_entries": 56,
         "conflict_resolutions": [
@@ -2354,6 +2354,7 @@ Explicit behavior checks: **Passed**.
         "authorized_amount": null,
         "validity_days": 30,
         "status_source": "no_approval_record_supplied",
+        "verification_status": "NOT_AVAILABLE",
         "insurer_verified": false
       }
     },
@@ -2692,9 +2693,9 @@ Explicit behavior checks: **Passed**.
         "policy_id": "PLUM_GHI_2024",
         "schema_version": "plum.canonical_policy.v1",
         "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-        "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
+        "canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4",
         "canonical_sha256_verified": true,
-        "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
+        "audit_sha256": "88819fb1497e773ab6d71c3021548df8049548839f63c0c41a8c77fbe86f8a0d",
         "audit_entries": 100,
         "interpretation_entries": 56,
         "conflict_resolutions": [
@@ -3238,9 +3239,9 @@ Explicit behavior checks: **Passed**.
         "policy_id": "PLUM_GHI_2024",
         "schema_version": "plum.canonical_policy.v1",
         "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-        "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
+        "canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4",
         "canonical_sha256_verified": true,
-        "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
+        "audit_sha256": "88819fb1497e773ab6d71c3021548df8049548839f63c0c41a8c77fbe86f8a0d",
         "audit_entries": 100,
         "interpretation_entries": 56,
         "conflict_resolutions": [
@@ -3796,9 +3797,9 @@ Explicit behavior checks: **Passed**.
         "policy_id": "PLUM_GHI_2024",
         "schema_version": "plum.canonical_policy.v1",
         "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-        "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
+        "canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4",
         "canonical_sha256_verified": true,
-        "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
+        "audit_sha256": "88819fb1497e773ab6d71c3021548df8049548839f63c0c41a8c77fbe86f8a0d",
         "audit_entries": 100,
         "interpretation_entries": 56,
         "conflict_resolutions": [
@@ -4352,9 +4353,9 @@ TC011 confidence with the component working: 0.79.
         "policy_id": "PLUM_GHI_2024",
         "schema_version": "plum.canonical_policy.v1",
         "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-        "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
+        "canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4",
         "canonical_sha256_verified": true,
-        "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
+        "audit_sha256": "88819fb1497e773ab6d71c3021548df8049548839f63c0c41a8c77fbe86f8a0d",
         "audit_entries": 100,
         "interpretation_entries": 56,
         "conflict_resolutions": [
@@ -4661,13 +4662,16 @@ TC011 confidence with the component working: 0.79.
     {
       "stage": "policy",
       "rule_id": "registered_practitioner",
-      "status": "PASS",
+      "status": "REGISTRATION_PRESENT",
       "policy_ref": "opd_categories.alternative_medicine.requires_registered_practitioner",
       "evidence": {
         "registrations": [
           "AYUR/KL/2345/2019"
-        ]
-      }
+        ],
+        "format_valid": true,
+        "registry_verified": false
+      },
+      "details": "A format-valid registration is present but has not been checked against an authoritative practitioner registry."
     },
     {
       "stage": "policy",
@@ -4955,9 +4959,9 @@ Explicit behavior checks: **Passed**.
         "policy_id": "PLUM_GHI_2024",
         "schema_version": "plum.canonical_policy.v1",
         "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-        "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
+        "canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4",
         "canonical_sha256_verified": true,
-        "audit_sha256": "18a7e050eef431aacf4be838582123aa30c1a29e0498c5cc973a1c2cc8ba3fa8",
+        "audit_sha256": "88819fb1497e773ab6d71c3021548df8049548839f63c0c41a8c77fbe86f8a0d",
         "audit_entries": 100,
         "interpretation_entries": 56,
         "conflict_resolutions": [

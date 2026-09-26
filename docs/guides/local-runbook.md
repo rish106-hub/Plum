@@ -28,12 +28,13 @@ The demo clock is never silent. The server logs `DEMO CLOCK ACTIVE` at startup, 
 ## 1. Start the app
 
 ```bash
-PLUM_DATA_DIR="$(mktemp -d)" PLUM_ENV=development PLUM_DEMO_CLOCK=2024-11-05 .venv/bin/python -m uvicorn claims.web:app --reload
+PLUM_DATA_DIR="$(mktemp -d)" PLUM_ENV=development PLUM_DEMO_CLOCK=2024-11-05 \
+  PLUM_REVIEW_TOKEN=local-review-token .venv/bin/python -m uvicorn claims.web:app --reload
 ```
 
 Leave this terminal open. The temporary data directory keeps the approval, duplicate, and review examples reproducible; the browser check deliberately creates repeat claims. For anything other than a replay of the 2024 sample policy, start it without the demo variables so the real clock is used: `.venv/bin/python -m uvicorn claims.web:app --reload`.
 
-Open a second terminal in the repository root for the claim submission. The app uses local SQLite and private upload files under `.data/` (override with `PLUM_DATA_DIR`).
+Open a second terminal in the repository root for the claim submission. The app uses local SQLite and private upload files under `.data/` (override with `PLUM_DATA_DIR`). Opening `/ops` triggers the browser's Basic-auth prompt; use a reviewer identifier as the username and `local-review-token` as the password. API clients can instead send `X-Reviewer-ID` and `X-Reviewer-Token` headers.
 
 Generate the synthetic documents once in that second terminal. They are local demo files and are intentionally not stored in Git:
 
@@ -87,7 +88,7 @@ You can also open the reviewer page at `http://127.0.0.1:8000/claims/$CLAIM_ID`;
 - `MANUAL_REVIEW`: evidence is ambiguous, a duplicate signal needs verification, or a required extraction provider failed. This is an intentional abstention, not an approval.
 - `PROCESSING_FAILED`: inspect the local server terminal for the failure category, then retry from the reviewer page if appropriate.
 
-Do not treat confidence as a calibrated probability. This is a prototype against supplied policy data, and its local annual-benefit history is based on approved decisions rather than insurer remittance records.
+Do not treat confidence as a calibrated probability. This is a prototype against supplied policy data. A payable decision atomically creates a `RESERVED` benefit entry; authenticated settlement updates move it to `PAID` or `RELEASED`. Those updates are local operator inputs, not an automatic insurer remittance feed.
 
 ## Optional Gemini evidence extraction
 

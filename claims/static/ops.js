@@ -438,6 +438,9 @@
     action.hidden = claim.state !== "MANUAL_REVIEW";
     if (!action.hidden) {
       byId("ops-review-amount").value = "";
+      byId("ops-review-reason-code").value = "";
+      byId("ops-review-reason-text").value = "";
+      byId("ops-review-evidence").value = "";
       byId("ops-review-error").hidden = true;
     }
   }
@@ -519,15 +522,26 @@
     if (!state.selectedId) return;
     const decision = byId("ops-review-decision").value;
     const approvedAmount = Number(byId("ops-review-amount").value);
+    const reasonCode = byId("ops-review-reason-code").value.trim().toUpperCase();
+    const reasonText = byId("ops-review-reason-text").value.trim();
+    const evidenceSummary = byId("ops-review-evidence").value.trim();
     if (!Number.isFinite(approvedAmount) || approvedAmount < 0 || (decision !== "REJECTED" && approvedAmount <= 0)) {
       error.textContent = "Enter a valid approved amount for the selected decision.";
+      error.hidden = false;
+      return;
+    }
+    if (!/^[A-Z0-9_]{3,60}$/.test(reasonCode) || !reasonText || !evidenceSummary) {
+      error.textContent = "Add a reason code, decision reason, and evidence summary.";
       error.hidden = false;
       return;
     }
     try {
       const response = await fetch(`/api/claims/${encodeURIComponent(state.selectedId)}/review-decision`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision, approved_amount: approvedAmount }),
+        body: JSON.stringify({
+          decision, approved_amount: approvedAmount, reason_code: reasonCode,
+          reason_text: reasonText, evidence_summary: evidenceSummary,
+        }),
       });
       if (!response.ok) throw new Error(await response.json().then((body) => body.detail || "Decision could not be saved."));
       const claim = await response.json();

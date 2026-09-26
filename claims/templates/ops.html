@@ -87,6 +87,9 @@
             <form id="ops-review-form" class="ops-review-form">
               <label><span>Decision</span><select id="ops-review-decision"><option value="APPROVED">Approve</option><option value="PARTIAL">Partially approve</option><option value="REJECTED">Reject</option></select></label>
               <label><span>Approved amount INR</span><input id="ops-review-amount" type="number" min="0" step="0.01" required></label>
+              <label><span>Reason code</span><input id="ops-review-reason-code" type="text" pattern="[A-Z0-9_]{3,60}" maxlength="60" placeholder="DUPLICATE_CONFIRMED" required></label>
+              <label class="ops-review-form__wide"><span>Decision reason</span><textarea id="ops-review-reason-text" rows="2" maxlength="500" placeholder="State why this outcome is correct." required></textarea></label>
+              <label class="ops-review-form__wide"><span>Evidence inspected</span><textarea id="ops-review-evidence" rows="2" maxlength="500" placeholder="Summarize the documents and trace checked." required></textarea></label>
               <button class="button button--primary" type="submit">Save decision</button>
               <p id="ops-review-error" class="form-error" role="alert" hidden></p>
             </form>

@@ -677,12 +677,40 @@ class ClaimCoreTests(unittest.TestCase):
     def test_pre_authorization_does_not_bypass_benefit_limits(self) -> None:
         claim = normalize_fixture(self.cases["TC007"])
         claim["ytd_claims_amount"] = 49900
-        claim["documents"].append({"file_id": "PREAUTH-LIMIT", "actual_type": "PRE_AUTHORIZATION", "quality": "GOOD", "fields": {"date": "2024-10-20", "approval_reference": "AUTH-LIMIT"}, "source": "fixture_metadata"})
+        claim["documents"].append({"file_id": "PREAUTH-LIMIT", "actual_type": "PRE_AUTHORIZATION", "quality": "GOOD", "fields": {"date": "2024-10-20", "approval_reference": "AUTH-LIMIT", "approved_amount": 15000}, "source": "fixture_metadata"})
         claim["pre_authorization"] = {"obtained": True, "issued_date": "2024-10-20", "approval_reference": "AUTH-LIMIT"}
 
         result = evaluate_claim(claim, self.policy)
 
         self.assertTrue(any(item["description"] == "Annual OPD remaining limit" for item in result["ledger"]))
+        pre_auth = next(step for step in result["trace"] if step["rule_id"] == "pre_authorization")
+        self.assertEqual(pre_auth["evidence"]["verification_status"], "DOCUMENT_PRESENT")
+        self.assertFalse(pre_auth["evidence"]["insurer_verified"])
+        self.assertIn("PRE_AUTH_NOT_VERIFIED_WITH_INSURER", {reason["code"] for reason in result["reasons"]})
+
+        claim["pre_authorization"]["verification_status"] = "INSURER_VERIFIED"
+        verified = evaluate_claim(claim, self.policy)
+        verified_step = next(step for step in verified["trace"] if step["rule_id"] == "pre_authorization")
+        self.assertTrue(verified_step["evidence"]["insurer_verified"])
+        self.assertNotIn("PRE_AUTH_NOT_VERIFIED_WITH_INSURER", {reason["code"] for reason in verified["reasons"]})
+
+    def test_practitioner_registration_is_present_not_registry_verified(self) -> None:
+        claim = self._consultation_claim()
+        claim["claim_category"] = "ALTERNATIVE_MEDICINE"
+        claim["prior_sessions"] = 0
+        for document in claim["documents"]:
+            document["fields"]["diagnosis"] = "Ayurveda therapy (2 sessions)"
+            document["fields"]["doctor_registration"] = "KA/12345/2020"
+        result = evaluate_claim(claim, self.policy)
+        registration = next(step for step in result["trace"] if step["rule_id"] == "registered_practitioner")
+        self.assertEqual(registration["status"], "REGISTRATION_PRESENT")
+        self.assertFalse(registration["evidence"]["registry_verified"])
+
+        for document in claim["documents"]:
+            document["fields"]["doctor_registration"] = "NOT-A-REGISTRATION"
+        invalid = evaluate_claim(claim, self.policy)
+        self.assertEqual(invalid["decision"], "MANUAL_REVIEW")
+        self.assertIn("PRACTITIONER_REGISTRATION_INVALID", {reason["code"] for reason in invalid["reasons"]})
 
     def test_missing_treatment_date_cannot_be_adjudicated(self) -> None:
         claim = normalize_fixture(self.cases["TC004"])
