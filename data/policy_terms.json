@@ -34,14 +34,14 @@
       "network_discount_percent": 10,
       "requires_prescription": true,
       "requires_pre_auth": false,
+      "pre_auth_threshold": 10000,
+      "high_value_tests_requiring_pre_auth": ["MRI", "CT Scan", "PET Scan"],
       "covered": true
     },
     "pharmacy": {
       "sub_limit": 15000,
       "copay_percent": 0,
       "branded_drug_copay_percent": 30,
-      "brand_status_field": "brand_status",
-      "brand_status_values": ["BRANDED", "GENERIC"],
       "generic_mandatory": true,
       "requires_prescription": true,
       "covered": true
@@ -50,6 +50,7 @@
       "sub_limit": 10000,
       "copay_percent": 0,
       "requires_prescription": false,
+      "requires_dental_report": true,
       "covered": true,
       "covered_procedures": [
         "Root Canal Treatment",
@@ -99,15 +100,6 @@
       "obesity_treatment": 365,
       "hernia": 365,
       "cataract": 365
-    },
-    "condition_aliases": {
-      "diabetes": ["type 2 diabetes mellitus", "type 2 diabetes", "t2dm", "dm2"],
-      "hypertension": ["high blood pressure", "htn"],
-      "thyroid_disorders": ["hypothyroidism", "hyperthyroidism", "thyroid disorder", "thyroid disease"],
-      "joint_replacement": ["joint replacement", "knee replacement", "hip replacement"],
-      "mental_health": ["mental health", "psychiatric disorder", "depression", "anxiety disorder"],
-      "obesity_treatment": ["obesity treatment", "weight loss treatment", "bariatric"],
-      "cataract": ["cataract"]
     }
   },
   "exclusions": {
@@ -128,13 +120,6 @@
       "Orthodontic treatment",
       "Cosmetic dental procedures"
     ],
-    "condition_aliases": [
-      "self inflicted injury", "war or nuclear hazard", "nuclear hazard", "substance abuse", "experimental treatment",
-      "infertility", "assisted reproduction", "weight loss program", "bariatric surgery", "bariatric",
-      "morbid obesity", "obesity treatment", "diet program",
-      "cosmetic procedure", "cosmetic surgery", "aesthetic procedure", "non medically necessary vaccination",
-      "health supplement", "health supplements", "multivitamin tonic", "multivitamin tonics", "multivitamin supplement"
-    ],
     "vision_exclusions": [
       "LASIK",
       "Refractive surgery"
@@ -142,11 +127,11 @@
   },
   "pre_authorization": {
     "required_for": [
-      {"phrase": "PET scan", "amount_greater_than": null},
-      {"phrase": "MRI", "amount_greater_than": 10000},
-      {"phrase": "CT scan", "amount_greater_than": 10000},
-      {"phrase": "major surgical procedure", "amount_greater_than": null},
-      {"phrase": "planned hospitalization", "amount_greater_than": null}
+      "MRI scan (amount > ₹10,000)",
+      "CT scan (amount > ₹10,000)",
+      "PET scan",
+      "Major surgical procedures",
+      "Planned hospitalization"
     ],
     "validity_days": 30
   },
@@ -162,12 +147,6 @@
     "Columbia Asia",
     "Sakra World Hospital"
   ],
-  "network_hospital_aliases": {
-    "Apollo Hospitals": ["Apollo Hospitals Bengaluru", "Apollo Hospitals Bangalore"],
-    "Fortis Healthcare": ["Fortis Healthcare Bengaluru", "Fortis Hospital Bengaluru"],
-    "Max Healthcare": ["Max Healthcare Delhi", "Max Super Speciality Hospital"],
-    "Manipal Hospitals": ["Manipal Hospitals Bengaluru", "Manipal Hospital Bengaluru"]
-  },
   "submission_rules": {
     "deadline_days_from_treatment": 30,
     "minimum_claim_amount": 500,
@@ -232,7 +211,7 @@
       "gender": "M",
       "relationship": "SELF",
       "join_date": "2024-04-01",
-      "dependents": []
+      "dependents": ["DEP003"]
     },
     {
       "member_id": "EMP004",
@@ -268,7 +247,7 @@
       "gender": "M",
       "relationship": "SELF",
       "join_date": "2024-04-01",
-      "dependents": []
+      "dependents": ["DEP004", "DEP005"]
     },
     {
       "member_id": "EMP008",
@@ -295,7 +274,7 @@
       "gender": "M",
       "relationship": "SELF",
       "join_date": "2024-04-01",
-      "dependents": []
+      "dependents": ["DEP006"]
     },
     {
       "member_id": "DEP001",
