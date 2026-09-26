@@ -342,9 +342,11 @@
     if (clock) byId("demo-clock-message").textContent = `Submission date ${claim.request.submission_date} came from ${clock.source}=${clock.value} (${clock.environment} environment), not the real clock. This is not a production adjudication.`;
     const active = ["QUEUED", "PROCESSING"].includes(claim.state);
     byId("loading-state").hidden = !active;
-    byId("failure-state").hidden = claim.state !== "PROCESSING_FAILED";
+    const retryableReview = claim.state === "MANUAL_REVIEW" && result.retryable === true;
+    byId("failure-state").hidden = claim.state !== "PROCESSING_FAILED" && !retryableReview;
     byId("result-content").hidden = active || claim.state === "PROCESSING_FAILED";
     if (claim.state === "PROCESSING_FAILED") byId("failure-message").textContent = claim.error_message || "The review could not finish. You can retry the claim.";
+    if (retryableReview) byId("failure-message").textContent = "Document extraction was temporarily unavailable. You can retry this claim when the provider has recovered.";
     if (active || claim.state === "PROCESSING_FAILED") return;
 
     const isCorrection = ["DOCUMENT_CORRECTION_REQUIRED", "NEEDS_CORRECTION"].includes(claim.state);
