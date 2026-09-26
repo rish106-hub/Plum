@@ -32,9 +32,26 @@ BILL = [
 ]
 
 
-def create_samples(directory: Path) -> list[Path]:
+# Common scalable fonts, resolved by Pillow's own font search on each platform.
+# None is required: Pillow's bundled scalable default is the final fallback.
+FONT_CANDIDATES = ("DejaVuSans.ttf", "Arial.ttf", "arial.ttf", "LiberationSans-Regular.ttf", "Helvetica.ttc")
+
+
+def _font(size: int):
+    from PIL import ImageFont
+
+    for name in FONT_CANDIDATES:
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default(size=size)
+
+
+def write_samples(directory: Path) -> list[Path]:
+    """Write every sample and return all generated paths."""
     import pymupdf as fitz
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
 
     directory.mkdir(parents=True, exist_ok=True)
     pdf_path = directory / "synthetic_prescription.pdf"
@@ -49,26 +66,28 @@ def create_samples(directory: Path) -> list[Path]:
     bill_page = bill_pdf.new_page(width=595, height=842)
     for row, line in enumerate(BILL):
         bill_page.insert_text((52, 65 + row * 30), line, fontsize=14)
-    bill_pdf.save(directory / "synthetic_hospital_bill.pdf")
+    bill_pdf_path = directory / "synthetic_hospital_bill.pdf"
+    bill_pdf.save(bill_pdf_path)
     bill_pdf.close()
 
     image_path = directory / "synthetic_hospital_bill.png"
     image = Image.new("RGB", (1000, 1250), "white")
     draw = ImageDraw.Draw(image)
-    try:
-        font: ImageFont.FreeTypeFont | ImageFont.ImageFont = ImageFont.truetype(
-            "/System/Library/Fonts/Supplemental/Arial.ttf", 32
-        )
-    except OSError:
-        font = ImageFont.load_default()
+    font = _font(32)
     for row, line in enumerate(BILL):
         draw.text((72, 90 + row * 90), line, font=font, fill="black")
     image.save(image_path)
-    return [pdf_path, image_path]
+    return [pdf_path, bill_pdf_path, image_path]
+
+
+def create_samples(directory: Path) -> list[Path]:
+    """Write every sample; return the prescription PDF and bill image (existing callers' contract)."""
+    prescription, _bill_pdf, bill_image = write_samples(directory)
+    return [prescription, bill_image]
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("output", nargs="?", default=".data/samples")
-    for path in create_samples(Path(parser.parse_args().output)):
+    for path in write_samples(Path(parser.parse_args().output)):
         print(path)

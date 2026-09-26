@@ -238,3 +238,85 @@ def test_payable_decision_requires_reconciled_ledger() -> None:
     result = adjudicate_handoff({"claimed_amount": 10}, {}, evaluator)
 
     assert result["decision"] == "MANUAL_REVIEW"
+
+
+def test_gemini_candidate_for_a_covered_dependent_keeps_the_dependent_allowlist() -> None:
+    # Formerly revalidation after Gemini used only the member's own name, so a
+    # covered dependent's documents became MEMBER_MISMATCH.
+    from claims.policy import load_policy
+
+    policy = load_policy()
+    bill_text = "HOSPITAL BILL\nPatient: Sunita Kumar\nDate: 01-Nov-2024\nConsultation Fee 1500.00\nTotal Amount: 1500.00"
+    inspection = {
+        "documents": [
+            {"file_id": "UPLOAD-1", "actual_type": "PRESCRIPTION", "quality": "GOOD", "pages": 1,
+             "content": {"patient_name": "Sunita Kumar", "diagnosis": "Viral fever", "date": "2024-11-01"}},
+            {"file_id": "UPLOAD-2", "actual_type": "HOSPITAL_BILL", "quality": "GOOD", "pages": 1,
+             "content": {"patient_name": "Sunita Kumar", "date": "2024-11-01",
+                         "line_items": [{"description": "Consultation Fee", "amount": 1500}]}},
+        ],
+        "issues": [{"code": "MATERIAL_FIELD_UNVERIFIED", "field": "total"}],
+        "metrics": {},
+    }
+
+    def resolver(*_args: object, **_kwargs: object) -> dict:
+        return {
+            "schema_version": 1, "producer": "gemini_evidence", "task": "resolve_document_facts",
+            "source_file_ids": ["UPLOAD-2"], "status": "CANDIDATES_VALIDATED",
+            "candidates": [{"file_id": "UPLOAD-2", "fields": {"total_paise": 150000},
+                            "evidence": [{"field": "total_paise", "page": 1, "quote": "Total Amount: 1500.00"}]}],
+            "metrics": {"calls": 1}, "trace": {"stage": "gemini_evidence", "status": "CANDIDATES_VALIDATED"},
+        }
+
+    handoff = resolve_document_handoff(
+        inspection, {}, {"UPLOAD-2": [bill_text]}, "CONSULTATION", "Rajesh Kumar",
+        ["Rajesh Kumar", "Sunita Kumar", "Arjun Kumar"], policy, resolver,
+    )
+
+    assert handoff["trace"][0]["status"] == "CANDIDATES_APPLIED"
+    assert handoff["issues"] == []
+    assert "MEMBER_MISMATCH" not in {issue.get("code") for issue in handoff["issues"]}
+
+
+def test_partial_with_not_covered_or_excluded_lines_passes_the_decision_contract() -> None:
+    # Formerly every non-EXCLUDED line counted towards the ledger total, so a
+    # PARTIAL with a NOT_COVERED line became INVALID_DECISION_HANDOFF.
+    from claims.core import evaluate_claim
+    from claims.policy import load_policy
+
+    policy = load_policy()
+
+    def dental(*lines: tuple[str, int]) -> dict:
+        return {
+            "member_id": "EMP002", "policy_id": "PLUM_GHI_2024", "claim_category": "DENTAL",
+            "treatment_date": "2024-10-15", "claimed_amount": sum(amount for _, amount in lines),
+            "documents": [{"file_id": "B1", "doc_type": "HOSPITAL_BILL", "quality": "GOOD", "fields": {
+                "patient_name": "Priya Singh", "date": "2024-10-15", "total": sum(amount for _, amount in lines),
+                "line_items": [{"description": description, "amount": amount} for description, amount in lines],
+            }}],
+        }
+
+    for lines in ((("Root canal treatment", 2000), ("Gold crown upgrade", 1000)), (("Root canal treatment", 2000), ("Eye examination", 1000))):
+        result = adjudicate_handoff(dental(*lines), policy, evaluate_claim)
+        assert (result["decision"], result["approved_amount"]) == ("PARTIAL", 2000), lines
+        statuses = [item["status"] for item in result["ledger"] if item["kind"] == "line_item"]
+        assert statuses[0] == "ELIGIBLE" and statuses[1] in {"EXCLUDED", "NOT_COVERED"}
+    assert "NOT_COVERED" in {
+        item.get("status") for item in adjudicate_handoff(dental(("Root canal treatment", 2000), ("Eye examination", 1000)), policy, evaluate_claim)["ledger"]
+    }
+
+
+def test_ledger_contract_counts_only_payable_lines() -> None:
+    def evaluator(_payload: dict, _policy: dict) -> dict:
+        return {
+            "state": "DECIDED", "decision": "PARTIAL", "approved_amount": 20, "approved_amount_paise": 2000,
+            "reasons": [{"code": "NOT_ON_ALLOWLIST", "message": "Removed."}], "correction_requests": [],
+            "confidence_score": 0.9, "trace": [{"stage": "decision", "rule_id": "outcome", "status": "PARTIAL"}],
+            "ledger": [
+                {"kind": "line_item", "description": "Covered", "amount_paise": 2000, "status": "ELIGIBLE"},
+                {"kind": "line_item", "description": "Other", "amount_paise": 1000, "status": "NOT_COVERED"},
+                {"kind": "line_item", "description": "Unclear", "amount_paise": 500, "status": "UNRESOLVED"},
+            ],
+        }
+
+    assert adjudicate_handoff({"claimed_amount": 35}, {}, evaluator)["decision"] == "PARTIAL"

@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import ssl
 import zipfile
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,7 +11,15 @@ import fitz
 import pytest
 from PIL import Image, ImageDraw
 
-from claims.documents import SarvamDocumentProvider, process_uploads
+from claims.documents import (
+    SarvamDocumentProvider,
+    normal_name,
+    parse_document_date,
+    process_uploads,
+    revalidate_documents,
+    sniff_media_type,
+)
+from claims.money import has_subpaise_precision, to_paise, to_rupees
 from tools.generate_samples import create_samples
 
 POLICY = {
@@ -109,6 +118,7 @@ def test_pharmacy_claim_does_not_require_printed_prescription_date() -> None:
     bill = pdf_bytes([
         "PHARMACY BILL / RECEIPT",
         "Patient: Rajesh Kumar",
+        "Date: 01-Nov-2024",
         "Paracetamol 650mg 120.00",
         "Total Amount: 120.00",
     ])
@@ -191,7 +201,7 @@ def test_provider_unreadable_bill_names_file_and_type() -> None:
 
 def test_sarvam_extract_only_when_ocr_lacks_material_bill_fields() -> None:
     provider = StubProvider(
-        "HOSPITAL BILL / RECEIPT\nPatient: Rajesh Kumar\nCity Clinic Bengaluru\nConsultation and CBC charges are in an obscured table.",
+        "HOSPITAL BILL / RECEIPT\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\nCity Clinic Bengaluru\nConsultation and CBC charges are in an obscured table.",
         {"total": 1500, "line_items": [{"description": "Consultation Fee", "amount": 1000}, {"description": "CBC Test", "amount": 500}]},
     )
     result = process_uploads([{"file_name": "bill.png", "data": image_bytes()}], "DENTAL", "Rajesh Kumar", POLICY, provider)
@@ -207,6 +217,7 @@ def test_pharmacy_brand_status_is_extracted_only_with_matching_printed_evidence(
     bill = pdf_bytes([
         "PHARMACY BILL",
         "Patient: Rajesh Kumar",
+        "Date: 01-Nov-2024",
         "Brand: Medicine 1500.00",
         "Total Amount: 1500.00",
     ])
@@ -239,7 +250,7 @@ def test_pharmacy_brand_status_is_extracted_only_with_matching_printed_evidence(
 
 def test_sarvam_extract_recovers_patient_name_before_identity_gate() -> None:
     provider = StubProvider(
-        "HOSPITAL BILL / RECEIPT\nConsultation Fee 1500.00\nTotal Amount: 1500.00\nCity Clinic Bengaluru",
+        "HOSPITAL BILL / RECEIPT\nDate: 01-Nov-2024\nConsultation Fee 1500.00\nTotal Amount: 1500.00\nCity Clinic Bengaluru",
         {
             "patient_name": "Rajesh Kumar",
             "total": 1500,
@@ -313,7 +324,7 @@ def test_sarvam_sdk_job_contract_and_bounded_download(monkeypatch: pytest.Monkey
     monkeypatch.setattr("claims.documents.urllib.request.urlopen", fake_urlopen)
     provider = SarvamDocumentProvider.__new__(SarvamDocumentProvider)
     api = FakeDocAI()
-    provider.client = SimpleNamespace(doc_ai=api)
+    provider.client = SimpleNamespace(doc_ai=api)  # type: ignore[assignment]
     text = provider.digitise(image_bytes(), "image/png")
     assert "Patient: Rajesh Kumar" in text
     assert captured["url"] == "https://example.invalid/signed.zip"
@@ -322,3 +333,85 @@ def test_sarvam_sdk_job_contract_and_bounded_download(monkeypatch: pytest.Monkey
     assert isinstance(context, ssl.SSLContext)
     assert context.verify_mode == ssl.CERT_REQUIRED
     assert api.calls == ["digitise", "status", "download_url"]
+
+
+# --- Audit round 2: mandatory bill date, shared helpers, money rounding ---------
+
+
+def test_undated_or_unreadable_bill_date_is_a_member_correction() -> None:
+    bill = pdf_bytes(["HOSPITAL BILL", "Patient: Rajesh Kumar", "Bill No: B-1", "Consultation Fee 1500.00", "Total Amount: 1500.00"])
+    result = process_uploads([{"file_name": "bill.pdf", "data": bill}], "DENTAL", "Rajesh Kumar", POLICY)
+    assert [(issue["code"], issue.get("field")) for issue in result["issues"]] == [("MATERIAL_FIELD_UNVERIFIED", "date")]
+    documents = [{
+        "file_name": "bill.pdf", "actual_type": "HOSPITAL_BILL", "quality": "GOOD",
+        "content": {"patient_name": "Rajesh Kumar", "date": "sometime in Nov", "total": 1500, "line_items": [{"description": "Consultation", "amount": 1500}]},
+    }]
+    issues = revalidate_documents(documents, [], "DENTAL", "Rajesh Kumar", POLICY)
+    assert [(issue["code"], issue.get("field")) for issue in issues] == [("MATERIAL_FIELD_UNVERIFIED", "date")]
+    assert "bill date" in issues[0]["message"]
+
+
+def test_undated_ocr_bill_asks_structured_extraction_for_the_date() -> None:
+    provider = StubProvider(
+        "HOSPITAL BILL / RECEIPT\nPatient: Rajesh Kumar\nConsultation Fee 1500.00\nTotal Amount: 1500.00\nCity Clinic Bengaluru",
+        {"date": "01/11/2024"},
+    )
+    result = process_uploads([{"file_name": "bill.png", "data": image_bytes()}], "DENTAL", "Rajesh Kumar", POLICY, provider)
+    assert provider.extract_calls == 1
+    assert result["issues"] == []
+    assert result["documents"][0]["content"]["date"] == "01/11/2024"
+
+
+def test_document_date_parser_matches_engine_formats() -> None:
+    assert parse_document_date("2024-11-01") == date(2024, 11, 1)
+    assert parse_document_date("01-Nov-2024") == date(2024, 11, 1)
+    assert parse_document_date("01/11/2024") == date(2024, 11, 1)
+    assert parse_document_date("") is None
+    assert parse_document_date("32/13/2024") is None
+
+
+def test_shared_name_and_media_type_helpers() -> None:
+    assert normal_name("Mr. RAJESH  kumar") == normal_name("rajesh kumar") == "rajesh kumar"
+    assert normal_name("Smt. Sunita-Kumar") == "sunita kumar"
+    assert sniff_media_type(b"%PDF-1.4") == "application/pdf"
+    assert sniff_media_type(b"RIFF\x00\x00\x00\x00WEBPVP8 ") == "image/webp"
+    assert sniff_media_type(b"plain text") is None
+
+
+def test_money_conversion_rounds_half_up_to_paise() -> None:
+    assert to_paise("1500") == 150000
+    assert to_paise("10.005") == 1001  # truncation would give 1000
+    assert to_paise(0.1) == 10
+    assert to_paise("1,250.50") == 125050
+    assert to_paise("-5", allow_negative=True) == -500
+    for bad in ("-5", "abc", "NaN", "Infinity", True, None):
+        with pytest.raises(ValueError):
+            to_paise(bad)
+    assert has_subpaise_precision("10.005") and not has_subpaise_precision("10.05")
+    assert to_rupees(150000) == 1500 and isinstance(to_rupees(150000), int)
+    assert to_rupees(150050) == 1500.5
+
+
+def test_bill_arithmetic_uses_half_up_paise() -> None:
+    documents = [{
+        "file_name": "bill.pdf", "actual_type": "HOSPITAL_BILL", "quality": "GOOD",
+        "content": {"patient_name": "Rajesh Kumar", "date": "2024-11-01", "total": "100.005", "line_items": [{"description": "Consultation", "amount": "100.01"}]},
+    }]
+    assert revalidate_documents(documents, [], "DENTAL", "Rajesh Kumar", POLICY) == []
+
+
+@pytest.mark.parametrize(
+    ("printed", "expected"),
+    [
+        ("Bill No: INV 2001", "INV 2001"),
+        ("Bill No: INV-2001", "INV-2001"),
+        ("Invoice No. AB 12 345 Patient: Priya Singh", "AB 12 345"),
+        ("Bill No: 2001 Date: 01-Nov-2024", "2001"),
+        ("Receipt #: 1001 01-Nov-2024", "1001"),
+    ],
+)
+def test_bill_number_with_internal_spaces_is_captured_whole(printed: str, expected: str) -> None:
+    """Audit B-2: "INV 2001" was extracted as "INV", so reformatting a number evaded duplicates."""
+    bill = pdf_bytes(["HOSPITAL BILL / RECEIPT", "Patient: Priya Singh", "Date: 15-Oct-2024", printed, "Consultation Fee 800.00", "Total Amount: 800.00"])
+    result = process_uploads([{"file_name": "bill.pdf", "data": bill}], "DENTAL", "Priya Singh", POLICY)
+    assert result["documents"][0]["content"]["bill_number"] == expected

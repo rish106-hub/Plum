@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>New OPD claim · Plum</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260925">
-  <script src="/static/app.js?v=20260925" defer></script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260926">
+  <script src="/static/app.js?v=20260926" defer></script>
 </head>
 <body data-page="intake">
   <header class="site-header">
@@ -19,6 +19,11 @@
   </header>
 
   <main class="workspace">
+    {% if demo_clock %}
+    <div id="demo-clock-banner" class="notice notice--demo" role="status">
+      <div><strong>Demo clock active ({{ demo_clock.environment }})</strong><p>New claims are stamped with submission date {{ demo_clock.applied_at[:10] }} from PLUM_DEMO_CLOCK={{ demo_clock.value }}, not today's date. Each claim records this override in its decision trace.</p></div>
+    </div>
+    {% endif %}
     <div class="page-heading">
       <div>
         <p class="eyebrow">Claim intake</p>

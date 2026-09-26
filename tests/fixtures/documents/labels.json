@@ -1,0 +1,492 @@
+{
+  "schema_version": 1,
+  "generator": "tools/generate_dirty_documents.py",
+  "description": "Synthetic, fictional OPD documents without a text layer. Ground truth for the provider-backed OCR benchmark.",
+  "documents": [
+    {
+      "id": "rx_clean_scan",
+      "file": "rx_clean_scan.png",
+      "conditions": [
+        "image_only",
+        "clean_scan"
+      ],
+      "document_type": "PRESCRIPTION",
+      "claim_category": "CONSULTATION",
+      "member_name": "Rajesh Kumar",
+      "fields": {
+        "patient_name": "Rajesh Kumar",
+        "doctor_name": "Dr. Arun Sharma",
+        "doctor_registration": "KA/45678/2015",
+        "date": "01-Nov-2024",
+        "diagnosis": "Viral Fever"
+      },
+      "critical_fields": [
+        "patient_name",
+        "diagnosis"
+      ],
+      "expected_behavior": "extract",
+      "acceptable_behaviors": [
+        "extract"
+      ],
+      "offline_expected_code": "EXTRACTION_UNAVAILABLE",
+      "notes": "Straight, clean greyscale scan with no text layer. Baseline for the OCR path.",
+      "pages": 1,
+      "mime_type": "image/png",
+      "bytes": 30539,
+      "sha256": "93c3922ed35f9b5ad37c2d5fb4528fb79b43a7328476805e76f0f98ed5781724"
+    },
+    {
+      "id": "rx_handwritten",
+      "file": "rx_handwritten.jpg",
+      "conditions": [
+        "image_only",
+        "handwriting",
+        "preprinted_template"
+      ],
+      "document_type": "PRESCRIPTION",
+      "claim_category": "CONSULTATION",
+      "member_name": "Priya Singh",
+      "fields": {
+        "patient_name": "Priya Singh",
+        "doctor_name": "Dr. S. Iyer",
+        "doctor_registration": "TN/56789/2013",
+        "date": "12-Oct-2024",
+        "diagnosis": "Acute Bronchitis"
+      },
+      "critical_fields": [
+        "patient_name",
+        "diagnosis"
+      ],
+      "expected_behavior": "extract",
+      "acceptable_behaviors": [
+        "extract",
+        "abstain",
+        "request_reupload"
+      ],
+      "offline_expected_code": "EXTRACTION_UNAVAILABLE",
+      "notes": "Printed letterhead with handwriting-style fill-ins (jittered, rotated words). Holding is safe; a wrong confident name or diagnosis is not.",
+      "pages": 1,
+      "mime_type": "image/jpeg",
+      "bytes": 51338,
+      "sha256": "c98b73c1d0cd55e8dac7561969dcfe62f532a9d9bd7f033264ae64d37c638394"
+    },
+    {
+      "id": "rx_stamp_over_registration",
+      "file": "rx_stamp_over_registration.jpg",
+      "conditions": [
+        "image_only",
+        "rubber_stamp",
+        "obscured_registration"
+      ],
+      "document_type": "PRESCRIPTION",
+      "claim_category": "CONSULTATION",
+      "member_name": "Deepak Shah",
+      "fields": {
+        "patient_name": "Deepak Shah",
+        "doctor_name": "Dr. Venkat Rao",
+        "doctor_registration": "AP/67890/2017",
+        "date": "05-Nov-2024",
+        "diagnosis": "Migraine"
+      },
+      "abstain_allowed_fields": [
+        "doctor_registration"
+      ],
+      "critical_fields": [
+        "patient_name",
+        "diagnosis"
+      ],
+      "expected_behavior": "extract",
+      "acceptable_behaviors": [
+        "extract"
+      ],
+      "offline_expected_code": "EXTRACTION_UNAVAILABLE",
+      "notes": "Violet clinic stamp printed over the registration number. Guide: low-confidence field, do not fail the whole document.",
+      "pages": 1,
+      "mime_type": "image/jpeg",
+      "bytes": 45645,
+      "sha256": "69a647193bd6f7a3ea4a1af51c8e37d2d7c7b543af46b5e338057a679733b2c7"
+    },
+    {
+      "id": "rx_hindi_english",
+      "file": "rx_hindi_english.jpg",
+      "conditions": [
+        "image_only",
+        "multilingual",
+        "devanagari"
+      ],
+      "document_type": "PRESCRIPTION",
+      "claim_category": "CONSULTATION",
+      "member_name": "Sunita Kumar",
+      "fields": {
+        "patient_name": "Sunita Kumar",
+        "doctor_name": "Dr. R. Gupta",
+        "doctor_registration": "DL/34567/2016",
+        "date": "20-Oct-2024",
+        "diagnosis": "Type 2 Diabetes"
+      },
+      "critical_fields": [
+        "patient_name",
+        "diagnosis"
+      ],
+      "expected_behavior": "extract",
+      "acceptable_behaviors": [
+        "extract"
+      ],
+      "offline_expected_code": "EXTRACTION_UNAVAILABLE",
+      "notes": "Bilingual Hindi/English prescription. English fields must be extracted; Hindi-only lines are not adjudication material.",
+      "pages": 1,
+      "mime_type": "image/jpeg",
+      "bytes": 58678,
+      "sha256": "e9d41fb0d5e8320dbdb60e75b366115e4d5a8fccd6a6ac51c2f8191269962107"
+    },
+    {
+      "id": "rx_scanned_pdf",
+      "file": "rx_scanned_pdf.pdf",
+      "conditions": [
+        "scanned_pdf",
+        "no_text_layer",
+        "scan_noise"
+      ],
+      "document_type": "PRESCRIPTION",
+      "claim_category": "CONSULTATION",
+      "member_name": "Vikram Joshi",
+      "fields": {
+        "patient_name": "Vikram Joshi",
+        "doctor_name": "Dr. Arun Sharma",
+        "doctor_registration": "KA/45678/2015",
+        "date": "15-Sep-2024",
+        "diagnosis": "Hypertension"
+      },
+      "critical_fields": [
+        "patient_name",
+        "diagnosis"
+      ],
+      "expected_behavior": "extract",
+      "acceptable_behaviors": [
+        "extract"
+      ],
+      "offline_expected_code": "EXTRACTION_UNAVAILABLE",
+      "notes": "Image-only PDF: the local PDF text parser finds nothing, so this must route to OCR.",
+      "pages": 1,
+      "mime_type": "application/pdf",
+      "bytes": 67705,
+      "sha256": "4d04ef2835bbc70a498eadb97a0eb962ef0d10e5d3b5138b3e8ac7cd3393f08f"
+    },
+    {
+      "id": "bill_phone_photo_skewed",
+      "file": "bill_phone_photo_skewed.jpg",
+      "conditions": [
+        "image_only",
+        "phone_photo",
+        "skew",
+        "uneven_lighting",
+        "blur",
+        "noise"
+      ],
+      "document_type": "HOSPITAL_BILL",
+      "claim_category": "CONSULTATION",
+      "member_name": "Rajesh Kumar",
+      "fields": {
+        "patient_name": "Rajesh Kumar",
+        "date": "01-Nov-2024",
+        "bill_number": "CMC/2024/08321",
+        "line_item_amounts": [
+          1000.0,
+          200.0,
+          300.0
+        ],
+        "total": 1500.0
+      },
+      "critical_fields": [
+        "patient_name",
+        "total",
+        "line_item_amounts"
+      ],
+      "expected_behavior": "extract",
+      "acceptable_behaviors": [
+        "extract",
+        "request_reupload"
+      ],
+      "offline_expected_code": "EXTRACTION_UNAVAILABLE",
+      "notes": "Rotated 6 degrees on a dark table, shadow gradient, Gaussian blur and sensor noise.",
+      "pages": 1,
+      "mime_type": "image/jpeg",
+      "bytes": 68656,
+      "sha256": "acdbaabe09043ab69d506510a5246989e1db7f369170272a6668b61e7f74edf9"
+    },
+    {
+      "id": "bill_multipage_scan",
+      "file": "bill_multipage_scan.pdf",
+      "conditions": [
+        "scanned_pdf",
+        "multi_page",
+        "no_text_layer"
+      ],
+      "document_type": "HOSPITAL_BILL",
+      "claim_category": "CONSULTATION",
+      "member_name": "Sneha Reddy",
+      "pages": 2,
+      "fields": {
+        "patient_name": "Sneha Reddy",
+        "date": "18-Oct-2024",
+        "bill_number": "APL/2024/55120",
+        "line_item_amounts": [
+          800.0,
+          700.0,
+          500.0
+        ],
+        "total": 2000.0
+      },
+      "critical_fields": [
+        "patient_name",
+        "total",
+        "line_item_amounts"
+      ],
+      "expected_behavior": "extract",
+      "acceptable_behaviors": [
+        "extract"
+      ],
+      "offline_expected_code": "EXTRACTION_UNAVAILABLE",
+      "notes": "Two scanned pages; items continue on page 2 where the total appears. Line items must be aggregated across pages.",
+      "mime_type": "application/pdf",
+      "bytes": 90550,
+      "sha256": "8ced0f57f673cd7631d902cd804fddbb0991392f25fe878d8ce7fb10dad37aa3"
+    },
+    {
+      "id": "bill_cropped_partial",
+      "file": "bill_cropped_partial.jpg",
+      "conditions": [
+        "image_only",
+        "partial_page",
+        "cropped"
+      ],
+      "document_type": "HOSPITAL_BILL",
+      "claim_category": "CONSULTATION",
+      "member_name": "Rajesh Kumar",
+      "fields": {
+        "patient_name": "Rajesh Kumar",
+        "date": "01-Nov-2024"
+      },
+      "absent_fields": [
+        "total"
+      ],
+      "critical_fields": [
+        "patient_name",
+        "total"
+      ],
+      "expected_behavior": "request_reupload",
+      "acceptable_behaviors": [
+        "request_reupload",
+        "abstain"
+      ],
+      "offline_expected_code": "EXTRACTION_UNAVAILABLE",
+      "notes": "Page torn below the second line item: the total is not visible, so any extracted total is fabricated.",
+      "pages": 1,
+      "mime_type": "image/jpeg",
+      "bytes": 35914,
+      "sha256": "e6be8c91069ade1bb571c45e44a8dc5199451f692ff62ecd7d0edcbd8e4abab5"
+    },
+    {
+      "id": "bill_struck_correction",
+      "file": "bill_struck_correction.jpg",
+      "conditions": [
+        "image_only",
+        "struck_through_amount",
+        "handwritten_correction"
+      ],
+      "document_type": "HOSPITAL_BILL",
+      "claim_category": "CONSULTATION",
+      "member_name": "Priya Singh",
+      "fields": {
+        "patient_name": "Priya Singh",
+        "date": "12-Oct-2024",
+        "total": 1300.0
+      },
+      "forbidden_values": {
+        "total": [
+          1500.0,
+          1200.0
+        ],
+        "line_item_amounts": [
+          1200.0
+        ]
+      },
+      "critical_fields": [
+        "patient_name",
+        "total"
+      ],
+      "expected_behavior": "abstain",
+      "acceptable_behaviors": [
+        "abstain",
+        "request_reupload"
+      ],
+      "offline_expected_code": "EXTRACTION_UNAVAILABLE",
+      "notes": "Printed 1200.00 consultation fee struck through and hand-corrected to 1000; guide says flag as a document alteration, so it should not pay automatically.",
+      "pages": 1,
+      "mime_type": "image/jpeg",
+      "bytes": 47545,
+      "sha256": "5f8d4f11c693700feb3ea43f15180a623ad0e660cf6fed0dffa9581299e0fac9"
+    },
+    {
+      "id": "bill_low_contrast",
+      "file": "bill_low_contrast.jpg",
+      "conditions": [
+        "image_only",
+        "very_low_contrast",
+        "faded_photocopy"
+      ],
+      "document_type": "HOSPITAL_BILL",
+      "claim_category": "CONSULTATION",
+      "member_name": "Rajesh Kumar",
+      "fields": {
+        "patient_name": "Rajesh Kumar",
+        "total": 1500.0,
+        "line_item_amounts": [
+          1000.0,
+          200.0,
+          300.0
+        ]
+      },
+      "critical_fields": [
+        "patient_name",
+        "total",
+        "line_item_amounts"
+      ],
+      "expected_behavior": "request_reupload",
+      "acceptable_behaviors": [
+        "request_reupload",
+        "abstain",
+        "extract"
+      ],
+      "offline_expected_code": "EXTRACTION_UNAVAILABLE",
+      "notes": "Faded photocopy that passes the local contrast gate. Re-upload is preferred; extraction is acceptable only if every critical field is right.",
+      "pages": 1,
+      "mime_type": "image/jpeg",
+      "bytes": 10416,
+      "sha256": "1e7eab707884088d2a27d750da915dcc052eb12463e51f3232d335a8da5c9199"
+    },
+    {
+      "id": "blank_page",
+      "file": "blank_page.jpg",
+      "conditions": [
+        "image_only",
+        "blank",
+        "no_content"
+      ],
+      "document_type": null,
+      "claim_category": "CONSULTATION",
+      "member_name": "Rajesh Kumar",
+      "fields": {},
+      "absent_fields": [
+        "patient_name",
+        "total"
+      ],
+      "critical_fields": [],
+      "expected_behavior": "request_reupload",
+      "acceptable_behaviors": [
+        "request_reupload"
+      ],
+      "offline_expected_code": "UNREADABLE_IMAGE",
+      "notes": "Near-blank photo of paper. Rejected locally before any provider call.",
+      "pages": 1,
+      "mime_type": "image/jpeg",
+      "bytes": 2423,
+      "sha256": "c6bd7bbf233e13c28f0d4ecc4574e4af5fef5718093d179acc7b07a4b7a9f13f"
+    },
+    {
+      "id": "lab_report_scan",
+      "file": "lab_report_scan.jpg",
+      "conditions": [
+        "image_only",
+        "scan_noise",
+        "tabular"
+      ],
+      "document_type": "LAB_REPORT",
+      "claim_category": "DIAGNOSTIC",
+      "member_name": "Rajesh Kumar",
+      "fields": {
+        "patient_name": "Rajesh Kumar",
+        "date": "01-Nov-2024",
+        "test_name": "Complete Blood Count"
+      },
+      "critical_fields": [
+        "patient_name",
+        "date"
+      ],
+      "expected_behavior": "extract",
+      "acceptable_behaviors": [
+        "extract"
+      ],
+      "offline_expected_code": "EXTRACTION_UNAVAILABLE",
+      "notes": "NABL lab report with a results table, sample/report dates and pathologist registration.",
+      "pages": 1,
+      "mime_type": "image/jpeg",
+      "bytes": 85698,
+      "sha256": "af78e2d7467fa649098af89056295af80499d52a0bc4228dcc31e5f7a78ec206"
+    },
+    {
+      "id": "pharmacy_bill_scan",
+      "file": "pharmacy_bill_scan.jpg",
+      "conditions": [
+        "image_only",
+        "scan_noise",
+        "tabular"
+      ],
+      "document_type": "PHARMACY_BILL",
+      "claim_category": "PHARMACY",
+      "member_name": "Rajesh Kumar",
+      "fields": {
+        "patient_name": "Rajesh Kumar",
+        "date": "01-Nov-2024",
+        "bill_number": "HFP-24-09821",
+        "line_item_amounts": [
+          37.5,
+          40.0
+        ],
+        "total": 77.5
+      },
+      "critical_fields": [
+        "patient_name",
+        "total",
+        "line_item_amounts"
+      ],
+      "expected_behavior": "extract",
+      "acceptable_behaviors": [
+        "extract"
+      ],
+      "offline_expected_code": "EXTRACTION_UNAVAILABLE",
+      "notes": "Pharmacy bill with drug licence, batch/expiry columns and explicit Generic/Branded markers.",
+      "pages": 1,
+      "mime_type": "image/jpeg",
+      "bytes": 53497,
+      "sha256": "be58848b3fc3f1aac7374cb0101ff12e7ed2290eba2dc38a668e2af14b95b030"
+    },
+    {
+      "id": "non_medical_receipt",
+      "file": "non_medical_receipt.jpg",
+      "conditions": [
+        "image_only",
+        "wrong_document",
+        "non_medical"
+      ],
+      "document_type": "UNKNOWN",
+      "claim_category": "CONSULTATION",
+      "member_name": "Rajesh Kumar",
+      "fields": {},
+      "absent_fields": [
+        "patient_name"
+      ],
+      "critical_fields": [],
+      "expected_behavior": "request_reupload",
+      "acceptable_behaviors": [
+        "request_reupload"
+      ],
+      "offline_expected_code": "EXTRACTION_UNAVAILABLE",
+      "notes": "Restaurant receipt with a total. Must be classified UNKNOWN, never as a medical bill.",
+      "pages": 1,
+      "mime_type": "image/jpeg",
+      "bytes": 59074,
+      "sha256": "339e5765bf663bfd9fa451e5709d27cb0f426e759c24ef3a0b74a09fcfcab386"
+    }
+  ]
+}

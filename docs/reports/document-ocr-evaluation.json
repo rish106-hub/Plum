@@ -1,0 +1,151 @@
+{
+  "kind": "live_document_ocr_benchmark",
+  "status": "NOT_RUN",
+  "reason": "NOT_RUN (missing SARVAM_API_KEY)",
+  "provider": null,
+  "metrics": null,
+  "records": [
+    {
+      "scenario": "rx_clean_scan",
+      "file": "rx_clean_scan.png",
+      "conditions": [
+        "image_only",
+        "clean_scan"
+      ],
+      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+    },
+    {
+      "scenario": "rx_handwritten",
+      "file": "rx_handwritten.jpg",
+      "conditions": [
+        "image_only",
+        "handwriting",
+        "preprinted_template"
+      ],
+      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+    },
+    {
+      "scenario": "rx_stamp_over_registration",
+      "file": "rx_stamp_over_registration.jpg",
+      "conditions": [
+        "image_only",
+        "rubber_stamp",
+        "obscured_registration"
+      ],
+      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+    },
+    {
+      "scenario": "rx_hindi_english",
+      "file": "rx_hindi_english.jpg",
+      "conditions": [
+        "image_only",
+        "multilingual",
+        "devanagari"
+      ],
+      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+    },
+    {
+      "scenario": "rx_scanned_pdf",
+      "file": "rx_scanned_pdf.pdf",
+      "conditions": [
+        "scanned_pdf",
+        "no_text_layer",
+        "scan_noise"
+      ],
+      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+    },
+    {
+      "scenario": "bill_phone_photo_skewed",
+      "file": "bill_phone_photo_skewed.jpg",
+      "conditions": [
+        "image_only",
+        "phone_photo",
+        "skew",
+        "uneven_lighting",
+        "blur",
+        "noise"
+      ],
+      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+    },
+    {
+      "scenario": "bill_multipage_scan",
+      "file": "bill_multipage_scan.pdf",
+      "conditions": [
+        "scanned_pdf",
+        "multi_page",
+        "no_text_layer"
+      ],
+      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+    },
+    {
+      "scenario": "bill_cropped_partial",
+      "file": "bill_cropped_partial.jpg",
+      "conditions": [
+        "image_only",
+        "partial_page",
+        "cropped"
+      ],
+      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+    },
+    {
+      "scenario": "bill_struck_correction",
+      "file": "bill_struck_correction.jpg",
+      "conditions": [
+        "image_only",
+        "struck_through_amount",
+        "handwritten_correction"
+      ],
+      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+    },
+    {
+      "scenario": "bill_low_contrast",
+      "file": "bill_low_contrast.jpg",
+      "conditions": [
+        "image_only",
+        "very_low_contrast",
+        "faded_photocopy"
+      ],
+      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+    },
+    {
+      "scenario": "blank_page",
+      "file": "blank_page.jpg",
+      "conditions": [
+        "image_only",
+        "blank",
+        "no_content"
+      ],
+      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+    },
+    {
+      "scenario": "lab_report_scan",
+      "file": "lab_report_scan.jpg",
+      "conditions": [
+        "image_only",
+        "scan_noise",
+        "tabular"
+      ],
+      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+    },
+    {
+      "scenario": "pharmacy_bill_scan",
+      "file": "pharmacy_bill_scan.jpg",
+      "conditions": [
+        "image_only",
+        "scan_noise",
+        "tabular"
+      ],
+      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+    },
+    {
+      "scenario": "non_medical_receipt",
+      "file": "non_medical_receipt.jpg",
+      "conditions": [
+        "image_only",
+        "wrong_document",
+        "non_medical"
+      ],
+      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+    }
+  ]
+}

@@ -2,49 +2,66 @@
 
 Use this when you want to upload one synthetic claim from Terminal and read the decision and its trace. The local app runs OCR when needed, then the deterministic policy evaluator returns the outcome.
 
-## 1. Start the app
+Every command below runs from the repository root (the folder that contains `pyproject.toml`). No machine-specific paths are needed.
 
-From the repository folder:
-
-```bash
-cd /Users/somilthakur/Desktop/Project
-.venv/bin/python -m uvicorn claims.web:app --reload
-```
-
-Leave this terminal open. If `.venv` has not been created yet, run this once first:
+## 0. One-time setup
 
 ```bash
+git clone <repo-url> Plum
+cd Plum
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
+cp .env.example .env   # optional; only needed for Sarvam/Gemini keys
 ```
 
-Open a second terminal for the claim submission. The app uses local SQLite and private upload files under `.data/`.
+## Why the demo uses a demo clock
+
+The supplied policy period is 2024-04-01 to 2025-03-31 and the sample claims are treated in November 2024. The app stamps each claim's submission date with the real clock, so a claim for `treatment_date=2024-11-01` submitted today is far outside the policy's submission window and the documented ₹1,350 approval cannot be reproduced.
+
+For local demos only, set an explicit development clock:
+
+- `PLUM_ENV=development` (or `test`) marks the process as non-production. Unset means production.
+- `PLUM_DEMO_CLOCK=2024-11-05` (an ISO date or datetime) becomes the claim's submission date.
+
+The demo clock is never silent. The server logs `DEMO CLOCK ACTIVE` at startup, the intake page shows a "Demo clock active" banner, each affected claim page shows a "Demo clock submission" banner, and the decision trace starts with a `clock` / `demo_clock` entry whose evidence is `{"source": "PLUM_DEMO_CLOCK", "value": "2024-11-05", "submission_date": "2024-11-05", "environment": "development"}`. Record timestamps (`created_at`, processing history) always use the real clock. If `PLUM_DEMO_CLOCK` is set without `PLUM_ENV=development` or `test`, the app refuses to start.
+
+## 1. Start the app
+
+```bash
+PLUM_ENV=development PLUM_DEMO_CLOCK=2024-11-05 .venv/bin/python -m uvicorn claims.web:app --reload
+```
+
+Leave this terminal open. For anything other than a replay of the 2024 sample policy, start it without the two variables so the real clock is used: `.venv/bin/python -m uvicorn claims.web:app --reload`.
+
+Open a second terminal in the repository root for the claim submission. The app uses local SQLite and private upload files under `.data/` (override with `PLUM_DATA_DIR`).
 
 Generate the synthetic documents once in that second terminal. They are local demo files and are intentionally not stored in Git:
 
 ```bash
-cd /Users/somilthakur/Desktop/Project
 .venv/bin/python -m tools.generate_samples
 ```
 
-## 2. Submit a synthetic scan from Terminal
+## 2. Submit a synthetic claim from Terminal
 
-The generated sample set includes a synthetic bill image and a selectable-text prescription. This request sends the image through Sarvam OCR and parses the prescription locally. It can incur a small Sarvam charge. Use synthetic/sample files here, not real health documents.
+This request uses the selectable-text bill and prescription PDFs, which are parsed locally with no OCR provider call or charge. Use synthetic/sample files here, not real health documents.
 
 ```bash
-cd /Users/somilthakur/Desktop/Project
 CLAIM_ID="$(curl -sS -X POST http://127.0.0.1:8000/api/claims \
   -F 'member_id=EMP001' \
   -F 'claim_category=CONSULTATION' \
   -F 'treatment_date=2024-11-01' \
   -F 'claimed_amount=1500.00' \
-  -F 'files=@.data/samples/synthetic_hospital_bill.png;type=image/png' \
+  -F 'files=@.data/samples/synthetic_hospital_bill.pdf;type=application/pdf' \
   -F 'files=@.data/samples/synthetic_prescription.pdf;type=application/pdf' \
   | .venv/bin/python -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 printf 'Claim ID: %s\n' "$CLAIM_ID"
 ```
 
-The image/scanned-PDF path needs `SARVAM_API_KEY` set in the ignored `.env` file. Restart the app after changing `.env`. The key is read by the app at startup; never paste it into a command, commit, screenshot, or log.
+Expected result with the demo clock: `APPROVED`, `approved_amount` 1350 (₹1,500 less the 10% consultation co-pay). Submitting the same bill a second time is intentionally flagged as a duplicate (`MANUAL_REVIEW`, `DUPLICATE_BILL`); to repeat the clean approval, stop the app and start it with a fresh data folder, for example `PLUM_DATA_DIR=.data/run2`.
+
+### Scanned-image variant (Sarvam OCR)
+
+To exercise OCR, replace the bill line with `-F 'files=@.data/samples/synthetic_hospital_bill.png;type=image/png'`. This sends the image through Sarvam OCR and can incur a small charge. It needs `SARVAM_API_KEY` set in the ignored `.env` file. Restart the app after changing `.env`. The key is read by the app at startup; never paste it into a command, commit, screenshot, or log.
 
 ## 3. Wait for the outcome and inspect the evidence
 
@@ -57,10 +74,10 @@ for attempt in $(seq 1 45); do
   esac
   sleep 1
 done
-printf '%s' "$CLAIM_JSON" | .venv/bin/python -c 'import json,sys; c=json.load(sys.stdin); print(json.dumps({"state":c["state"],"decision":(c.get("result") or {}).get("decision"),"approved_amount":(c.get("result") or {}).get("approved_amount"),"reasons":(c.get("result") or {}).get("reasons"),"correction_requests":(c.get("result") or {}).get("correction_requests"),"trace":(c.get("result") or {}).get("trace"),"document_metrics":(c.get("result") or {}).get("document_metrics")}, indent=2))'
+printf '%s' "$CLAIM_JSON" | .venv/bin/python -c 'import json,sys; c=json.load(sys.stdin); r=c.get("result") or {}; print(json.dumps({"state":c["state"],"submission_date":c["request"].get("submission_date"),"submission_clock":c["request"].get("submission_clock"),"decision":r.get("decision"),"approved_amount":r.get("approved_amount"),"reasons":r.get("reasons"),"correction_requests":r.get("correction_requests"),"trace":r.get("trace"),"document_metrics":r.get("document_metrics")}, indent=2))'
 ```
 
-You can also open the reviewer page at `http://127.0.0.1:8000/claims/$CLAIM_ID`.
+You can also open the reviewer page at `http://127.0.0.1:8000/claims/$CLAIM_ID`; it shows the demo-clock banner above the decision.
 
 ## Read the result
 
@@ -89,9 +106,9 @@ The sample claim may be clear enough not to call Gemini; that is expected and co
 
 One synthetic one-page bill check against the current implementation used 1,429 input tokens and 333 output tokens, with one call and no retry. At Google's paid-tier introductory rates through December 31, 2026 ($0.75/1M input and $3.75/1M output), that request is about $0.0023; free-tier eligibility and actual document size can change the bill. See [current Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing).
 
-## No-OCR-cost digital PDF path
+## OCR cost
 
-Selectable-text PDFs are parsed locally. To avoid an OCR provider call, use the digital bill PDF rather than the `.png` above; keep the other form fields and prescription PDF. Images and scanned PDFs use Sarvam and may incur a charge.
+Selectable-text PDFs (the default request above) are parsed locally. Images and scanned PDFs use Sarvam and may incur a charge.
 
 ## Stop the app
 

@@ -17,10 +17,13 @@ import time
 import urllib.request
 import zipfile
 from dataclasses import dataclass
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol
 
 import certifi
+
+from claims.money import to_paise
 
 MAX_FILES = 10
 MAX_FILE_BYTES = 10 * 1024 * 1024
@@ -68,11 +71,38 @@ def _issue(code: str, file_name: str, message: str, **extra: Any) -> dict[str, A
     return {"code": code, "file_name": file_name, "message": message, **extra}
 
 
-def _normal_name(value: str) -> str:
+_HONORIFICS = frozenset({"mr", "mrs", "ms", "miss", "dr", "shri", "smt"})
+BILL_TYPES = frozenset({"HOSPITAL_BILL", "PHARMACY_BILL"})
+_DOCUMENT_DATE_FORMATS = ("%d-%b-%Y", "%d %b %Y", "%d/%m/%Y", "%d-%m-%Y")
+
+
+def normal_name(value: Any) -> str:
+    """Compare person names case-insensitively, ignoring punctuation and routine Indian honorifics."""
     return " ".join(
-        token for token in re.findall(r"[a-z]+", value.casefold())
-        if token not in {"mr", "mrs", "ms", "miss", "dr", "shri", "smt"}
+        word for word in re.findall(r"[^\W_]+", str(value or "").casefold(), flags=re.UNICODE)
+        if word not in _HONORIFICS
     )
+
+
+def parse_document_date(value: Any) -> date | None:
+    """Parse the unambiguous printed-date formats local extraction emits; None if unreadable.
+
+    The accepted formats match the policy engine's document-date parser, so a date
+    that passes intake is always comparable to the claimed treatment date.
+    """
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw[:10])
+    except ValueError:
+        pass
+    for date_format in _DOCUMENT_DATE_FORMATS:
+        try:
+            return datetime.strptime(raw, date_format).date()
+        except ValueError:
+            continue
+    return None
 
 
 def _normalized_words(value: str) -> str:
@@ -106,7 +136,8 @@ def _coerce_upload(raw: Any) -> _Upload:
     return _Upload(_safe_name(name), data, str(mime) if mime else None)
 
 
-def _mime(data: bytes) -> str | None:
+def sniff_media_type(data: bytes) -> str | None:
+    """Media type from magic bytes; the client-declared content type is never trusted."""
     if data.startswith(b"%PDF-"):
         return "application/pdf"
     if data.startswith(b"\xff\xd8\xff"):
@@ -192,7 +223,14 @@ def _text_content(text: str, kind: str) -> tuple[dict[str, Any], list[dict[str, 
     field("report_date", r"\breport\s+date\s*[:\-]\s*(\d{1,2}[-/]\w{2,9}[-/]\d{2,4}|\d{4}-\d{2}-\d{2})")
     field("diagnosis", r"\bdiagnosis\s*[:\-]\s*(.{3,100})")
     field("hospital_name", r"\b(?:hospital|clinic)\s*[:\-]\s*(.{3,90})")
-    field("bill_number", r"\b(?:bill|invoice|receipt)\s*(?:no\.?|number|#)\s*[:\-]?\s*([\w/-]{3,40})")
+    # A bill number may be printed with internal spaces ("INV 2001"). Continuation
+    # tokens must carry a digit, so a following label ("Date:", "Patient") or a
+    # printed date is never absorbed into the number.
+    field(
+        "bill_number",
+        r"\b(?:bill|invoice|receipt)\s*(?:no\.?|number|#)\s*[:\-]?\s*"
+        r"((?:[\w/-]{3,40}|[\w/-]{1,2}(?=\s[\w/-]*\d))(?:\s(?!\d{1,2}[-/]\w{2,9}[-/]\d{2,4}\b)[\w/-]*\d[\w/-]*){0,4})",
+    )
     field("gstin", r"\bGSTIN\s*[:\-]?\s*([A-Z0-9]{10,20})")
     field("drug_license_number", r"\bdrug\s+lic(?:en[cs]e)?\s*(?:no\.?|number|#)?\s*[:\-]?\s*([\w/-]{3,50})")
     if kind in {"HOSPITAL_BILL", "PHARMACY_BILL"}:
@@ -371,8 +409,8 @@ def _provider_result(value: Any) -> tuple[str, str, dict[str, Any], list[str]]:
 
 
 def _needs_extract(kind: str, content: dict[str, Any]) -> bool:
-    if kind in {"HOSPITAL_BILL", "PHARMACY_BILL"}:
-        if "total" not in content or not content.get("line_items"):
+    if kind in BILL_TYPES:
+        if "total" not in content or not content.get("line_items") or parse_document_date(content.get("date")) is None:
             return True
         if kind == "PHARMACY_BILL" and any(item.get("brand_status") not in {"BRANDED", "GENERIC"} for item in content["line_items"]):
             return True
@@ -404,8 +442,10 @@ def revalidate_documents(
     named: list[tuple[str, str]] = []
     material_fields = {
         "PRESCRIPTION": ("patient_name", "diagnosis"),
-        "HOSPITAL_BILL": ("patient_name", "total", "line_items"),
-        "PHARMACY_BILL": ("patient_name", "total", "line_items"),
+        # A bill's printed date is mandatory: it anchors the treatment episode and
+        # the duplicate-bill fingerprint, so an undated bill is a member correction.
+        "HOSPITAL_BILL": ("patient_name", "date", "total", "line_items"),
+        "PHARMACY_BILL": ("patient_name", "date", "total", "line_items"),
         "LAB_REPORT": ("patient_name", "date", "test_name"),
         "DIAGNOSTIC_REPORT": ("patient_name", "date", "test_name"),
         "DENTAL_REPORT": ("patient_name", "date", "diagnosis"),
@@ -427,6 +467,13 @@ def revalidate_documents(
             present = bool(fields.get(field))
             if field == "total":
                 present = fields.get(field) is not None and fields.get(field) != ""
+            if field == "date" and present and kind in BILL_TYPES and parse_document_date(fields.get("date")) is None:
+                issues.append(_issue(
+                    "MATERIAL_FIELD_UNVERIFIED", name,
+                    f"The bill date on {name} could not be read. Upload a clearer bill showing its date.",
+                    field="date",
+                ))
+                continue
             if not present:
                 messages = {
                     "patient_name": "patient name",
@@ -443,8 +490,8 @@ def revalidate_documents(
                 ))
         if kind in {"HOSPITAL_BILL", "PHARMACY_BILL"} and fields.get("total") is not None and fields.get("line_items"):
             try:
-                total_paise = int(Decimal(str(fields["total"])) * 100)
-                items_paise = sum(int(Decimal(str(item.get("amount"))) * 100) for item in fields["line_items"])
+                total_paise = to_paise(fields["total"], allow_negative=True)
+                items_paise = sum(to_paise(item.get("amount"), allow_negative=True) for item in fields["line_items"])
                 conflict = total_paise != items_paise
             except (InvalidOperation, TypeError, ValueError):
                 conflict = True
@@ -470,11 +517,11 @@ def revalidate_documents(
                 file_name = ""
             issues.append(_issue("MISSING_DOCUMENT", file_name, message, required_type=kind))
 
-    if len({_normal_name(name) for _, name in named}) > 1:
+    if len({normal_name(name) for _, name in named}) > 1:
         detail = "; ".join(f"{filename}: {name}" for filename, name in named)
         issues.append(_issue("PATIENT_MISMATCH", "", f"The uploaded documents name different patients ({detail}). Re-upload documents for {member_name}."))
-    elif named and member_name and _normal_name(named[0][1]) not in {
-        _normal_name(name) for name in (allowed_patient_names or [member_name])
+    elif named and member_name and normal_name(named[0][1]) not in {
+        normal_name(name) for name in (allowed_patient_names or [member_name])
     }:
         issues.append(_issue("MEMBER_MISMATCH", named[0][0], f"{named[0][0]} names {named[0][1]}, but this claim is not for the member or a covered dependent. Upload the correct patient's document."))
     elif not named:
@@ -594,7 +641,7 @@ def process_uploads(
         if len(data) > MAX_FILE_BYTES:
             issues.append(_issue("FILE_TOO_LARGE", name, f"{name} exceeds 10 MB. Compress or split it and upload again."))
             continue
-        mime = _mime(data)
+        mime = sniff_media_type(data)
         if mime is None:
             issues.append(_issue("UNSUPPORTED_FILE", name, f"{name} is not a valid PDF, JPEG, PNG, or WebP file. Upload one of those formats."))
             continue
@@ -656,8 +703,8 @@ def process_uploads(
             and quality == "GOOD"
             and (
                 not content.get("patient_name")
-                or _normal_name(str(content["patient_name"])) in {
-                    _normal_name(name) for name in (allowed_patient_names or [member_name])
+                or normal_name(str(content["patient_name"])) in {
+                    normal_name(name) for name in (allowed_patient_names or [member_name])
                 }
             )
             and (_needs_extract(kind, content) or not content.get("patient_name"))

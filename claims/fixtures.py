@@ -1,7 +1,9 @@
 """Adapter for the assignment's structured fixtures.
 
 Fixture metadata is supplied evidence, not a claim that an image was inspected.
-The production document adapter should emit this same payload shape.
+The adapter only reshapes it into the normalized evidence payload that every
+other source (PDF text, OCR, model-assisted extraction) also produces; the
+``source`` field is provenance for the trace and never changes a policy rule.
 """
 
 from __future__ import annotations
@@ -10,6 +12,8 @@ import json
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
+
+from claims.policy import load_policy as _load_canonical_policy
 
 
 def normalize_fixture(case: dict[str, Any]) -> dict[str, Any]:
@@ -44,5 +48,5 @@ def load_cases(path: str | Path) -> list[dict[str, Any]]:
 
 
 def load_policy(path: str | Path) -> dict[str, Any]:
-    with Path(path).open(encoding="utf-8") as handle:
-        return json.load(handle)
+    """Validate and normalize a policy file into the canonical engine config."""
+    return _load_canonical_policy(path)

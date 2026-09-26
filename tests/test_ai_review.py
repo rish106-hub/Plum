@@ -87,7 +87,7 @@ def test_google_transport_explicitly_uses_low_thinking() -> None:
 
     transport = GoogleGenAITransport.__new__(GoogleGenAITransport)
     transport._types = types
-    transport._client = SimpleNamespace(models=FakeModels())
+    transport._client = SimpleNamespace(models=FakeModels())  # type: ignore[assignment]
 
     text, usage = transport.generate("gemini-test", ["field extraction"], {"type": "OBJECT"})
 

@@ -1,180 +1,760 @@
 {
-  "kind": "synthetic_document_intake_safety_benchmark",
-  "passed": 6,
-  "total": 6,
-  "records": [
-    {
-      "scenario": "clean_consultation",
-      "category": "CONSULTATION",
-      "expected": "ACCEPTED",
-      "matched": true,
-      "issue_codes": [],
-      "metrics": {
-        "files": 2,
-        "pages": 2,
-        "provider_calls": 0,
-        "provider_failures": 0,
-        "sarvam_digitise_calls": 0,
-        "sarvam_digitise_pages": 0,
-        "sarvam_extract_calls": 0,
-        "sarvam_extract_pages": 0
-      },
-      "documents": [
+  "kind": "offline_document_intake_routing_and_fail_closed_benchmark",
+  "ocr_evaluated": false,
+  "live_ocr_report": "document-ocr-evaluation.json (python -m scripts.evaluate_documents --providers live)",
+  "passed": 28,
+  "total": 28,
+  "suites": {
+    "intake_routing": {
+      "scope": "Intake and routing on generated selectable-text PDFs (local text layer, no OCR) plus one image without a reader.",
+      "passed": 6,
+      "total": 6,
+      "records": [
         {
-          "file_name": "clean-prescription.pdf",
-          "actual_type": "PRESCRIPTION",
-          "quality": "GOOD",
-          "pages": 1
+          "scenario": "clean_consultation",
+          "category": "CONSULTATION",
+          "expected": "ACCEPTED",
+          "matched": true,
+          "issue_codes": [],
+          "route": "ADJUDICATION_ELIGIBLE",
+          "metrics": {
+            "files": 2,
+            "pages": 2,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          },
+          "documents": [
+            {
+              "file_name": "clean-prescription.pdf",
+              "actual_type": "PRESCRIPTION",
+              "quality": "GOOD",
+              "pages": 1,
+              "extraction_source": "pdf_text"
+            },
+            {
+              "file_name": "clean-bill.pdf",
+              "actual_type": "HOSPITAL_BILL",
+              "quality": "GOOD",
+              "pages": 1,
+              "extraction_source": "pdf_text"
+            }
+          ]
         },
         {
-          "file_name": "clean-bill.pdf",
-          "actual_type": "HOSPITAL_BILL",
-          "quality": "GOOD",
-          "pages": 1
-        }
-      ]
-    },
-    {
-      "scenario": "wrong_document_type",
-      "category": "CONSULTATION",
-      "expected": "MISSING_DOCUMENT",
-      "matched": true,
-      "issue_codes": [
-        "MISSING_DOCUMENT"
-      ],
-      "metrics": {
-        "files": 1,
-        "pages": 1,
-        "provider_calls": 0,
-        "provider_failures": 0,
-        "sarvam_digitise_calls": 0,
-        "sarvam_digitise_pages": 0,
-        "sarvam_extract_calls": 0,
-        "sarvam_extract_pages": 0
-      },
-      "documents": [
-        {
-          "file_name": "clean-prescription.pdf",
-          "actual_type": "PRESCRIPTION",
-          "quality": "GOOD",
-          "pages": 1
-        }
-      ]
-    },
-    {
-      "scenario": "patient_mismatch",
-      "category": "CONSULTATION",
-      "expected": "PATIENT_MISMATCH",
-      "matched": true,
-      "issue_codes": [
-        "PATIENT_MISMATCH"
-      ],
-      "metrics": {
-        "files": 2,
-        "pages": 2,
-        "provider_calls": 0,
-        "provider_failures": 0,
-        "sarvam_digitise_calls": 0,
-        "sarvam_digitise_pages": 0,
-        "sarvam_extract_calls": 0,
-        "sarvam_extract_pages": 0
-      },
-      "documents": [
-        {
-          "file_name": "clean-prescription.pdf",
-          "actual_type": "PRESCRIPTION",
-          "quality": "GOOD",
-          "pages": 1
+          "scenario": "wrong_document_type",
+          "category": "CONSULTATION",
+          "expected": "MISSING_DOCUMENT",
+          "matched": true,
+          "issue_codes": [
+            "MISSING_DOCUMENT"
+          ],
+          "route": "DOCUMENT_CORRECTION_REQUIRED",
+          "metrics": {
+            "files": 1,
+            "pages": 1,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          },
+          "documents": [
+            {
+              "file_name": "clean-prescription.pdf",
+              "actual_type": "PRESCRIPTION",
+              "quality": "GOOD",
+              "pages": 1,
+              "extraction_source": "pdf_text"
+            }
+          ]
         },
         {
-          "file_name": "patient-mismatch-bill.pdf",
-          "actual_type": "HOSPITAL_BILL",
-          "quality": "GOOD",
-          "pages": 1
+          "scenario": "patient_mismatch",
+          "category": "CONSULTATION",
+          "expected": "PATIENT_MISMATCH",
+          "matched": true,
+          "issue_codes": [
+            "MATERIAL_FIELD_UNVERIFIED",
+            "PATIENT_MISMATCH"
+          ],
+          "route": "DOCUMENT_CORRECTION_REQUIRED",
+          "metrics": {
+            "files": 2,
+            "pages": 2,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          },
+          "documents": [
+            {
+              "file_name": "clean-prescription.pdf",
+              "actual_type": "PRESCRIPTION",
+              "quality": "GOOD",
+              "pages": 1,
+              "extraction_source": "pdf_text"
+            },
+            {
+              "file_name": "patient-mismatch-bill.pdf",
+              "actual_type": "HOSPITAL_BILL",
+              "quality": "GOOD",
+              "pages": 1,
+              "extraction_source": "pdf_text"
+            }
+          ]
+        },
+        {
+          "scenario": "amount_conflict",
+          "category": "DENTAL",
+          "expected": "BILL_ARITHMETIC_CONFLICT",
+          "matched": true,
+          "issue_codes": [
+            "BILL_ARITHMETIC_CONFLICT",
+            "MATERIAL_FIELD_UNVERIFIED"
+          ],
+          "route": "DOCUMENT_CORRECTION_REQUIRED",
+          "metrics": {
+            "files": 1,
+            "pages": 1,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          },
+          "documents": [
+            {
+              "file_name": "amount-conflict-bill.pdf",
+              "actual_type": "HOSPITAL_BILL",
+              "quality": "GOOD",
+              "pages": 1,
+              "extraction_source": "pdf_text"
+            }
+          ]
+        },
+        {
+          "scenario": "multi_page_bill",
+          "category": "DENTAL",
+          "expected": "ACCEPTED",
+          "matched": true,
+          "issue_codes": [],
+          "route": "ADJUDICATION_ELIGIBLE",
+          "metrics": {
+            "files": 1,
+            "pages": 2,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          },
+          "documents": [
+            {
+              "file_name": "multi-page-bill.pdf",
+              "actual_type": "HOSPITAL_BILL",
+              "quality": "GOOD",
+              "pages": 2,
+              "extraction_source": "pdf_text"
+            }
+          ]
+        },
+        {
+          "scenario": "blurred_phone_photo",
+          "category": "DENTAL",
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "route": "MANUAL_REVIEW",
+          "metrics": {
+            "files": 1,
+            "pages": 1,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          },
+          "documents": [
+            {
+              "file_name": "blurred-phone-photo.png",
+              "actual_type": "UNKNOWN",
+              "quality": "PARTIAL",
+              "pages": 1,
+              "extraction_source": "unavailable"
+            }
+          ]
         }
       ]
     },
-    {
-      "scenario": "amount_conflict",
-      "category": "DENTAL",
-      "expected": "BILL_ARITHMETIC_CONFLICT",
-      "matched": true,
-      "issue_codes": [
-        "BILL_ARITHMETIC_CONFLICT"
-      ],
-      "metrics": {
-        "files": 1,
-        "pages": 1,
-        "provider_calls": 0,
-        "provider_failures": 0,
-        "sarvam_digitise_calls": 0,
-        "sarvam_digitise_pages": 0,
-        "sarvam_extract_calls": 0,
-        "sarvam_extract_pages": 0
-      },
-      "documents": [
+    "image_fail_closed": {
+      "scope": "Every image-only corpus document with OCR unavailable: must be held (manual review or re-upload) with no extracted content.",
+      "passed": 14,
+      "total": 14,
+      "records": [
         {
-          "file_name": "amount-conflict-bill.pdf",
-          "actual_type": "HOSPITAL_BILL",
-          "quality": "GOOD",
-          "pages": 1
+          "scenario": "rx_clean_scan",
+          "file": "rx_clean_scan.png",
+          "conditions": [
+            "image_only",
+            "clean_scan"
+          ],
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "route": "MANUAL_REVIEW",
+          "confident_documents": [],
+          "documents_with_content": [],
+          "metrics": {
+            "files": 1,
+            "pages": 1,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          }
+        },
+        {
+          "scenario": "rx_handwritten",
+          "file": "rx_handwritten.jpg",
+          "conditions": [
+            "image_only",
+            "handwriting",
+            "preprinted_template"
+          ],
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "route": "MANUAL_REVIEW",
+          "confident_documents": [],
+          "documents_with_content": [],
+          "metrics": {
+            "files": 1,
+            "pages": 1,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          }
+        },
+        {
+          "scenario": "rx_stamp_over_registration",
+          "file": "rx_stamp_over_registration.jpg",
+          "conditions": [
+            "image_only",
+            "rubber_stamp",
+            "obscured_registration"
+          ],
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "route": "MANUAL_REVIEW",
+          "confident_documents": [],
+          "documents_with_content": [],
+          "metrics": {
+            "files": 1,
+            "pages": 1,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          }
+        },
+        {
+          "scenario": "rx_hindi_english",
+          "file": "rx_hindi_english.jpg",
+          "conditions": [
+            "image_only",
+            "multilingual",
+            "devanagari"
+          ],
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "route": "MANUAL_REVIEW",
+          "confident_documents": [],
+          "documents_with_content": [],
+          "metrics": {
+            "files": 1,
+            "pages": 1,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          }
+        },
+        {
+          "scenario": "rx_scanned_pdf",
+          "file": "rx_scanned_pdf.pdf",
+          "conditions": [
+            "scanned_pdf",
+            "no_text_layer",
+            "scan_noise"
+          ],
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "route": "MANUAL_REVIEW",
+          "confident_documents": [],
+          "documents_with_content": [],
+          "metrics": {
+            "files": 1,
+            "pages": 1,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          }
+        },
+        {
+          "scenario": "bill_phone_photo_skewed",
+          "file": "bill_phone_photo_skewed.jpg",
+          "conditions": [
+            "image_only",
+            "phone_photo",
+            "skew",
+            "uneven_lighting",
+            "blur",
+            "noise"
+          ],
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "route": "MANUAL_REVIEW",
+          "confident_documents": [],
+          "documents_with_content": [],
+          "metrics": {
+            "files": 1,
+            "pages": 1,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          }
+        },
+        {
+          "scenario": "bill_multipage_scan",
+          "file": "bill_multipage_scan.pdf",
+          "conditions": [
+            "scanned_pdf",
+            "multi_page",
+            "no_text_layer"
+          ],
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "route": "MANUAL_REVIEW",
+          "confident_documents": [],
+          "documents_with_content": [],
+          "metrics": {
+            "files": 1,
+            "pages": 2,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          }
+        },
+        {
+          "scenario": "bill_cropped_partial",
+          "file": "bill_cropped_partial.jpg",
+          "conditions": [
+            "image_only",
+            "partial_page",
+            "cropped"
+          ],
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "route": "MANUAL_REVIEW",
+          "confident_documents": [],
+          "documents_with_content": [],
+          "metrics": {
+            "files": 1,
+            "pages": 1,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          }
+        },
+        {
+          "scenario": "bill_struck_correction",
+          "file": "bill_struck_correction.jpg",
+          "conditions": [
+            "image_only",
+            "struck_through_amount",
+            "handwritten_correction"
+          ],
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "route": "MANUAL_REVIEW",
+          "confident_documents": [],
+          "documents_with_content": [],
+          "metrics": {
+            "files": 1,
+            "pages": 1,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          }
+        },
+        {
+          "scenario": "bill_low_contrast",
+          "file": "bill_low_contrast.jpg",
+          "conditions": [
+            "image_only",
+            "very_low_contrast",
+            "faded_photocopy"
+          ],
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "route": "MANUAL_REVIEW",
+          "confident_documents": [],
+          "documents_with_content": [],
+          "metrics": {
+            "files": 1,
+            "pages": 1,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          }
+        },
+        {
+          "scenario": "blank_page",
+          "file": "blank_page.jpg",
+          "conditions": [
+            "image_only",
+            "blank",
+            "no_content"
+          ],
+          "expected": "UNREADABLE_IMAGE",
+          "matched": true,
+          "issue_codes": [
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNREADABLE_IMAGE"
+          ],
+          "route": "DOCUMENT_CORRECTION_REQUIRED",
+          "confident_documents": [],
+          "documents_with_content": [],
+          "metrics": {
+            "files": 1,
+            "pages": 0,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          }
+        },
+        {
+          "scenario": "lab_report_scan",
+          "file": "lab_report_scan.jpg",
+          "conditions": [
+            "image_only",
+            "scan_noise",
+            "tabular"
+          ],
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "route": "MANUAL_REVIEW",
+          "confident_documents": [],
+          "documents_with_content": [],
+          "metrics": {
+            "files": 1,
+            "pages": 1,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          }
+        },
+        {
+          "scenario": "pharmacy_bill_scan",
+          "file": "pharmacy_bill_scan.jpg",
+          "conditions": [
+            "image_only",
+            "scan_noise",
+            "tabular"
+          ],
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "route": "MANUAL_REVIEW",
+          "confident_documents": [],
+          "documents_with_content": [],
+          "metrics": {
+            "files": 1,
+            "pages": 1,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          }
+        },
+        {
+          "scenario": "non_medical_receipt",
+          "file": "non_medical_receipt.jpg",
+          "conditions": [
+            "image_only",
+            "wrong_document",
+            "non_medical"
+          ],
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "route": "MANUAL_REVIEW",
+          "confident_documents": [],
+          "documents_with_content": [],
+          "metrics": {
+            "files": 1,
+            "pages": 1,
+            "provider_calls": 0,
+            "provider_failures": 0,
+            "sarvam_digitise_calls": 0,
+            "sarvam_digitise_pages": 0,
+            "sarvam_extract_calls": 0,
+            "sarvam_extract_pages": 0
+          }
         }
       ]
     },
-    {
-      "scenario": "multi_page_bill",
-      "category": "DENTAL",
-      "expected": "ACCEPTED",
-      "matched": true,
-      "issue_codes": [],
-      "metrics": {
-        "files": 1,
-        "pages": 2,
-        "provider_calls": 0,
-        "provider_failures": 0,
-        "sarvam_digitise_calls": 0,
-        "sarvam_digitise_pages": 0,
-        "sarvam_extract_calls": 0,
-        "sarvam_extract_pages": 0
-      },
-      "documents": [
+    "provider_failure_injection": {
+      "scope": "Scripted provider failures. Mandatory (Sarvam OCR) failures must block adjudication; optional (Gemini evidence) failures must neither clear an issue nor block a complete claim.",
+      "passed": 8,
+      "total": 8,
+      "records": [
         {
-          "file_name": "multi-page-bill.pdf",
-          "actual_type": "HOSPITAL_BILL",
-          "quality": "GOOD",
-          "pages": 2
-        }
-      ]
-    },
-    {
-      "scenario": "blurred_phone_photo",
-      "category": "DENTAL",
-      "expected": "EXTRACTION_UNAVAILABLE",
-      "matched": true,
-      "issue_codes": [
-        "EXTRACTION_UNAVAILABLE",
-        "MISSING_DOCUMENT",
-        "PATIENT_UNVERIFIED",
-        "UNIDENTIFIED_DOCUMENT"
-      ],
-      "metrics": {
-        "files": 1,
-        "pages": 1,
-        "provider_calls": 0,
-        "provider_failures": 0,
-        "sarvam_digitise_calls": 0,
-        "sarvam_digitise_pages": 0,
-        "sarvam_extract_calls": 0,
-        "sarvam_extract_pages": 0
-      },
-      "documents": [
+          "scenario": "mandatory_digitise_exception",
+          "failure_class": "mandatory",
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "expected_route": "MANUAL_REVIEW",
+          "route": "MANUAL_REVIEW",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "gemini_status": null,
+          "provider_failures": 1
+        },
         {
-          "file_name": "blurred-phone-photo.png",
-          "actual_type": "UNKNOWN",
-          "quality": "PARTIAL",
-          "pages": 1
+          "scenario": "mandatory_digitise_timeout",
+          "failure_class": "mandatory",
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "expected_route": "MANUAL_REVIEW",
+          "route": "MANUAL_REVIEW",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "gemini_status": null,
+          "provider_failures": 1
+        },
+        {
+          "scenario": "mandatory_digitise_empty_text",
+          "failure_class": "mandatory",
+          "expected": "UNREADABLE_DOCUMENT",
+          "expected_route": "DOCUMENT_CORRECTION_REQUIRED",
+          "route": "DOCUMENT_CORRECTION_REQUIRED",
+          "matched": true,
+          "issue_codes": [
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT",
+            "UNREADABLE_DOCUMENT"
+          ],
+          "gemini_status": null,
+          "provider_failures": 0
+        },
+        {
+          "scenario": "mandatory_extract_exception",
+          "failure_class": "mandatory",
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "expected_route": "MANUAL_REVIEW",
+          "route": "MANUAL_REVIEW",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MATERIAL_FIELD_UNVERIFIED"
+          ],
+          "gemini_status": null,
+          "provider_failures": 1
+        },
+        {
+          "scenario": "mandatory_non_medical_text",
+          "failure_class": "mandatory",
+          "expected": "UNIDENTIFIED_DOCUMENT",
+          "expected_route": "DOCUMENT_CORRECTION_REQUIRED",
+          "route": "DOCUMENT_CORRECTION_REQUIRED",
+          "matched": true,
+          "issue_codes": [
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "gemini_status": null,
+          "provider_failures": 0
+        },
+        {
+          "scenario": "optional_gemini_exception_after_mandatory_failure",
+          "failure_class": "optional",
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "expected_route": "MANUAL_REVIEW",
+          "route": "MANUAL_REVIEW",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "gemini_status": "ABSTAINED",
+          "provider_failures": 1
+        },
+        {
+          "scenario": "optional_gemini_fabricated_candidate_after_mandatory_failure",
+          "failure_class": "optional",
+          "expected": "EXTRACTION_UNAVAILABLE",
+          "expected_route": "MANUAL_REVIEW",
+          "route": "MANUAL_REVIEW",
+          "matched": true,
+          "issue_codes": [
+            "EXTRACTION_UNAVAILABLE",
+            "MISSING_DOCUMENT",
+            "PATIENT_UNVERIFIED",
+            "UNIDENTIFIED_DOCUMENT"
+          ],
+          "gemini_status": "ABSTAINED",
+          "provider_failures": 1
+        },
+        {
+          "scenario": "optional_gemini_exception_on_complete_claim",
+          "failure_class": "optional",
+          "expected": "ACCEPTED",
+          "expected_route": "ADJUDICATION_ELIGIBLE",
+          "route": "ADJUDICATION_ELIGIBLE",
+          "matched": true,
+          "issue_codes": [],
+          "gemini_status": "ABSTAINED",
+          "provider_failures": 0
         }
       ]
     }
-  ]
+  }
 }
