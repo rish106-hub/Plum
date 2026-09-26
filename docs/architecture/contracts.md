@@ -14,14 +14,14 @@ All amounts in external claim inputs and `approved_amount` are INR rupees. Inter
 
 | Operation | Input | Output | Errors |
 | --- | --- | --- | --- |
-| `POST /api/claims` | Multipart `member_id`, `claim_category`, `treatment_date`, `claimed_amount`, and 1–6 PDF/JPEG/PNG/WebP `files` | HTTP 202 `{id,state:"QUEUED",url}`; files saved under private local storage; claim and event rows committed | HTTP 422 for invalid category/member/date/money/media, empty file, per-file 10 MB or total 30 MB excess; storage/database failures surface as server errors |
+| `POST /api/claims` | Multipart `member_id`, `claim_category`, `treatment_date`, `claimed_amount`, optional `pre_authorization_obtained`, `pre_authorization_issued_date`, `pre_authorization_reference`, and 1–6 PDF/JPEG/PNG/WebP `files` | HTTP 202 `{id,state:"QUEUED",url}`; files saved under private local storage; claim and event rows committed | HTTP 422 for invalid category/member/date/money/media, empty file, per-file 10 MB or total 30 MB excess; storage/database failures surface as server errors |
 | `GET /api/claims/{id}` | Claim ID | Stored claim request, state, result, file metadata and ordered events | 404 unknown ID |
 | `GET /api/claims` | Optional `limit` 1–100 | Recent claim summaries | 422 invalid limit |
 | `POST /api/claims/{id}/retry` | Failed claim ID | HTTP 202 queued retry | 404 unknown ID; 409 unless state is `PROCESSING_FAILED` |
 | `GET /`, `GET /claims/{id}` | Browser navigation | Submission or reviewer HTML | 404 unknown claim ID |
 | `GET /ops` | Browser navigation | Local operations worklist HTML; client reads the list and full claim API for escalation, evidence, model usage, and trace | No authentication in the local prototype; must be added before real member data |
 
-`process_claim(id)` changes `QUEUED → PROCESSING → DOCUMENT_CORRECTION_REQUIRED | MANUAL_REVIEW | DECIDED | PROCESSING_FAILED`. It records immutable claim events and resumes `QUEUED`/`PROCESSING` records on app startup. FastAPI background tasks execute work in the app process; this is a durable *record* with recovery, not a separate managed queue. Provider exceptions are stored by exception type only to avoid putting document text in error messages. Before adjudication, exact bill-file hashes are checked against other claims; a match routes to manual review. Same-day/month counts and policy-year approved totals are derived from local history for the employee and dependents. Since the prototype has no insurer remittance feed, approved amounts are the available annual-benefit consumption proxy, explicitly identified in the trace.
+`process_claim(id)` changes `QUEUED → PROCESSING → DOCUMENT_CORRECTION_REQUIRED | MANUAL_REVIEW | DECIDED | PROCESSING_FAILED`. It records immutable claim events and resumes `QUEUED`/`PROCESSING` records on app startup. FastAPI background tasks execute work in the app process; this is a durable *record* with recovery, not a separate managed queue. Provider exceptions are stored by exception type only to avoid putting document text in error messages. Before adjudication, exact bill-file hashes and complete logical fingerprints (bill number, provider, amount, treatment date) are checked against paid claims; a match routes to manual review. Same-day/month fraud signals count all local submissions for the employee's covered family; policy-year benefit totals count approved/partial decisions for that family. Alternative-medicine sessions count approved/partial decisions for the enrolled member. Since the prototype has no insurer remittance feed, approved amounts are the available annual-benefit consumption proxy, explicitly identified in the trace.
 
 ## Document adapter (`claims.documents`)
 
@@ -93,7 +93,7 @@ class DocumentProvider(Protocol):
 evaluate_claim(payload: dict, policy: dict) -> dict
 ```
 
-Input requires member and policy IDs, claim category, treatment date, claimed amount and normalized documents. It may include year-to-date approved amount, same-day/month claim history, hospital name and pre-authorization evidence. Production web inputs are populated from local claim history; fixture inputs carry their supplied history. The evaluator reads the policy structure dynamically. It returns:
+Input requires member and policy IDs, claim category, treatment date, claimed amount and normalized documents. It may include year-to-date approved amount, sum-insured/family-floater utilisation, same-day/month submission history, prior approved alternative-medicine sessions, hospital name and pre-authorization evidence. A contradictory pre-authorization form and dated approval document routes to manual review. Production web inputs are populated from local claim history; fixture inputs carry their supplied history. The evaluator reads the policy structure dynamically. It returns:
 
 ```json
 {

@@ -16,7 +16,7 @@ The current verification is:
 The following earlier findings are now regression-tested or covered by a reachable code path:
 
 - All bill line items are priced, not only the first bill.
-- Category allowlists, exclusions, covered systems, session limits, registered-practitioner evidence, category coverage, policy renewal, relationship coverage, policy period, and document/treatment-date consistency are traced.
+- Category allowlists, exclusions, covered systems, annual session limits, registered-practitioner evidence, category coverage, policy renewal, relationship coverage, policy period, and document/treatment-date consistency are traced. Live uploads without covered-system evidence route to review.
 - Missing treatment dates cannot be adjudicated; submission dates before treatment or beyond the deadline fail closed.
 - Policy limits apply uniformly to fixture and upload payloads. TC006 and TC010 are documented using the current configured interpretation, not request-controlled fixture switches.
 - Live intake persists a policy snapshot hash, submission date, and pre-authorization status. A policy change between intake and processing routes the claim to manual review.
@@ -31,7 +31,7 @@ The following earlier findings are now regression-tested or covered by a reachab
 
 These remain explicit prototype boundaries rather than silently claimed capabilities:
 
-- `sum_insured_per_employee` and the family-floater combined limit remain `NOT_EVALUATED` because no hospitalisation/remittance utilisation feed exists. The annual OPD ledger is not a substitute for those balances.
+- `sum_insured_per_employee` and the family-floater combined limit constrain payment when an explicit utilisation feed exists; without one they remain `NOT_EVALUATED`. The annual OPD ledger is not a substitute for those balances.
 - The generic 365-day pre-existing-condition rule is evaluated when explicit `pre_existing_conditions` evidence is supplied; absent that evidence, the trace is `NOT_EVALUATED` and the claim is not treated as proof of no prior diagnosis.
 - OCR, handwriting, multilingual extraction, stamp overlap, and confidence calibration still require a consented, provider-backed labelled corpus. The synthetic real-byte benchmark demonstrates safe routing, not OCR accuracy.
 - Similarity-based duplicate detection for recompressed or cropped bills needs a measured false-positive threshold before introduction.

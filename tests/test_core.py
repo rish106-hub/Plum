@@ -375,6 +375,62 @@ class ClaimCoreTests(unittest.TestCase):
         step = next(item for item in result["trace"] if item["rule_id"] == "pre_authorization")
         self.assertEqual(step["status"], "PASS")
 
+    def test_conflicting_pre_auth_form_and_document_routes_to_review(self) -> None:
+        claim = normalize_fixture(self.cases["TC007"])
+        policy = deepcopy(self.policy)
+        policy["coverage"]["per_claim_limit"] = 20000
+        claim["documents"] = [
+            {**document, "source": "uploaded_file", "patient_name": "Suresh Patil"}
+            for document in claim["documents"]
+        ]
+        claim["documents"].append({
+            "file_id": "PREAUTH-CONFLICT", "actual_type": "PRE_AUTHORIZATION", "quality": "GOOD",
+            "fields": {"date": "2024-10-20", "approval_reference": "AUTH-789"}, "source": "uploaded_file",
+        })
+        claim["pre_authorization"] = {"obtained": False}
+
+        result = evaluate_claim(claim, policy)
+
+        self.assertEqual(result["decision"], "MANUAL_REVIEW")
+        self.assertIn("PRE_AUTH_CONFLICT", {reason["code"] for reason in result["reasons"]})
+        step = next(item for item in result["trace"] if item["rule_id"] == "pre_authorization")
+        self.assertEqual(step["evidence"]["status_source"], "form_document_conflict")
+
+    def test_sum_insured_and_family_floater_remaining_limits_reduce_payment(self) -> None:
+        claim = normalize_fixture(self.cases["TC004"])
+        claim["sum_insured_used"] = 499000
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "PARTIAL")
+        self.assertEqual(result["approved_amount"], 900)
+        self.assertIn("SUM_INSURED_LIMITED", {reason["code"] for reason in result["reasons"]})
+
+        claim = normalize_fixture(self.cases["TC004"])
+        claim["sum_insured_used"] = 0
+        claim["family_floater_used"] = 149000
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "PARTIAL")
+        self.assertEqual(result["approved_amount"], 900)
+        self.assertIn("FAMILY_FLOATER_LIMITED", {reason["code"] for reason in result["reasons"]})
+
+    def test_alternative_medicine_requires_covered_system_and_annual_session_history(self) -> None:
+        claim = normalize_fixture(self.cases["TC004"])
+        claim["claim_category"] = "ALTERNATIVE_MEDICINE"
+        claim["prior_sessions"] = 16
+        for document in claim["documents"]:
+            document["fields"]["diagnosis"] = "Ayurveda therapy (5 sessions)"
+            document["fields"]["doctor_registration"] = "KA/12345/2020"
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "REJECTED")
+        self.assertIn("SESSION_LIMIT_EXCEEDED", {reason["code"] for reason in result["reasons"]})
+
+        claim["prior_sessions"] = 0
+        for document in claim["documents"]:
+            document["fields"]["diagnosis"] = "Therapy (5 sessions)"
+            document["source"] = "uploaded_file"
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "MANUAL_REVIEW")
+        self.assertIn("COVERED_SYSTEM_UNKNOWN", {reason["code"] for reason in result["reasons"]})
+
     def test_blank_line_description_is_unknown_not_excluded(self) -> None:
         claim = self._consultation_claim()
         bill = next(doc for doc in claim["documents"] if doc["doc_type"] == "HOSPITAL_BILL")
