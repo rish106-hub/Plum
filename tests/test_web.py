@@ -754,8 +754,8 @@ def _rx_pdf(name: str | None = "Rajesh Kumar", date: str | None = "2024-11-01", 
     return _text_pdf("\n".join(lines))
 
 
-def _bill_pdf(name: str | None = "Rajesh Kumar", date: str | None = "2024-11-01", bill_no: str = "B-1001", amount: int = 1500) -> bytes:
-    lines = ["HOSPITAL BILL / INVOICE", "Hospital: City Clinic", f"Bill No: {bill_no}"]
+def _bill_pdf(name: str | None = "Rajesh Kumar", date: str | None = "2024-11-01", bill_no: str = "B-1001", amount: int = 1500, hospital: str = "City Clinic") -> bytes:
+    lines = ["HOSPITAL BILL / INVOICE", f"Hospital: {hospital}", f"Bill No: {bill_no}"]
     lines += [f"Patient Name: {name}"] if name else []
     lines += [f"Date: {date}"] if date else []
     lines += [f"1. Consultation Fee  {amount}", f"Total Amount: {amount}"]
@@ -849,7 +849,7 @@ def test_bill_fingerprint_is_document_derived_and_matches_legacy_rows():
         "content": {"bill_number": "B-1001", "hospital_name": "City Clinic", "total": "1500.005", "date": "01-Nov-2024", "patient_name": "Rajesh Kumar"},
     }
     [fingerprint] = web._bill_fingerprints([bill])
-    assert fingerprint == {"kind": "bill_number", "bill_number": "b1001", "provider": "cityclinic", "total_paise": 150001, "document_date": "2024-11-01"}
+    assert fingerprint == {"kind": "bill_number", "bill_number": "b1001", "provider": "cityclinic", "total_paise": 150001, "document_date": "2024-11-01", "patient": "rajesh kumar"}
     legacy = {"bill_number": "b1001", "provider": "cityclinic", "total_paise": 150001, "treatment_date": "2024-10-01"}
     assert web._fingerprints_match(fingerprint, legacy)
     assert not web._fingerprints_match(fingerprint, {**fingerprint, "document_date": "2024-11-02"})
@@ -858,6 +858,86 @@ def test_bill_fingerprint_is_document_derived_and_matches_legacy_rows():
     assert web._bill_fingerprints([unnumbered]) == [
         {"kind": "unnumbered_bill", "provider": "apollo", "total_paise": 12000, "document_date": "2024-11-01", "patient": "rajesh kumar"}
     ]
+
+
+def test_provider_branch_suffix_and_bill_number_reuse_still_match():
+    """Audit B-1: the provider name is compared tolerantly, and the number+total+date wins."""
+    assert web._same_provider("Apollo Hospitals", "Apollo Hospitals, Indiranagar")
+    assert web._same_provider("apollohospitals", "Indiranagar Apollo Hospitals")  # legacy stored token
+    assert not web._same_provider("Apollo Hospitals", "Fortis Hospital")
+    assert not web._same_provider("City", "City Clinic")  # too short to stand for a provider
+    saved = {"kind": "bill_number", "bill_number": "inv2001", "provider": "apollohospitals", "total_paise": 80000, "document_date": "2024-11-01", "patient": "priya singh"}
+    branch = {**saved, "provider": "apollohospitalsindiranagar"}
+    assert web._fingerprints_match(branch, saved)
+    # Same number, total, and printed date but an unrelated provider name: held, not paid.
+    assert web._fingerprints_match({**saved, "provider": "fortishospital"}, saved)
+    # Without a readable date the provider must still agree.
+    undated = {**saved, "document_date": None}
+    assert web._fingerprints_match({**undated, "provider": "apollohospitalsindiranagar"}, saved)
+    assert not web._fingerprints_match({**undated, "provider": "fortishospital"}, saved)
+    # A re-render with the bill number removed still matches the numbered original.
+    unnumbered = {"kind": "unnumbered_bill", "provider": "apollohospitalsindiranagar", "total_paise": 80000, "document_date": "2024-11-01", "patient": "priya singh"}
+    assert web._fingerprints_match(unnumbered, saved)
+    assert not web._fingerprints_match({**unnumbered, "patient": "rajesh kumar"}, saved)
+    # Legacy numbered rows carry no patient and no kind; they still match by number.
+    legacy = {"bill_number": "inv2001", "provider": "apollohospitals", "total_paise": 80000, "treatment_date": "2024-10-01"}
+    assert web._fingerprints_match(branch, legacy)
+
+
+@pytest.mark.usefixtures("_demo_2024")
+def test_same_bill_with_branch_suffix_on_provider_is_held_as_duplicate(tmp_path, monkeypatch):
+    """Audit B-1 (critical): a branch suffix on the provider name must not pay a bill twice."""
+    with _client(tmp_path, monkeypatch) as client:
+        first = _submit_files(client, [_rx_pdf(), _bill_pdf(bill_no="INV-2001", hospital="Apollo Hospitals")])
+        second = _submit_files(client, [_rx_pdf(), _bill_pdf(bill_no="INV-2001", hospital="Apollo Hospitals, Indiranagar")])
+        spaced = _submit_files(client, [_rx_pdf(), _bill_pdf(bill_no="INV 2001", hospital="Apollo Hospitals - Indiranagar")])
+    assert first["result"]["decision"] == "APPROVED"
+    for resubmission in (second, spaced):
+        assert resubmission["state"] == "MANUAL_REVIEW"
+        assert resubmission["result"]["decision"] == "MANUAL_REVIEW"
+        assert resubmission["result"]["reasons"][0]["code"] == "DUPLICATE_BILL"
+        assert first["id"] in resubmission["result"]["trace"][1]["evidence"]["matching_claim_ids"]
+
+
+@pytest.mark.xfail(strict=True, reason="Known gap: core accepts any family member's name on the documents; the engine fix is pending.")
+@pytest.mark.usefixtures("_demo_2024")
+def test_dependent_filing_with_primary_members_documents_cannot_bypass_sub_limit(tmp_path, monkeypatch):
+    """Audit B-3: usage is per patient; filing Rajesh's visit under DEP001 must not be paid.
+
+    EMP001 exhausts the ₹2,000 consultation sub-limit; a claim filed under DEP001
+    whose documents name Rajesh Kumar (EMP001) must not draw on DEP001's sub-limit.
+    """
+    with _client(tmp_path, monkeypatch) as client:
+        exhausted = _submit_files(client, [_rx_pdf(), _bill_pdf(amount=2500)], claimed_amount="2500")
+        rerouted = _submit_files(
+            client,
+            [_rx_pdf(date="2024-11-03"), _bill_pdf(date="2024-11-03", bill_no="B-1003")],
+            member_id="DEP001", treatment_date="2024-11-03",
+        )
+    assert exhausted["result"]["decision"] == "PARTIAL"
+    assert rerouted["state"] in {"MANUAL_REVIEW", "DOCUMENT_CORRECTION_REQUIRED"}
+    assert rerouted["result"]["decision"] not in {"APPROVED", "PARTIAL"}
+
+
+@pytest.mark.usefixtures("_demo_2024")
+def test_pre_existing_waiting_period_is_disclosed_as_not_evaluated_for_web_claims(tmp_path, monkeypatch):
+    """Audit B-4: the roster carries no pre-existing conditions, so web never supplies them.
+
+    The waiting period cannot be evaluated; the trace must say so rather than pass it.
+    """
+    observed = []
+    real_evaluate = web.evaluate_claim
+
+    def decide(payload, policy):
+        observed.append(payload)
+        return real_evaluate(payload, policy)
+
+    monkeypatch.setattr(web, "evaluate_claim", decide)
+    with _client(tmp_path, monkeypatch) as client:
+        saved = _submit_files(client, [_rx_pdf(), _bill_pdf()])
+    assert "pre_existing_conditions" not in observed[0]
+    step = next(step for step in saved["result"]["trace"] if step.get("rule_id") == "pre_existing_condition_wait")
+    assert step["status"] == "NOT_EVALUATED"
 
 
 def test_pending_claim_with_same_bill_file_blocks_a_second_payment(tmp_path, monkeypatch):

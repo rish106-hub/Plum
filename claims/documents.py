@@ -223,7 +223,14 @@ def _text_content(text: str, kind: str) -> tuple[dict[str, Any], list[dict[str, 
     field("report_date", r"\breport\s+date\s*[:\-]\s*(\d{1,2}[-/]\w{2,9}[-/]\d{2,4}|\d{4}-\d{2}-\d{2})")
     field("diagnosis", r"\bdiagnosis\s*[:\-]\s*(.{3,100})")
     field("hospital_name", r"\b(?:hospital|clinic)\s*[:\-]\s*(.{3,90})")
-    field("bill_number", r"\b(?:bill|invoice|receipt)\s*(?:no\.?|number|#)\s*[:\-]?\s*([\w/-]{3,40})")
+    # A bill number may be printed with internal spaces ("INV 2001"). Continuation
+    # tokens must carry a digit, so a following label ("Date:", "Patient") or a
+    # printed date is never absorbed into the number.
+    field(
+        "bill_number",
+        r"\b(?:bill|invoice|receipt)\s*(?:no\.?|number|#)\s*[:\-]?\s*"
+        r"((?:[\w/-]{3,40}|[\w/-]{1,2}(?=\s[\w/-]*\d))(?:\s(?!\d{1,2}[-/]\w{2,9}[-/]\d{2,4}\b)[\w/-]*\d[\w/-]*){0,4})",
+    )
     field("gstin", r"\bGSTIN\s*[:\-]?\s*([A-Z0-9]{10,20})")
     field("drug_license_number", r"\bdrug\s+lic(?:en[cs]e)?\s*(?:no\.?|number|#)?\s*[:\-]?\s*([\w/-]{3,50})")
     if kind in {"HOSPITAL_BILL", "PHARMACY_BILL"}:

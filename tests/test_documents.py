@@ -398,3 +398,20 @@ def test_bill_arithmetic_uses_half_up_paise() -> None:
         "content": {"patient_name": "Rajesh Kumar", "date": "2024-11-01", "total": "100.005", "line_items": [{"description": "Consultation", "amount": "100.01"}]},
     }]
     assert revalidate_documents(documents, [], "DENTAL", "Rajesh Kumar", POLICY) == []
+
+
+@pytest.mark.parametrize(
+    ("printed", "expected"),
+    [
+        ("Bill No: INV 2001", "INV 2001"),
+        ("Bill No: INV-2001", "INV-2001"),
+        ("Invoice No. AB 12 345 Patient: Priya Singh", "AB 12 345"),
+        ("Bill No: 2001 Date: 01-Nov-2024", "2001"),
+        ("Receipt #: 1001 01-Nov-2024", "1001"),
+    ],
+)
+def test_bill_number_with_internal_spaces_is_captured_whole(printed: str, expected: str) -> None:
+    """Audit B-2: "INV 2001" was extracted as "INV", so reformatting a number evaded duplicates."""
+    bill = pdf_bytes(["HOSPITAL BILL / RECEIPT", "Patient: Priya Singh", "Date: 15-Oct-2024", printed, "Consultation Fee 800.00", "Total Amount: 800.00"])
+    result = process_uploads([{"file_name": "bill.pdf", "data": bill}], "DENTAL", "Priya Singh", POLICY)
+    assert result["documents"][0]["content"]["bill_number"] == expected

@@ -576,8 +576,8 @@ def _bill_fingerprints(inspected_documents: list[dict[str, Any]]) -> list[dict[s
 
     Only facts printed on the bill are used, never the member-typed treatment date,
     so changing the claim form cannot make a paid bill look new. A numbered bill is
-    keyed by bill number, provider, and total (plus its printed date when readable);
-    an unnumbered bill needs provider, total, printed date, and patient name.
+    keyed by bill number, provider, and total (plus its printed date and patient when
+    readable); an unnumbered bill needs provider, total, printed date, and patient name.
     """
     fingerprints: list[dict[str, Any]] = []
     for document in inspected_documents:
@@ -598,7 +598,7 @@ def _bill_fingerprints(inspected_documents: list[dict[str, Any]]) -> list[dict[s
         if bill_number:
             fingerprints.append({
                 "kind": "bill_number", "bill_number": bill_number, "provider": provider,
-                "total_paise": total_paise, "document_date": document_date,
+                "total_paise": total_paise, "document_date": document_date, "patient": patient or None,
             })
         elif document_date and patient:
             fingerprints.append({
@@ -608,17 +608,56 @@ def _bill_fingerprints(inspected_documents: list[dict[str, Any]]) -> list[dict[s
     return fingerprints
 
 
-def _fingerprints_match(new: dict[str, Any], saved: dict[str, Any]) -> bool:
-    kind = str(saved.get("kind") or "bill_number")  # rows from earlier versions carry no kind
-    if kind != new.get("kind"):
+# The shorter provider token must be at least this long to count as the same provider
+# as a longer one, so a stray initial or a one-word name cannot match everything.
+MIN_PROVIDER_TOKEN = 5
+
+
+def _same_provider(first: Any, second: Any) -> bool:
+    """Whether two normalised provider tokens name the same provider.
+
+    Tokens are the provider name with everything but letters and digits removed
+    (the stored shape, including rows from earlier versions). A branch or location
+    suffix or prefix ("Apollo Hospitals, Indiranagar") does not make a new provider:
+    the shorter token only has to appear inside the longer one.
+    """
+    a, b = _normal_token(first), _normal_token(second)
+    if not a or not b:
         return False
-    if kind == "bill_number":
-        if any(new.get(key) != saved.get(key) for key in ("bill_number", "provider", "total_paise")):
+    if a == b:
+        return True
+    shorter, longer = sorted((a, b), key=len)
+    return len(shorter) >= MIN_PROVIDER_TOKEN and shorter in longer
+
+
+def _fingerprints_match(new: dict[str, Any], saved: dict[str, Any]) -> bool:
+    """Whether two bill fingerprints plausibly describe the same bill.
+
+    Matching holds a claim for review; it never rejects one, so it errs towards a match.
+    """
+    saved_kind = str(saved.get("kind") or "bill_number")  # rows from earlier versions carry no kind
+    new_kind = str(new.get("kind") or "bill_number")
+    if new.get("total_paise") != saved.get("total_paise"):
+        return False
+    new_date, saved_date = new.get("document_date"), saved.get("document_date")
+    same_provider = _same_provider(new.get("provider"), saved.get("provider"))
+    if saved_kind == new_kind == "bill_number":
+        if new.get("bill_number") != saved.get("bill_number"):
             return False
-        # A missing printed date cannot distinguish two bills; only two readable, different dates can.
-        new_date, saved_date = new.get("document_date"), saved.get("document_date")
-        return new_date is None or saved_date is None or new_date == saved_date
-    return all(new.get(key) == saved.get(key) for key in ("provider", "total_paise", "document_date", "patient"))
+        if new_date and saved_date:
+            # Two readable, different dates are two bills. The same number, total, and
+            # printed date is the same bill even when the provider name is written
+            # differently (a branch suffix, a renamed letterhead): it is held for review.
+            return bool(new_date == saved_date)
+        # A missing printed date cannot distinguish two bills; the provider must agree.
+        return same_provider
+    # Unnumbered on either side (the bill number may have been dropped on a re-render):
+    # provider, total, printed date, and patient must all agree.
+    new_patient, saved_patient = new.get("patient"), saved.get("patient")
+    return bool(
+        same_provider and new_date and new_date == saved_date
+        and new_patient and new_patient == saved_patient
+    )
 
 
 def _save_bill_fingerprints(claim_id: str, fingerprints: list[dict[str, Any]]) -> None:
@@ -686,7 +725,7 @@ def _duplicate_review_result(hits: list[dict[str, Any]], metrics: dict[str, Any]
         "decision": "MANUAL_REVIEW",
         "approved_amount": 0,
         "approved_amount_paise": 0,
-        "reasons": [{"code": "DUPLICATE_BILL", "message": "Another paid or pending claim has an identical bill file, or a bill with the same bill number, provider, and amount (and no different printed date). Verify that the expense has not already been reimbursed."}],
+        "reasons": [{"code": "DUPLICATE_BILL", "message": "Another paid or pending claim has an identical bill file, or a bill with the same bill number, amount, and printed date (or, without a readable date or bill number, the same provider, amount, and patient). Verify that the expense has not already been reimbursed."}],
         "correction_requests": [],
         "confidence_score": 0.2,
         "ledger": [],

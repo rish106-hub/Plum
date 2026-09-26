@@ -228,6 +228,15 @@ The assignment states 75,000+ claims a year, about 205 a day on average; 10× is
 
 - **Live OCR accuracy is unmeasured.** No provider keys were available, so handwriting, stamps, multilingual text and phone-photo quality have been tested only for safe routing, not for extraction accuracy.
 - **No altered-document or tamper detection.** A bill with a struck-through amount and a handwritten correction may pass if OCR reads it cleanly and the arithmetic agrees. The corpus includes such a bill, labelled "should abstain", so the live benchmark will show whether this gap matters.
+- **Open engine findings from the final adversarial audit (fixes pending).**
+  - Documents naming a different covered family member than the filing member are accepted, so per-member limits can be bypassed by filing under a relative's ID. A strict expected-failure test tracks this.
+  - A negation word can cancel a condition across punctuation ("No complications; obesity").
+  - A member-supplied pre-authorization lifts the annual category sub-limit as well as the per-claim ceiling.
+  - Some interpretation terms match inside unrelated phrases ("tonic-clonic seizure", "ST depression") and reject at full confidence.
+  - Session counts are parsed only in the form "N sessions".
+  - A consultation-fee line that also names a test or medicine escapes the consultation sub-limit.
+  - An unparseable `submission_date` or a non-list `pre_existing_conditions` is ignored rather than routed to review.
+  - The member roster carries no pre-existing conditions, so the pre-existing waiting period is `NOT_EVALUATED` for web claims.
 - **The category sub-limit is an interpretation.** The engine reads a `sub_limit` as an annual, per-member cap on the net benefit for the category's own services; for consultation that means consultation-fee lines only, because the expected TC010 payment rules out a cap on the whole claim. Earlier usage comes from local decisions, and without it only this claim is capped. It needs a policy owner's decision.
 - **Other interpretations need confirmation** before real payments: the per-claim ceiling rule, pre-authorization taking precedence over the ceiling and the sub-limit, the benefit order, the PET pre-auth threshold, the covered-item vocabulary, the dental report, and dependents missing from the roster. See [policy interpretation](docs/design/policy-interpretation.md).
 - **Confidence is a heuristic rubric, not a calibrated probability.**
