@@ -1,12 +1,12 @@
 {
   "schema": "plum.verification_summary.v1",
-  "started_at": "2026-09-26T19:04:13+00:00",
-  "finished_at": "2026-09-26T19:04:20+00:00",
+  "started_at": "2026-09-26T19:05:05+00:00",
+  "finished_at": "2026-09-26T19:05:11+00:00",
   "git": {
-    "head": "f6ef45874af43ff9847b87cdcd7c15f03abb620a",
+    "head": "4fbf9e95e7636835aa63ffb9ce5651cf069d0098",
     "branch": "fix/operational-integrity",
-    "worktree_dirty": true,
-    "changed_paths": 29
+    "worktree_dirty": false,
+    "changed_paths": 0
   },
   "python": "3.14.2",
   "platform": "Darwin arm64",
@@ -46,14 +46,14 @@
       "command": "python -m ruff check .",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.07
+      "seconds": 0.06
     },
     {
       "name": "mypy",
       "command": "python -m mypy claims scripts tools",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.39
+      "seconds": 0.37
     },
     {
       "name": "compileall",
@@ -67,28 +67,28 @@
       "command": "python -m pytest -q -p no:cacheprovider",
       "exit_code": 0,
       "ok": true,
-      "seconds": 5.08
+      "seconds": 4.38
     },
     {
       "name": "supplied-case evaluation",
       "command": "python -m scripts.evaluate",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.2
+      "seconds": 0.13
     },
     {
       "name": "offline document suites",
       "command": "python -m scripts.evaluate_documents",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.46
+      "seconds": 0.47
     },
     {
       "name": "live OCR status (keys stripped)",
       "command": "python -m scripts.evaluate_documents --providers live",
       "exit_code": 2,
       "ok": true,
-      "seconds": 0.17
+      "seconds": 0.16
     }
   ],
   "lint_ok": true,
