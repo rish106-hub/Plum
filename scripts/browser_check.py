@@ -6,6 +6,14 @@ the explicit development clock before running this check:
     PLUM_ENV=development PLUM_DEMO_CLOCK=2024-11-05 .venv/bin/python -m uvicorn claims.web:app
 
 The check asserts that the demo clock is visible in the UI and decision trace.
+Start the server with a new ``PLUM_DATA_DIR`` for this deterministic scenario:
+
+    PLUM_DATA_DIR="$(mktemp -d)" PLUM_ENV=development PLUM_DEMO_CLOCK=2024-11-05 \
+      .venv/bin/python -m uvicorn claims.web:app
+
+The workflow deliberately creates repeat submissions to exercise duplicate and
+review handling, so an existing demo database can make the first approval
+scenario fail the same-day-claims fraud threshold.
 """
 
 from __future__ import annotations

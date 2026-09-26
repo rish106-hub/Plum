@@ -176,7 +176,39 @@ class ClaimCoreTests(unittest.TestCase):
             document["fields"]["patient_name"] = "Someone Else"
         result = evaluate_claim(claim, self.policy)
         self.assertIsNone(result["decision"])
-        self.assertEqual(result["correction_requests"][0]["code"], "PATIENT_NOT_COVERED")
+        self.assertEqual(result["correction_requests"][0]["code"], "PATIENT_MEMBER_MISMATCH")
+
+    def test_document_patient_must_be_the_benefit_account_member(self) -> None:
+        claim = self._consultation_claim()
+        for document in claim["documents"]:
+            document["patient_name"] = "Sunita Kumar"
+            document["fields"]["patient_name"] = "Sunita Kumar"
+
+        result = evaluate_claim(claim, self.policy)
+
+        self.assertIsNone(result["decision"])
+        self.assertEqual(result["correction_requests"][0]["code"], "PATIENT_MEMBER_MISMATCH")
+        identity = next(step for step in result["trace"] if step["rule_id"] == "roster_patient_match")
+        self.assertEqual(identity["evidence"]["benefit_member_id"], "EMP001")
+
+    def test_clause_aware_negation_does_not_cross_punctuation_or_negate_modifiers(self) -> None:
+        claim = self._consultation_claim()
+        self._set_claim_text(claim, "No complications; multivitamin tonic")
+        result = evaluate_claim(claim, self.policy)
+        self.assertIn("EXCLUDED_CONDITION", {reason["code"] for reason in result["reasons"]})
+
+        claim = self._consultation_claim()
+        self._set_claim_text(claim, "Not well controlled diabetes")
+        result = evaluate_claim(claim, self.policy)
+        waiting = next(step for step in result["trace"] if step["rule_id"] == "waiting_period")
+        self.assertEqual(waiting["policy_ref"], "waiting_periods.specific_conditions.diabetes")
+
+    def test_ambiguous_clinical_alias_routes_to_manual_review(self) -> None:
+        claim = self._consultation_claim()
+        self._set_claim_text(claim, "ECG shows ST depression")
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "MANUAL_REVIEW")
+        self.assertIn("AMBIGUOUS_CLINICAL_TERM", {reason["code"] for reason in result["reasons"]})
 
     def test_honorific_is_ignored_for_covered_patient_matching(self) -> None:
         claim = normalize_fixture(self.cases["TC004"])
@@ -600,6 +632,58 @@ class ClaimCoreTests(unittest.TestCase):
         self.assertEqual(result["decision"], "REJECTED")
         self.assertIn("SUBMISSION_LATE", {reason["code"] for reason in result["reasons"]})
 
+    def test_malformed_submission_and_pre_existing_inputs_fail_closed(self) -> None:
+        claim = self._consultation_claim()
+        claim["submission_date"] = "yesterday"
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "MANUAL_REVIEW")
+        self.assertIn("MALFORMED_SUBMISSION_DATE", {reason["code"] for reason in result["reasons"]})
+
+        claim = self._consultation_claim()
+        claim["pre_existing_conditions"] = "diabetes"
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "MANUAL_REVIEW")
+        self.assertIn("MALFORMED_PRE_EXISTING_CONDITIONS", {reason["code"] for reason in result["reasons"]})
+
+    def test_session_variants_and_ambiguous_session_language_are_safe(self) -> None:
+        for text in ("Ayurveda therapy: sessions: 5", "Ayurveda 5-session course"):
+            with self.subTest(text=text):
+                claim = self._consultation_claim()
+                claim["claim_category"] = "ALTERNATIVE_MEDICINE"
+                claim["prior_sessions"] = 16
+                for document in claim["documents"]:
+                    document["fields"]["diagnosis"] = text
+                    document["fields"]["doctor_registration"] = "KA/12345/2020"
+                result = evaluate_claim(claim, self.policy)
+                self.assertIn("SESSION_LIMIT_EXCEEDED", {reason["code"] for reason in result["reasons"]})
+
+        claim = self._consultation_claim()
+        claim["claim_category"] = "ALTERNATIVE_MEDICINE"
+        for document in claim["documents"]:
+            document["fields"]["diagnosis"] = "Ayurveda sessions recommended"
+            document["fields"]["doctor_registration"] = "KA/12345/2020"
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "MANUAL_REVIEW")
+        self.assertIn("SESSION_COUNT_MALFORMED", {reason["code"] for reason in result["reasons"]})
+
+    def test_mixed_consultation_line_requires_allocation_review(self) -> None:
+        claim = self._consultation_claim()
+        bill = next(doc for doc in claim["documents"] if doc["doc_type"] == "HOSPITAL_BILL")
+        bill["fields"]["line_items"] = [{"description": "Physician charges for blood report review", "amount": 1500}]
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "MANUAL_REVIEW")
+        self.assertIn("MIXED_SERVICE_LINE", {reason["code"] for reason in result["reasons"]})
+
+    def test_pre_authorization_does_not_bypass_benefit_limits(self) -> None:
+        claim = normalize_fixture(self.cases["TC007"])
+        claim["ytd_claims_amount"] = 49900
+        claim["documents"].append({"file_id": "PREAUTH-LIMIT", "actual_type": "PRE_AUTHORIZATION", "quality": "GOOD", "fields": {"date": "2024-10-20", "approval_reference": "AUTH-LIMIT"}, "source": "fixture_metadata"})
+        claim["pre_authorization"] = {"obtained": True, "issued_date": "2024-10-20", "approval_reference": "AUTH-LIMIT"}
+
+        result = evaluate_claim(claim, self.policy)
+
+        self.assertTrue(any(item["description"] == "Annual OPD remaining limit" for item in result["ledger"]))
+
     def test_missing_treatment_date_cannot_be_adjudicated(self) -> None:
         claim = normalize_fixture(self.cases["TC004"])
         claim.pop("treatment_date")
@@ -886,7 +970,7 @@ class AuditRoundTwoTests(unittest.TestCase):
         claim = self.claim("TC007")
         claim["documents"].append({"file_id": "PA", "doc_type": "PRE_AUTHORIZATION", "quality": "GOOD", "fields": {"approval_reference": "PA-1", "date": "2024-10-25", "approved_amount": 15000}})
         result = evaluate_claim(claim, self.policy)
-        self.assertEqual(result["decision"], "APPROVED")
+        self.assertEqual(result["decision"], "PARTIAL")
         step = self.step(result, "pre_authorization")
         self.assertEqual(step["evidence"]["status_source"], "member_supplied_record_unverified_with_insurer")
         self.assertIn("PRE_AUTH_NOT_VERIFIED_WITH_INSURER", self.codes(result))

@@ -13,6 +13,7 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone, tzinfo
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -399,6 +400,104 @@ def _family_member_ids(policy: dict[str, Any], member_id: str) -> list[str]:
 def _covered_member_names(policy: dict[str, Any], member_id: str) -> list[str]:
     covered_ids = set(_family_member_ids(policy, member_id))
     return [str(item.get("name")) for item in policy.get("members", []) if item.get("member_id") in covered_ids and item.get("name")]
+
+
+def _normalized_name(value: Any) -> str:
+    return " ".join(
+        word for word in re.findall(r"[a-z]+", str(value or "").casefold())
+        if word not in {"mr", "mrs", "ms", "miss", "dr", "shri", "smt"}
+    )
+
+
+def _prefill_date(value: Any) -> str | None:
+    raw = str(value or "").strip()
+    try:
+        return date.fromisoformat(raw[:10]).isoformat()
+    except ValueError:
+        pass
+    for pattern in ("%d-%b-%Y", "%d %b %Y", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(raw, pattern).date().isoformat()
+        except ValueError:
+            continue
+    return None
+
+
+def _prefill_suggestions(inspection: dict[str, Any], policy: dict[str, Any]) -> dict[str, Any]:
+    """Return document-backed, non-authoritative form suggestions without persistence."""
+    documents = inspection.get("documents") or []
+    fields = [document.get("content") or {} for document in documents]
+    member_by_name = {
+        _normalized_name(member.get("name")): member
+        for member in policy.get("members", [])
+        if _normalized_name(member.get("name"))
+    }
+    candidate_names = {
+        _normalized_name(document.get("patient_name_on_doc") or content.get("patient_name"))
+        for document, content in zip(documents, fields, strict=True)
+        if _normalized_name(document.get("patient_name_on_doc") or content.get("patient_name"))
+    }
+    matching_members = {
+        str(member_by_name[name].get("member_id")): str(member_by_name[name].get("name"))
+        for name in candidate_names if name in member_by_name
+    }
+    suggestions: dict[str, Any] = {}
+    if len(matching_members) == 1:
+        member_id, member_name = next(iter(matching_members.items()))
+        suggestions["member_id"] = member_id
+        suggestions["member_name"] = member_name
+    dates = {
+        parsed for content in fields
+        for value in (content.get("date"), content.get("sample_date"), content.get("report_date"))
+        if (parsed := _prefill_date(value))
+    }
+    if len(dates) == 1:
+        suggestions["treatment_date"] = next(iter(dates))
+    bill_totals: set[str] = set()
+    for document, content in zip(documents, fields, strict=True):
+        kind = str(document.get("actual_type") or "").upper()
+        if kind in {"HOSPITAL_BILL", "PHARMACY_BILL"} and content.get("total") is not None:
+            try:
+                total = Decimal(str(content["total"]))
+                if total.is_finite() and total > 0:
+                    bill_totals.add(f"{total:.2f}")
+            except (InvalidOperation, ValueError):
+                continue
+    if len(bill_totals) == 1:
+        suggestions["claimed_amount"] = next(iter(bill_totals))
+    category_by_document = {
+        "DENTAL_REPORT": "DENTAL",
+        "DIAGNOSTIC_REPORT": "DIAGNOSTIC",
+        "LAB_REPORT": "DIAGNOSTIC",
+        "PHARMACY_BILL": "PHARMACY",
+    }
+    categories = {
+        category_by_document[str(document.get("actual_type") or "").upper()]
+        for document in documents
+        if str(document.get("actual_type") or "").upper() in category_by_document
+    }
+    if len(categories) == 1:
+        suggestions["claim_category"] = next(iter(categories))
+    pre_auth = next(
+        (content for document, content in zip(documents, fields, strict=True)
+         if str(document.get("actual_type") or "").upper() == "PRE_AUTHORIZATION"),
+        None,
+    )
+    if pre_auth is not None:
+        suggestions["pre_authorization_obtained"] = "true"
+        if (issued_date := _prefill_date(pre_auth.get("date"))):
+            suggestions["pre_authorization_issued_date"] = issued_date
+        if (reference := str(pre_auth.get("approval_reference") or "").strip()):
+            suggestions["pre_authorization_reference"] = reference
+    return {
+        "suggestions": suggestions,
+        "detected_document_types": sorted({str(document.get("actual_type") or "UNKNOWN") for document in documents}),
+        "issues": [
+            {key: issue.get(key) for key in ("code", "file_name", "message")}
+            for issue in inspection.get("issues") or []
+        ],
+        "metrics": inspection.get("metrics") or {},
+    }
 
 
 def _gemini_opt_in() -> bool:
@@ -1075,6 +1174,29 @@ async def submit_claim(
             _record_event(connection, claim_id, "DEMO_CLOCK", {"source": clock["source"], "value": clock["value"], "submission_date": request_data["submission_date"]})
     background_tasks.add_task(process_claim, claim_id)
     return JSONResponse({"id": claim_id, "state": "QUEUED", "url": f"/claims/{claim_id}"}, status_code=202)
+
+
+@app.post("/api/claims/prefill")
+async def prefill_claim(files: Annotated[list[UploadFile], File()]) -> dict[str, Any]:
+    """Inspect uploads for reviewable intake suggestions without saving a claim or files."""
+    if not 1 <= len(files) <= MAX_FILES:
+        raise _input_error("Upload between one and six documents.")
+    checked = [await _read_upload(file) for file in files]
+    if sum(len(data) for _, _, data in checked) > MAX_TOTAL_BYTES:
+        raise _input_error("The combined upload exceeds the 30 MB limit.")
+    policy = _read_policy()
+    inspection = process_uploads(
+        [
+            {"file_name": name, "content_type": media_type, "data": data}
+            for name, media_type, data in checked
+        ],
+        "CONSULTATION",
+        "",
+        policy,
+        allowed_patient_names=[str(member.get("name")) for member in policy.get("members", [])],
+    )
+    inspection.pop("ocr_text_by_file_id", None)
+    return _prefill_suggestions(inspection, policy)
 
 
 @app.get("/api/claims/{claim_id}")

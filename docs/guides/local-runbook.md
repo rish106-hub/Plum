@@ -28,10 +28,10 @@ The demo clock is never silent. The server logs `DEMO CLOCK ACTIVE` at startup, 
 ## 1. Start the app
 
 ```bash
-PLUM_ENV=development PLUM_DEMO_CLOCK=2024-11-05 .venv/bin/python -m uvicorn claims.web:app --reload
+PLUM_DATA_DIR="$(mktemp -d)" PLUM_ENV=development PLUM_DEMO_CLOCK=2024-11-05 .venv/bin/python -m uvicorn claims.web:app --reload
 ```
 
-Leave this terminal open. For anything other than a replay of the 2024 sample policy, start it without the two variables so the real clock is used: `.venv/bin/python -m uvicorn claims.web:app --reload`.
+Leave this terminal open. The temporary data directory keeps the approval, duplicate, and review examples reproducible; the browser check deliberately creates repeat claims. For anything other than a replay of the 2024 sample policy, start it without the demo variables so the real clock is used: `.venv/bin/python -m uvicorn claims.web:app --reload`.
 
 Open a second terminal in the repository root for the claim submission. The app uses local SQLite and private upload files under `.data/` (override with `PLUM_DATA_DIR`).
 
