@@ -249,7 +249,7 @@ def test_invalid_quote_keeps_arithmetic_conflict_fail_closed_and_redacts_data(tm
     assert transport.calls == 1
     assert saved["state"] == "DOCUMENT_CORRECTION_REQUIRED"
     assert saved["result"]["decision"] is None
-    assert "does not match the itemized charges" in saved["result"]["reasons"][0]
+    assert "does not match the itemized charges" in saved["result"]["reasons"][0]["message"]
     assert any(
         item.get("rule_id") == "BILL_ARITHMETIC_CONFLICT"
         for item in saved["result"]["trace"]
@@ -299,7 +299,7 @@ def test_upload_correction_is_persisted_without_decision(tmp_path, monkeypatch):
         saved = client.get(f"/api/claims/{claim_id}").json()
         assert saved["state"] == "DOCUMENT_CORRECTION_REQUIRED"
         assert saved["result"]["decision"] is None
-        assert "hospital bill" in saved["result"]["correction_requests"][0]
+        assert "hospital bill" in saved["result"]["correction_requests"][0]["message"]
         assert saved["events"][-1]["stage"] == "DOCUMENT_CORRECTION_REQUIRED"
         assert saved["documents"][0]["sha256"]
 

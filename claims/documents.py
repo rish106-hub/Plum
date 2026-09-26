@@ -35,6 +35,7 @@ VALID_TYPES = {
     "DIAGNOSTIC_REPORT",
     "DENTAL_REPORT",
     "DISCHARGE_SUMMARY",
+    "PRE_AUTHORIZATION",
     "UNKNOWN",
 }
 TYPE_NAMES = {
@@ -45,6 +46,7 @@ TYPE_NAMES = {
     "DIAGNOSTIC_REPORT": "diagnostic report",
     "DENTAL_REPORT": "dental report",
     "DISCHARGE_SUMMARY": "discharge summary",
+    "PRE_AUTHORIZATION": "pre-authorization approval",
     "UNKNOWN": "unidentified document",
 }
 
@@ -148,6 +150,8 @@ def _image_quality(data: bytes) -> tuple[bool, str | None]:
 
 def _classify_text(text: str) -> str:
     t = text.casefold()
+    if re.search(r"(?:pre[- ]?authorization|pre[- ]?auth(?:orisation)?\s+approval)", t):
+        return "PRE_AUTHORIZATION"
     if re.search(r"discharge\s+summary", t):
         return "DISCHARGE_SUMMARY"
     if re.search(r"(?:pharmacy|chemist|drug\s+lic(?:en[cs]e)?|batch\s+exp)", t) and re.search(r"(?:bill|invoice|receipt|total|net\s+amount)", t):
@@ -181,10 +185,16 @@ def _text_content(text: str, kind: str) -> tuple[dict[str, Any], list[dict[str, 
     field("patient_name", r"(?:patient(?:\s+name)?|name\s+of\s+patient)\s*[:\-]\s*([A-Za-z][A-Za-z .'-]{2,70}?)(?=\s{2,}|\s+Date\s*:|\s+Age\s*:|$)")
     field("doctor_name", r"\b(Dr\.?\s+[A-Za-z][A-Za-z .'-]{2,65})(?=\s{2,}|\s+Reg\.?|\s+MBBS|$)")
     field("doctor_registration", r"\b((?:AYUR/)?(?:KA|MH|DL|TN|GJ|AP|UP|WB|KL)/\d{4,6}/\d{4})\b")
+    field("doctor_specialization", r"\b(?:MBBS|MD|MS)\s*\(?([A-Za-z][A-Za-z ]{2,50})\)?")
+    field("approval_reference", r"\b(?:approval|authorization|pre[- ]?auth)\s*(?:ref(?:erence)?|no\.?|number|#)\s*[:\-]?\s*([\w/-]{3,60})")
     field("date", r"\b(?:date|bill\s+date|report\s+date)\s*[:\-]\s*(\d{1,2}[-/]\w{2,9}[-/]\d{2,4}|\d{4}-\d{2}-\d{2})")
+    field("sample_date", r"\bsample\s+date\s*[:\-]\s*(\d{1,2}[-/]\w{2,9}[-/]\d{2,4}|\d{4}-\d{2}-\d{2})")
+    field("report_date", r"\breport\s+date\s*[:\-]\s*(\d{1,2}[-/]\w{2,9}[-/]\d{2,4}|\d{4}-\d{2}-\d{2})")
     field("diagnosis", r"\bdiagnosis\s*[:\-]\s*(.{3,100})")
     field("hospital_name", r"\b(?:hospital|clinic)\s*[:\-]\s*(.{3,90})")
     field("bill_number", r"\b(?:bill|invoice|receipt)\s*(?:no\.?|number|#)\s*[:\-]?\s*([\w/-]{3,40})")
+    field("gstin", r"\bGSTIN\s*[:\-]?\s*([A-Z0-9]{10,20})")
+    field("drug_license_number", r"\bdrug\s+lic(?:en[cs]e)?\s*(?:no\.?|number|#)?\s*[:\-]?\s*([\w/-]{3,50})")
     if kind in {"HOSPITAL_BILL", "PHARMACY_BILL"}:
         field("total", r"\b(?:grand\s+total|total\s+amount|net\s+amount|total)\s*[:₹Rs. ]+([\d,]+(?:\.\d{1,2})?)", _amount)
         items: list[dict[str, Any]] = []
@@ -275,10 +285,23 @@ class SarvamDocumentProvider:
                 "patient_name": {"type": "string", "description": "Patient name exactly as printed on the document; empty if unreadable"},
                 "doctor_name": {"type": "string", "description": "Treating doctor name exactly as printed; empty if absent"},
                 "doctor_registration": {"type": "string", "description": "Doctor registration number exactly as printed; empty if absent"},
+                "doctor_specialization": {"type": "string", "description": "Doctor specialization exactly as printed; empty if absent"},
                 "diagnosis": {"type": "string", "description": "Diagnosis explicitly shown; empty if absent"},
                 "treatment": {"type": "string", "description": "Treatment explicitly shown; empty if absent"},
                 "date": {"type": "string", "description": "Document date exactly as printed; empty if absent"},
+                "sample_date": {"type": "string", "description": "Lab sample date exactly as printed; empty if absent"},
+                "report_date": {"type": "string", "description": "Lab report date exactly as printed; empty if absent"},
                 "hospital_name": {"type": "string", "description": "Hospital, clinic, or provider name exactly as printed; empty if absent"},
+                "provider_address": {"type": "string", "description": "Clinic, hospital, lab, or pharmacy address exactly as printed; empty if absent"},
+                "bill_number": {"type": "string", "description": "Bill or receipt number exactly as printed; empty if absent"},
+                "gstin": {"type": "string", "description": "GSTIN exactly as printed; empty if absent"},
+                "nabl_status": {"type": "string", "description": "NABL accreditation status exactly as printed; empty if absent"},
+                "pathologist_name": {"type": "string", "description": "Pathologist name exactly as printed; empty if absent"},
+                "pathologist_registration": {"type": "string", "description": "Pathologist registration exactly as printed; empty if absent"},
+                "drug_license_number": {"type": "string", "description": "Pharmacy drug licence number exactly as printed; empty if absent"},
+                "discount": {"type": "number", "description": "Bill discount in Indian rupees; 0 if absent"},
+                "gst_amount": {"type": "number", "description": "GST amount in Indian rupees; 0 if absent"},
+                "test_results": {"type": "array", "description": "Visible lab results only; empty if absent", "items": {"type": "object", "properties": {"test_name": {"type": "string"}, "result": {"type": "string"}, "unit": {"type": "string"}, "reference_range": {"type": "string"}}}},
                 "total": {"type": "number", "description": "Final bill total in Indian rupees; 0 if absent or unreadable"},
                 "line_items": {
                     "type": "array",
@@ -290,6 +313,10 @@ class SarvamDocumentProvider:
                             "amount": {"type": "number", "description": "Line item amount in Indian rupees"},
                             "brand_status": {"type": "string", "enum": ["BRANDED", "GENERIC", "UNKNOWN"], "description": "Use BRANDED or GENERIC only when the bill explicitly identifies that status; otherwise UNKNOWN"},
                             "brand_evidence": {"type": "string", "description": "Exact printed phrase from this line that explicitly identifies the brand status; empty when absent"},
+                            "batch_number": {"type": "string", "description": "Medicine batch exactly as printed; empty if absent"},
+                            "expiry": {"type": "string", "description": "Medicine expiry exactly as printed; empty if absent"},
+                            "quantity": {"type": "number", "description": "Visible quantity; 0 if absent"},
+                            "mrp": {"type": "number", "description": "Visible MRP in Indian rupees; 0 if absent"},
                         },
                     },
                 },
@@ -317,7 +344,7 @@ def _provider_result(value: Any) -> tuple[str, str, dict[str, Any], list[str]]:
     if quality not in {"GOOD", "PARTIAL", "UNREADABLE"}:
         quality = "PARTIAL"
     fields: dict[str, Any] = value["fields"] if isinstance(value.get("fields"), dict) else value
-    allowed = {"patient_name", "doctor_name", "doctor_registration", "diagnosis", "treatment", "date", "hospital_name", "total", "line_items", "test_name", "medicines", "tests_ordered", "bill_number"}
+    allowed = {"patient_name", "doctor_name", "doctor_registration", "doctor_specialization", "diagnosis", "treatment", "date", "sample_date", "report_date", "hospital_name", "provider_address", "total", "line_items", "test_name", "test_results", "medicines", "tests_ordered", "bill_number", "approval_reference", "gstin", "gst_amount", "nabl_status", "pathologist_name", "pathologist_registration", "drug_license_number", "discount"}
     content = {key: fields[key] for key in allowed if key in fields and fields[key] not in (None, "")}
     if "total" in content:
         total = _amount(str(content["total"]))
@@ -671,6 +698,8 @@ def process_uploads(
                 warnings.append(f"Structured extraction failed: {type(exc).__name__}")
         if source == "unavailable":
             issues.append(_issue("EXTRACTION_UNAVAILABLE", name, f"{name} needs image reading, but document extraction is unavailable. Ask an operator to review it or retry when extraction is restored."))
+        elif any(warning.startswith("Structured extraction failed:") for warning in warnings):
+            issues.append(_issue("EXTRACTION_UNAVAILABLE", name, f"Structured extraction for {name} is temporarily unavailable. An operator must inspect the uploaded document or retry later."))
         elif quality == "UNREADABLE":
             descriptor = TYPE_NAMES[kind] if kind != "UNKNOWN" else "document"
             issues.append(_issue("UNREADABLE_DOCUMENT", name, f"The {descriptor} in {name} cannot be read. Re-upload a clear image of that document."))

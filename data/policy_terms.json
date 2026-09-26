@@ -232,7 +232,7 @@
       "gender": "M",
       "relationship": "SELF",
       "join_date": "2024-04-01",
-      "dependents": ["DEP003"]
+      "dependents": []
     },
     {
       "member_id": "EMP004",
@@ -268,7 +268,7 @@
       "gender": "M",
       "relationship": "SELF",
       "join_date": "2024-04-01",
-      "dependents": ["DEP004", "DEP005"]
+      "dependents": []
     },
     {
       "member_id": "EMP008",
@@ -295,7 +295,7 @@
       "gender": "M",
       "relationship": "SELF",
       "join_date": "2024-04-01",
-      "dependents": ["DEP006"]
+      "dependents": []
     },
     {
       "member_id": "DEP001",

@@ -45,6 +45,8 @@ This guide describes the medical document types your Document Verification and P
 - Tests ordered
 - Hospital/clinic name and address
 
+For the local prototype, these fields are requested from the bounded extraction schema and retained with source evidence when available. Only patient identity, dates, diagnosis/treatment, itemized amounts, practitioner registration, and policy-specific pharmacy/lab facts are adjudication material. Other guide fields remain visible to reviewers but are not invented when unreadable.
+
 **Real-world variations your agent must handle:**
 - Handwritten prescriptions (very common in India — may be partially illegible)
 - Pre-printed templates with handwritten fill-ins
@@ -271,4 +273,3 @@ import cv2
 blurred = cv2.GaussianBlur(image, (15, 15), 0)
 # or add noise for poor quality simulation
 ```
-

@@ -6,7 +6,7 @@ This directory groups supporting material by audience and purpose.
 | --- | --- |
 | [architecture/](architecture/) | System overview, evidence-agent design, escalation boundaries, and component contracts. |
 | [guides/](guides/) | Local setup, synthetic upload walkthrough, and demo outline. |
-| [reports/](reports/) | Reproducible evaluation output, edge-case audit, and feedback audit. |
+| [reports/](reports/) | Reproducible fixture output, real-byte document-intake evaluation, edge-case audit, and feedback audit. |
 | [design/](design/) | Frontend design decisions. |
 | [research/](research/) | Background architecture research. |
 | [reference/](reference/) | Original assignment material and document-format reference. |

@@ -305,6 +305,12 @@ def _evaluate_claim(
         join_date = date.fromisoformat(str(member.get("join_date") or owner["join_date"]))
     except (KeyError, TypeError, ValueError):
         join_date = None
+    if treatment_date is None:
+        trace.append(_rule_trace(
+            "treatment_date", "FAIL", "claim.treatment_date", {},
+            "A treatment date is required before policy timing can be evaluated.",
+        ))
+        reasons.append({"code": "TREATMENT_DATE_REQUIRED", "message": "Provide the treatment date before this claim can be adjudicated."})
     document_dates: list[tuple[str, date]] = []
     unreadable_document_dates: list[str] = []
     for doc in documents:
@@ -356,9 +362,38 @@ def _evaluate_claim(
     ))
     if relationship and not relationship_ok:
         reasons.append({"code": "RELATIONSHIP_NOT_COVERED", "message": f"Relationship {relationship} is outside the covered family list."})
-    trace.append(_rule_trace("sum_insured", "NOT_EVALUATED", "coverage.sum_insured_per_employee", {"sum_insured": coverage.get("sum_insured_per_employee")}, "No hospitalisation utilisation feed is available in this OPD evaluator."))
-    trace.append(_rule_trace("family_floater_limit", "NOT_EVALUATED", "coverage.family_floater.combined_limit", {"combined_limit": coverage.get("family_floater", {}).get("combined_limit")}, "Family-floater consumption is not tracked separately from the annual OPD limit."))
-    trace.append(_rule_trace("pre_existing_condition_wait", "NOT_EVALUATED", "waiting_periods.pre_existing_conditions_days", {"days": policy.get("waiting_periods", {}).get("pre_existing_conditions_days")}, "No pre-existing-condition history was supplied with the claim."))
+    sum_insured = _paise(coverage.get("sum_insured_per_employee", 0))
+    sum_insured_used = payload.get("sum_insured_used")
+    sum_insured_remaining = None if sum_insured_used is None else max(0, sum_insured - _paise(sum_insured_used))
+    trace.append(_rule_trace("sum_insured", "NOT_EVALUATED" if sum_insured_remaining is None else "PASS" if sum_insured_remaining >= claimed else "LIMITED", "coverage.sum_insured_per_employee", {"sum_insured_paise": sum_insured, "used_paise": None if sum_insured_used is None else _paise(sum_insured_used), "remaining_paise": sum_insured_remaining}, "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."))
+    floater = coverage.get("family_floater", {})
+    floater_limit = _paise(floater.get("combined_limit", 0))
+    floater_used = payload.get("family_floater_used")
+    floater_remaining = None if floater_used is None else max(0, floater_limit - _paise(floater_used))
+    trace.append(_rule_trace("family_floater_limit", "NOT_EVALUATED" if floater_remaining is None else "PASS" if floater_remaining >= claimed else "LIMITED", "coverage.family_floater.combined_limit", {"enabled": bool(floater.get("enabled", False)), "combined_limit_paise": floater_limit, "used_paise": None if floater_used is None else _paise(floater_used), "remaining_paise": floater_remaining}, "A separate family utilisation feed is required; annual OPD usage is not substituted."))
+    pre_existing_days = int(policy.get("waiting_periods", {}).get("pre_existing_conditions_days", 0))
+    pre_existing_evidence = payload.get("pre_existing_conditions")
+    pre_existing_names = [
+        str(item.get("condition") if isinstance(item, dict) else item)
+        for item in (pre_existing_evidence or [])
+        if str(item.get("condition") if isinstance(item, dict) else item).strip()
+    ] if isinstance(pre_existing_evidence, list) else []
+    pre_existing_hits = [
+        name for name in pre_existing_names
+        if _contains_phrase(content, name)
+    ]
+    if treatment_date and join_date and pre_existing_hits and pre_existing_days:
+        eligible_from = join_date + timedelta(days=pre_existing_days)
+        pre_existing_fail = treatment_date < eligible_from
+        trace.append(_rule_trace(
+            "pre_existing_condition_wait", "FAIL" if pre_existing_fail else "PASS",
+            "waiting_periods.pre_existing_conditions_days",
+            {"conditions": pre_existing_hits, "days": pre_existing_days, "join_date": str(join_date), "treatment_date": str(treatment_date), "eligible_from": str(eligible_from)},
+        ))
+        if pre_existing_fail:
+            reasons.append({"code": "PRE_EXISTING_WAITING_PERIOD", "message": f"The pre-existing-condition waiting period ends on {eligible_from.isoformat()}; treatment was on {treatment_date.isoformat()}."})
+    else:
+        trace.append(_rule_trace("pre_existing_condition_wait", "NOT_EVALUATED", "waiting_periods.pre_existing_conditions_days", {"days": pre_existing_days, "conditions": pre_existing_names}, "No explicit pre-existing-condition evidence was supplied with the claim."))
     category_covered = category_policy.get("covered", True)
     trace.append(_rule_trace("category_covered", "PASS" if category_covered else "FAIL", f"opd_categories.{category_key}.covered", {"covered": category_covered}))
     if category_covered is False:
@@ -438,6 +473,7 @@ def _evaluate_claim(
             matched_pre_auth_rules.append({"phrase": phrase, "amount_greater_than": threshold})
     pre_auth_required = bool(category_policy.get("requires_pre_auth", False)) or bool(matched_pre_auth_rules)
     pre_auth_status_unknown = False
+    pre_auth_invalid = False
     if pre_auth_required:
         pre_auth = payload.get("pre_authorization")
         explicit_status = isinstance(pre_auth, bool) or (
@@ -445,10 +481,38 @@ def _evaluate_claim(
         )
         obtained = pre_auth is True or (isinstance(pre_auth, dict) and pre_auth.get("obtained") is True)
         pre_auth_status_unknown = not explicit_status
-        status = "NOT_EVALUATED" if pre_auth_status_unknown else "PASS" if obtained else "FAIL"
-        trace.append({"stage": "policy", "rule_id": "pre_authorization", "status": status, "policy_ref": "pre_authorization.required_for / opd_categories.requires_pre_auth", "evidence": {"matched_rules": matched_pre_auth_rules, "claimed_amount": _rupees(claimed), "pre_authorization": pre_auth, "status_source": "claim_evidence" if explicit_status else "missing_or_unconfirmed"}})
+        validity_days = int(pre_auth_policy.get("validity_days", 0))
+        issued_date = None
+        approval_reference = ""
+        approval_document = next(
+            (doc for doc in documents if str(doc.get("doc_type") or doc.get("actual_type") or "").upper() == "PRE_AUTHORIZATION"),
+            None,
+        )
+        if isinstance(pre_auth, dict):
+            approval_reference = str(pre_auth.get("approval_reference") or "").strip()
+            try:
+                issued_date = date.fromisoformat(str(pre_auth.get("issued_date") or ""))
+            except ValueError:
+                issued_date = None
+        document_fields = (approval_document or {}).get("fields") or (approval_document or {}).get("content") or {}
+        if approval_document is not None:
+            approval_reference = str(document_fields.get("approval_reference") or approval_reference).strip()
+            try:
+                issued_date = _parse_document_date(document_fields.get("date") or issued_date)
+            except ValueError:
+                issued_date = None
+        if obtained and (approval_document is None or issued_date is None or not approval_reference or treatment_date is None):
+            pre_auth_status_unknown = True
+        elif obtained and treatment_date is not None and issued_date is not None:
+            pre_auth_invalid = issued_date > treatment_date or (
+                validity_days > 0 and (treatment_date - issued_date).days > validity_days
+            )
+        status = "NOT_EVALUATED" if pre_auth_status_unknown else "FAIL" if pre_auth_invalid or not obtained else "PASS"
+        trace.append({"stage": "policy", "rule_id": "pre_authorization", "status": status, "policy_ref": "pre_authorization.required_for / opd_categories.requires_pre_auth / pre_authorization.validity_days", "evidence": {"matched_rules": matched_pre_auth_rules, "claimed_amount": _rupees(claimed), "obtained": obtained, "approval_document": (approval_document or {}).get("file_id"), "issued_date": issued_date.isoformat() if issued_date else None, "approval_reference": approval_reference or None, "validity_days": validity_days, "status_source": "document_backed_dated_approval" if approval_document and issued_date and approval_reference else "missing_or_unconfirmed"}})
         if pre_auth_status_unknown:
-            reasons.append({"code": "PRE_AUTH_STATUS_UNKNOWN", "message": "The required pre-authorization status is not present in the claim evidence. Provide the approval record or confirm whether approval was granted."})
+            reasons.append({"code": "PRE_AUTH_STATUS_UNKNOWN", "message": "Required pre-authorization needs an uploaded, dated approval record with a reference before it can be verified."})
+        elif pre_auth_invalid:
+            reasons.append({"code": "PRE_AUTH_INVALID", "message": "The pre-authorization was issued after treatment or outside the policy validity period."})
         elif not obtained:
             reasons.append({"code": "PRE_AUTH_MISSING", "message": "Pre-authorization was required and was explicitly not obtained. Provide the approval record or correct the status if it was granted."})
     else:
@@ -469,6 +533,25 @@ def _evaluate_claim(
     trace.append({"stage": "risk", "rule_id": "monthly_claims", "status": "FLAG" if monthly_flag else "PASS", "policy_ref": "fraud_thresholds.monthly_claims_limit", "evidence": {"monthly_claim_count_including_current": monthly_count, "limit": monthly_limit, "month": month or None, "history_source": payload.get("claims_history_source", "fixture_or_supplied_history")}})
     if monthly_flag:
         reasons.append({"code": "MONTHLY_CLAIMS", "message": f"This is claim {monthly_count} in the treatment month; policy review threshold is {monthly_limit}. Manual review is required."})
+
+    high_value_threshold = _paise(policy.get("fraud_thresholds", {}).get("high_value_claim_threshold", 0))
+    auto_review_threshold = _paise(policy.get("fraud_thresholds", {}).get("auto_manual_review_above", 0))
+    high_value_flag = bool(high_value_threshold and claimed > high_value_threshold)
+    auto_review_flag = bool(auto_review_threshold and claimed > auto_review_threshold)
+    trace.append({"stage": "risk", "rule_id": "high_value_claim", "status": "FLAG" if high_value_flag else "PASS", "policy_ref": "fraud_thresholds.high_value_claim_threshold", "evidence": {"claimed_amount_paise": claimed, "threshold_paise": high_value_threshold}})
+    trace.append({"stage": "risk", "rule_id": "auto_manual_review_amount", "status": "FLAG" if auto_review_flag else "PASS", "policy_ref": "fraud_thresholds.auto_manual_review_above", "evidence": {"claimed_amount_paise": claimed, "threshold_paise": auto_review_threshold}})
+    if auto_review_flag:
+        reasons.append({"code": "HIGH_VALUE_MANUAL_REVIEW", "message": f"Claimed amount ₹{_rupees(claimed)} exceeds the configured high-value manual-review threshold."})
+    fraud_score = payload.get("fraud_score")
+    fraud_score_threshold = Decimal(str(policy.get("fraud_thresholds", {}).get("fraud_score_manual_review_threshold", 1)))
+    try:
+        fraud_score_value = Decimal(str(fraud_score)) if fraud_score is not None else None
+    except InvalidOperation:
+        fraud_score_value = None
+    fraud_score_flag = fraud_score_value is not None and fraud_score_value >= fraud_score_threshold
+    trace.append({"stage": "risk", "rule_id": "fraud_score", "status": "NOT_EVALUATED" if fraud_score is None else "FLAG" if fraud_score_flag else "PASS", "policy_ref": "fraud_thresholds.fraud_score_manual_review_threshold", "evidence": {"score": float(fraud_score_value) if fraud_score_value is not None else None, "threshold": float(fraud_score_threshold)}})
+    if fraud_score_flag:
+        reasons.append({"code": "FRAUD_SCORE_REVIEW", "message": "The supplied fraud score meets the policy manual-review threshold."})
 
     try:
         optional_risk_enricher(payload)
@@ -615,6 +698,11 @@ def _evaluate_claim(
     if category_policy.get("brand_status_field") and not items:
         pharmacy_brand_unknown = True
         reasons.append({"code": "PHARMACY_BRAND_STATUS_UNKNOWN", "message": "No itemized medicine lines are available to verify generic or branded status."})
+    branded_lines = [item["description"] for item in items if item.get("brand_status") == "BRANDED"]
+    generic_mandatory = bool(category_policy.get("generic_mandatory", False))
+    trace.append(_rule_trace("generic_medicine_requirement", "FLAG" if generic_mandatory and branded_lines else "PASS", f"opd_categories.{category_key}.generic_mandatory", {"generic_mandatory": generic_mandatory, "branded_lines": branded_lines}))
+    if generic_mandatory and branded_lines:
+        reasons.append({"code": "GENERIC_SUBSTITUTION_REVIEW", "message": "The policy requires generic medicines where available. A reviewer must verify the documented need for the branded medicine."})
     base_copay = _percentage(after_discount, copay_percent)
     brand_copay_percent = category_policy.get("branded_drug_copay_percent")
     branded_after_discount = _percentage(branded_eligible, 100 - network_percent) if branded_eligible else 0
@@ -628,11 +716,11 @@ def _evaluate_claim(
     trace.append({"stage": "pricing", "rule_id": "payable_amount", "status": "CALCULATED", "evidence": {"eligible_paise": eligible, "network_hospital": network, "network_discount_paise": discount, "copay_paise": copay, "branded_basis_paise": branded_after_discount, "branded_copay_paise": branded_copay, "payable_paise": payable}, "details": "Network discount applied before co-pay."})
 
     codes = {reason["code"] for reason in reasons}
-    reject_priority = ["POLICY_NOT_ACTIVE", "RELATIONSHIP_NOT_COVERED", "CATEGORY_NOT_COVERED", "OUTSIDE_POLICY_PERIOD", "MINIMUM_CLAIM_AMOUNT", "EXCLUDED_CONDITION", "WAITING_PERIOD", "SESSION_LIMIT_EXCEEDED", "PRE_AUTH_MISSING", "SUBMISSION_BEFORE_TREATMENT", "SUBMISSION_LATE", "PER_CLAIM_EXCEEDED"]
+    reject_priority = ["POLICY_NOT_ACTIVE", "RELATIONSHIP_NOT_COVERED", "CATEGORY_NOT_COVERED", "OUTSIDE_POLICY_PERIOD", "MINIMUM_CLAIM_AMOUNT", "EXCLUDED_CONDITION", "PRE_EXISTING_WAITING_PERIOD", "WAITING_PERIOD", "SESSION_LIMIT_EXCEEDED", "PRE_AUTH_MISSING", "PRE_AUTH_INVALID", "SUBMISSION_BEFORE_TREATMENT", "SUBMISSION_LATE", "PER_CLAIM_EXCEEDED"]
     primary = next((code for code in reject_priority if code in codes), None)
     if primary:
         decision, approved = "REJECTED", 0
-    elif fraud_flag or monthly_flag or special_document_missing or annual_usage_unknown or unknown_line_description or brand_status_needs_review or pre_auth_status_unknown or "MEMBER_START_DATE_UNKNOWN" in codes or "DOCUMENT_DATE_CONFLICT" in codes or "PRACTITIONER_REGISTRATION_UNKNOWN" in codes:
+    elif fraud_flag or monthly_flag or auto_review_flag or fraud_score_flag or special_document_missing or annual_usage_unknown or unknown_line_description or brand_status_needs_review or "GENERIC_SUBSTITUTION_REVIEW" in codes or pre_auth_status_unknown or "MEMBER_START_DATE_UNKNOWN" in codes or "TREATMENT_DATE_REQUIRED" in codes or "DOCUMENT_DATE_CONFLICT" in codes or "PRACTITIONER_REGISTRATION_UNKNOWN" in codes:
         decision, approved = "MANUAL_REVIEW", 0
     elif payable < claimed and any(item["status"] in {"EXCLUDED", "NOT_COVERED"} for item in ledger if item["kind"] == "line_item"):
         decision, approved = "PARTIAL", payable

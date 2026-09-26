@@ -1,0 +1,180 @@
+{
+  "kind": "synthetic_document_intake_safety_benchmark",
+  "passed": 6,
+  "total": 6,
+  "records": [
+    {
+      "scenario": "clean_consultation",
+      "category": "CONSULTATION",
+      "expected": "ACCEPTED",
+      "matched": true,
+      "issue_codes": [],
+      "metrics": {
+        "files": 2,
+        "pages": 2,
+        "provider_calls": 0,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 0,
+        "sarvam_digitise_pages": 0,
+        "sarvam_extract_calls": 0,
+        "sarvam_extract_pages": 0
+      },
+      "documents": [
+        {
+          "file_name": "clean-prescription.pdf",
+          "actual_type": "PRESCRIPTION",
+          "quality": "GOOD",
+          "pages": 1
+        },
+        {
+          "file_name": "clean-bill.pdf",
+          "actual_type": "HOSPITAL_BILL",
+          "quality": "GOOD",
+          "pages": 1
+        }
+      ]
+    },
+    {
+      "scenario": "wrong_document_type",
+      "category": "CONSULTATION",
+      "expected": "MISSING_DOCUMENT",
+      "matched": true,
+      "issue_codes": [
+        "MISSING_DOCUMENT"
+      ],
+      "metrics": {
+        "files": 1,
+        "pages": 1,
+        "provider_calls": 0,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 0,
+        "sarvam_digitise_pages": 0,
+        "sarvam_extract_calls": 0,
+        "sarvam_extract_pages": 0
+      },
+      "documents": [
+        {
+          "file_name": "clean-prescription.pdf",
+          "actual_type": "PRESCRIPTION",
+          "quality": "GOOD",
+          "pages": 1
+        }
+      ]
+    },
+    {
+      "scenario": "patient_mismatch",
+      "category": "CONSULTATION",
+      "expected": "PATIENT_MISMATCH",
+      "matched": true,
+      "issue_codes": [
+        "PATIENT_MISMATCH"
+      ],
+      "metrics": {
+        "files": 2,
+        "pages": 2,
+        "provider_calls": 0,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 0,
+        "sarvam_digitise_pages": 0,
+        "sarvam_extract_calls": 0,
+        "sarvam_extract_pages": 0
+      },
+      "documents": [
+        {
+          "file_name": "clean-prescription.pdf",
+          "actual_type": "PRESCRIPTION",
+          "quality": "GOOD",
+          "pages": 1
+        },
+        {
+          "file_name": "patient-mismatch-bill.pdf",
+          "actual_type": "HOSPITAL_BILL",
+          "quality": "GOOD",
+          "pages": 1
+        }
+      ]
+    },
+    {
+      "scenario": "amount_conflict",
+      "category": "DENTAL",
+      "expected": "BILL_ARITHMETIC_CONFLICT",
+      "matched": true,
+      "issue_codes": [
+        "BILL_ARITHMETIC_CONFLICT"
+      ],
+      "metrics": {
+        "files": 1,
+        "pages": 1,
+        "provider_calls": 0,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 0,
+        "sarvam_digitise_pages": 0,
+        "sarvam_extract_calls": 0,
+        "sarvam_extract_pages": 0
+      },
+      "documents": [
+        {
+          "file_name": "amount-conflict-bill.pdf",
+          "actual_type": "HOSPITAL_BILL",
+          "quality": "GOOD",
+          "pages": 1
+        }
+      ]
+    },
+    {
+      "scenario": "multi_page_bill",
+      "category": "DENTAL",
+      "expected": "ACCEPTED",
+      "matched": true,
+      "issue_codes": [],
+      "metrics": {
+        "files": 1,
+        "pages": 2,
+        "provider_calls": 0,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 0,
+        "sarvam_digitise_pages": 0,
+        "sarvam_extract_calls": 0,
+        "sarvam_extract_pages": 0
+      },
+      "documents": [
+        {
+          "file_name": "multi-page-bill.pdf",
+          "actual_type": "HOSPITAL_BILL",
+          "quality": "GOOD",
+          "pages": 2
+        }
+      ]
+    },
+    {
+      "scenario": "blurred_phone_photo",
+      "category": "DENTAL",
+      "expected": "EXTRACTION_UNAVAILABLE",
+      "matched": true,
+      "issue_codes": [
+        "EXTRACTION_UNAVAILABLE",
+        "MISSING_DOCUMENT",
+        "PATIENT_UNVERIFIED",
+        "UNIDENTIFIED_DOCUMENT"
+      ],
+      "metrics": {
+        "files": 1,
+        "pages": 1,
+        "provider_calls": 0,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 0,
+        "sarvam_digitise_pages": 0,
+        "sarvam_extract_calls": 0,
+        "sarvam_extract_pages": 0
+      },
+      "documents": [
+        {
+          "file_name": "blurred-phone-photo.png",
+          "actual_type": "UNKNOWN",
+          "quality": "PARTIAL",
+          "pages": 1
+        }
+      ]
+    }
+  ]
+}

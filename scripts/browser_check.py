@@ -78,7 +78,10 @@ def main() -> None:
         correction = _fill(page, [rx, rx])
         assert correction["result"]["decision"] is None
         assert correction["state"] == "DOCUMENT_CORRECTION_REQUIRED"
-        assert any("hospital" in message.lower() for message in correction["result"]["correction_requests"])
+        assert any(
+            "hospital" in str(request.get("message", "")).lower()
+            for request in correction["result"]["correction_requests"]
+        )
         assert page.locator("#correction-panel").is_visible()
         page.screenshot(path=str(SCREENSHOTS / "correction.png"), full_page=True)
 

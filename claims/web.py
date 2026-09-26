@@ -271,13 +271,21 @@ async def _read_upload(upload: UploadFile) -> tuple[str, str, bytes]:
 def _correction_result(
     issues: list[dict[str, Any]], metrics: dict[str, Any], extra_trace: list[dict[str, Any]] | None = None
 ) -> dict[str, Any]:
-    correction_requests = [str(issue.get("message") or "Upload a clearer or correct document.") for issue in issues]
+    correction_requests = [
+        {
+            "code": str(issue.get("code") or "DOCUMENT_ISSUE"),
+            "message": str(issue.get("message") or "Upload a clearer or correct document."),
+            "file_name": issue.get("file_name"),
+            "required_type": issue.get("required_type"),
+        }
+        for issue in issues
+    ]
     return {
         "state": "DOCUMENT_CORRECTION_REQUIRED",
         "decision": None,
         "approved_amount": None,
         "approved_amount_paise": None,
-        "reasons": correction_requests,
+        "reasons": list(correction_requests),
         "correction_requests": correction_requests,
         "confidence_score": None,
         "ledger": [],
@@ -457,6 +465,22 @@ def process_claim(claim_id: str) -> None:
     _set_state(claim_id, "PROCESSING", detail={"message": "Checking submitted documents"})
     try:
         policy = _read_policy()
+        request_policy_hash = str((claim.get("request") or {}).get("policy_sha256") or "")
+        current_policy_hash = hashlib.sha256(json.dumps(policy, sort_keys=True).encode("utf-8")).hexdigest()
+        if request_policy_hash and request_policy_hash != current_policy_hash:
+            snapshot_result: dict[str, Any] = {
+                "state": "MANUAL_REVIEW",
+                "decision": "MANUAL_REVIEW",
+                "approved_amount": 0,
+                "approved_amount_paise": 0,
+                "reasons": [{"code": "POLICY_CHANGED", "message": "The policy changed after this claim was submitted. A reviewer must re-evaluate it against the current policy."}],
+                "correction_requests": [],
+                "confidence_score": 0.0,
+                "ledger": [],
+                "trace": [{"stage": "policy", "rule_id": "policy_snapshot", "status": "FAIL", "policy_ref": "claim.policy_sha256", "details": "The policy snapshot captured at intake does not match the current policy."}],
+            }
+            _set_state(claim_id, "MANUAL_REVIEW", result=snapshot_result, detail={"reason": "policy_changed"})
+            return
         _, upload_root = _paths()
         with _connect() as connection:
             file_rows = connection.execute(
@@ -618,6 +642,8 @@ async def submit_claim(
     treatment_date: str = Form(...),
     claimed_amount: str = Form(...),
     pre_authorization_obtained: str | None = Form(None),
+    pre_authorization_issued_date: str | None = Form(None),
+    pre_authorization_reference: str | None = Form(None),
 ) -> JSONResponse:
     member_id = member_id.strip().upper()
     claim_category = claim_category.strip().upper()
@@ -669,7 +695,11 @@ async def submit_claim(
         "submission_date": now[:10],
     }
     if pre_authorization_obtained in {"true", "false"}:
-        request_data["pre_authorization"] = {"obtained": pre_authorization_obtained == "true"}
+        request_data["pre_authorization"] = {
+            "obtained": pre_authorization_obtained == "true",
+            "issued_date": (pre_authorization_issued_date or "").strip(),
+            "approval_reference": (pre_authorization_reference or "").strip(),
+        }
     with _connect() as connection:
         connection.execute(
             "INSERT INTO claims (id, created_at, updated_at, state, member_id, treatment_date, request_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
