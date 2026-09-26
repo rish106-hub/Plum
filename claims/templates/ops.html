@@ -81,6 +81,16 @@
             <div><span class="ops-section-label">Escalation</span><h3 id="ops-escalation-title">Human decision required</h3></div>
             <p id="ops-escalation-reason"></p>
           </section>
+          <section id="ops-review-action" class="ops-decision-explanation" aria-labelledby="ops-review-action-title" hidden>
+            <strong id="ops-review-action-title">Record reviewer decision</strong>
+            <p>Confirm the final outcome after inspecting the documents and trace.</p>
+            <form id="ops-review-form" class="ops-review-form">
+              <label><span>Decision</span><select id="ops-review-decision"><option value="APPROVED">Approve</option><option value="PARTIAL">Partially approve</option><option value="REJECTED">Reject</option></select></label>
+              <label><span>Approved amount INR</span><input id="ops-review-amount" type="number" min="0" step="0.01" required></label>
+              <button class="button button--primary" type="submit">Save decision</button>
+              <p id="ops-review-error" class="form-error" role="alert" hidden></p>
+            </form>
+          </section>
 
           <section class="ops-decision" aria-label="Decision summary">
             <div><span>Decision</span><strong id="ops-decision">Pending</strong></div>

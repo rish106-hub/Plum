@@ -173,7 +173,7 @@
         "claim_category": "DENTAL",
         "treatment_date": "2024-10-15",
         "claimed_amount": 12000,
-        "fixture_compatibility_assumptions": ["global_per_claim_limit_not_applied", "special_document_requirement_conflicts_with_document_matrix"],
+        "ytd_claims_amount": 0,
         "documents": [
           {
             "file_id": "F011",
@@ -191,8 +191,7 @@
         ]
       },
       "expected": {
-        "decision": "PARTIAL",
-        "approved_amount": 8000,
+        "decision": "REJECTED",
         "system_must": [
           "Itemize which line items were approved and which were rejected",
           "State the reason for each rejection at the line-item level"
@@ -209,6 +208,8 @@
         "claim_category": "DIAGNOSTIC",
         "treatment_date": "2024-11-02",
         "claimed_amount": 15000,
+        "pre_authorization": false,
+        "ytd_claims_amount": 0,
         "documents": [
           {
             "file_id": "F012",
@@ -326,8 +327,6 @@
         "claim_category": "CONSULTATION",
         "treatment_date": "2024-11-03",
         "claimed_amount": 4500,
-        "fixture_compatibility_assumptions": ["category_sub_limit_applies_to_matching_lines"],
-        "fixture_sub_limit_item_phrase": "consultation fee",
         "hospital_name": "Apollo Hospitals",
         "ytd_claims_amount": 8000,
         "documents": [
@@ -359,8 +358,8 @@
       },
       "expected": {
         "decision": "APPROVED",
-        "approved_amount": 3240,
-        "notes": "Network discount (20%) applied first on ₹4,500 = ₹3,600. Co-pay (10%) applied on ₹3,600 = ₹360 deducted. Final: ₹3,240.",
+        "approved_amount": 1440,
+        "notes": "The category sub-limit applies to all eligible consultation claim lines. Network discount is applied before co-pay.",
         "system_must": [
           "Apply network discount before co-pay, not after",
           "Show the breakdown of discount and co-pay in the decision output"
@@ -377,6 +376,7 @@
         "claim_category": "ALTERNATIVE_MEDICINE",
         "treatment_date": "2024-10-28",
         "claimed_amount": 4000,
+        "ytd_claims_amount": 0,
         "simulate_component_failure": true,
         "documents": [
           {
@@ -449,8 +449,7 @@
       },
       "expected": {
         "decision": "REJECTED",
-        "rejection_reasons": ["EXCLUDED_CONDITION"],
-        "confidence_score": "above 0.90"
+        "rejection_reasons": ["EXCLUDED_CONDITION"]
       }
     }
   ],

@@ -132,7 +132,16 @@ def test_image_provider_returns_typed_fields_and_mismatch() -> None:
     assert result["metrics"]["sarvam_digitise_pages"] == 1
     assert result["metrics"]["sarvam_extract_calls"] == 0
     assert result["documents"][0]["content"]["total"] == 1500
-    assert any(issue["code"] == "MEMBER_MISMATCH" and "Arjun Mehta" in issue["message"] and "Rajesh Kumar" in issue["message"] for issue in result["issues"])
+    assert any(issue["code"] == "MEMBER_MISMATCH" and "Arjun Mehta" in issue["message"] for issue in result["issues"])
+
+
+def test_dependent_name_and_honorific_are_accepted_for_the_covered_family() -> None:
+    provider = StubProvider("HOSPITAL BILL / RECEIPT\nPatient: Mr. Arjun Mehta\nConsultation Fee 1500.00\nTotal Amount: 1500.00\nCity Clinic Bengaluru")
+    result = process_uploads(
+        [{"file_name": "bill.png", "data": image_bytes()}], "DENTAL", "Rajesh Kumar", POLICY,
+        provider, allowed_patient_names=["Rajesh Kumar", "Arjun Mehta"],
+    )
+    assert not any(issue["code"] == "MEMBER_MISMATCH" for issue in result["issues"])
 
 
 def test_blurry_or_tiny_image_gets_specific_correction() -> None:

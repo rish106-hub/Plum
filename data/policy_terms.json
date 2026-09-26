@@ -50,7 +50,6 @@
       "sub_limit": 10000,
       "copay_percent": 0,
       "requires_prescription": false,
-      "required_additional_document": "DENTAL_REPORT",
       "covered": true,
       "covered_procedures": [
         "Root Canal Treatment",
@@ -130,7 +129,7 @@
       "Cosmetic dental procedures"
     ],
     "condition_aliases": [
-      "self inflicted injury", "war", "nuclear hazard", "substance abuse", "experimental treatment",
+      "self inflicted injury", "war or nuclear hazard", "nuclear hazard", "substance abuse", "experimental treatment",
       "infertility", "assisted reproduction", "weight loss program", "bariatric surgery", "bariatric",
       "morbid obesity", "obesity treatment", "diet program",
       "cosmetic procedure", "cosmetic surgery", "aesthetic procedure", "non medically necessary vaccination",
@@ -206,9 +205,6 @@
     "high_value_claim_threshold": 25000,
     "auto_manual_review_above": 25000,
     "fraud_score_manual_review_threshold": 0.80
-  },
-  "fixture_compatibility": {
-    "allowed_assumptions": ["global_per_claim_limit_not_applied", "category_sub_limit_applies_to_matching_lines", "special_document_requirement_conflicts_with_document_matrix"]
   },
   "members": [
     {

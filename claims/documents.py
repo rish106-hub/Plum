@@ -67,7 +67,10 @@ def _issue(code: str, file_name: str, message: str, **extra: Any) -> dict[str, A
 
 
 def _normal_name(value: str) -> str:
-    return " ".join(re.findall(r"[a-z]+", value.casefold()))
+    return " ".join(
+        token for token in re.findall(r"[a-z]+", value.casefold())
+        if token not in {"mr", "mrs", "ms", "miss", "dr", "shri", "smt"}
+    )
 
 
 def _normalized_words(value: str) -> str:
@@ -365,6 +368,7 @@ def revalidate_documents(
     claim_category: str,
     member_name: str,
     policy: dict[str, Any],
+    allowed_patient_names: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Rebuild evidence-dependent gates after OCR or accepted evidence correction."""
     issues = [issue for issue in existing_issues if issue.get("code") not in _DERIVED_ISSUE_CODES]
@@ -442,8 +446,10 @@ def revalidate_documents(
     if len({_normal_name(name) for _, name in named}) > 1:
         detail = "; ".join(f"{filename}: {name}" for filename, name in named)
         issues.append(_issue("PATIENT_MISMATCH", "", f"The uploaded documents name different patients ({detail}). Re-upload documents for {member_name}."))
-    elif named and member_name and _normal_name(named[0][1]) != _normal_name(member_name):
-        issues.append(_issue("MEMBER_MISMATCH", named[0][0], f"{named[0][0]} names {named[0][1]}, but this claim is for {member_name}. Upload the correct patient's document."))
+    elif named and member_name and _normal_name(named[0][1]) not in {
+        _normal_name(name) for name in (allowed_patient_names or [member_name])
+    }:
+        issues.append(_issue("MEMBER_MISMATCH", named[0][0], f"{named[0][0]} names {named[0][1]}, but this claim is not for the member or a covered dependent. Upload the correct patient's document."))
     elif not named:
         issues.append(_issue("PATIENT_UNVERIFIED", "", "No readable patient name was found on the uploaded documents. Upload a document showing the patient's name or request manual review."))
     return issues
@@ -515,6 +521,7 @@ def process_uploads(
     member_name: str,
     policy: dict[str, Any],
     provider: DocumentProvider | None = None,
+    allowed_patient_names: list[str] | None = None,
 ) -> dict[str, Any]:
     """Return ``documents``, actionable ``issues``, and usage ``metrics``.
 
@@ -622,7 +629,9 @@ def process_uploads(
             and quality == "GOOD"
             and (
                 not content.get("patient_name")
-                or _normal_name(str(content["patient_name"])) == _normal_name(member_name)
+                or _normal_name(str(content["patient_name"])) in {
+                    _normal_name(name) for name in (allowed_patient_names or [member_name])
+                }
             )
             and (_needs_extract(kind, content) or not content.get("patient_name"))
         ):
@@ -691,7 +700,7 @@ def process_uploads(
         if kind in {"HOSPITAL_BILL", "PHARMACY_BILL"} and "total" not in content and quality == "GOOD":
             issues.append(_issue("AMOUNT_UNVERIFIED", name, f"The total amount on {name} could not be verified. Upload a clearer bill showing its total."))
 
-    issues = revalidate_documents(documents, issues, claim_category, member_name, policy)
+    issues = revalidate_documents(documents, issues, claim_category, member_name, policy, allowed_patient_names)
     return {
         "documents": documents,
         "issues": issues,
