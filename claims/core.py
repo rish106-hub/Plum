@@ -61,6 +61,14 @@ def _normal_words(value: Any) -> str:
     return " ".join(re.findall(r"[^\W_]+", _text(value), flags=re.UNICODE))
 
 
+def _normal_name(value: Any) -> str:
+    """Compare patient names without routine Indian billing honorifics."""
+    return " ".join(
+        word for word in _normal_words(value).split()
+        if word not in {"mr", "mrs", "ms", "miss", "dr", "shri", "smt"}
+    )
+
+
 def _contains_phrase(text: str, phrase: Any) -> bool:
     normalized_text = f" {_normal_words(text)} "
     normalized_phrase = _normal_words(phrase)
@@ -69,6 +77,22 @@ def _contains_phrase(text: str, phrase: Any) -> bool:
 
 def _matching_terms(text: str, terms: list[Any]) -> list[str]:
     return [str(term) for term in terms if _contains_phrase(text, term)]
+
+
+def _affirmative_term_hits(text: str, terms: list[Any]) -> list[str]:
+    """Find policy terms while ignoring an explicit nearby clinical negation."""
+    normalized = _normal_words(text)
+    hits: list[str] = []
+    for term in terms:
+        phrase = _normal_words(term)
+        match = re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", normalized) if phrase else None
+        if not match:
+            continue
+        context = normalized[max(0, match.start() - 45):match.start()]
+        if re.search(r"\b(?:no|not|without|denies|denied|negative for)\b(?:\s+\w+){0,4}\s*$", context):
+            continue
+        hits.append(str(term))
+    return hits
 
 
 def _rule_trace(
@@ -145,7 +169,7 @@ def _document_gate(
             })
     names = [(doc.get("file_id"), doc.get("patient_name") or (doc.get("fields") or doc.get("content") or {}).get("patient_name")) for doc in documents]
     known = [(file_id, name) for file_id, name in names if name]
-    if len({_text(name) for _, name in known}) > 1:
+    if len({_normal_name(name) for _, name in known}) > 1:
         detail = ", ".join(f"{file_id or 'document'}: {name}" for file_id, name in known)
         corrections.append({
             "code": "PATIENT_MISMATCH",
@@ -198,9 +222,6 @@ def _evaluate_claim(
         return result
 
     fixture_evidence = bool(documents) and all(doc.get("source") == "fixture_metadata" for doc in documents)
-    allowed_assumptions = set(policy.get("fixture_compatibility", {}).get("allowed_assumptions", []))
-    fixture_assumptions = set(payload.get("fixture_compatibility_assumptions", [])) if fixture_evidence else set()
-    fixture_assumptions &= allowed_assumptions
     weak_documents = [doc.get("file_id") for doc in documents if _text(doc.get("quality", "GOOD")) not in {"good", "clear", "readable"}]
     named_documents = [doc for doc in documents if doc.get("patient_name") or (doc.get("fields") or doc.get("content") or {}).get("patient_name")]
     deductions: list[dict[str, Any]] = []
@@ -235,9 +256,9 @@ def _evaluate_claim(
         member,
     )
     allowed_ids = set(owner.get("dependents", [])) | {owner["member_id"]}
-    allowed_names = {_text(person.get("name")) for person in policy.get("members", []) if person.get("member_id") in allowed_ids or person.get("primary_member_id") == owner["member_id"]}
+    allowed_names = {_normal_name(person.get("name")) for person in policy.get("members", []) if person.get("member_id") in allowed_ids or person.get("primary_member_id") == owner["member_id"]}
     document_names = [str(doc.get("patient_name") or (doc.get("fields") or doc.get("content") or {}).get("patient_name")) for doc in documents if doc.get("patient_name") or (doc.get("fields") or doc.get("content") or {}).get("patient_name")]
-    unexpected_names = [name for name in document_names if _text(name) not in allowed_names]
+    unexpected_names = [name for name in document_names if _normal_name(name) not in allowed_names]
     trace.append({"stage": "identity", "rule_id": "roster_patient_match", "status": "FAIL" if unexpected_names else "PASS" if document_names else "NOT_EVALUATED", "policy_ref": "members", "evidence": {"document_names": document_names, "allowed_names": sorted(allowed_names)}})
     if unexpected_names:
         correction = {"code": "PATIENT_NOT_COVERED", "message": f"The uploaded documents name {', '.join(unexpected_names)}, who is not listed as this member or a covered dependent. Please upload documents for a covered patient or correct the member ID."}
@@ -266,9 +287,13 @@ def _evaluate_claim(
         trace.append({"stage": "confidence", "rule_id": "bill_amount_unavailable", "status": "DEGRADED", "evidence": {"deduction": 0.08, "score": result["confidence_score"]}})
 
     content = _all_content(documents)
+    clinical_content = " ".join(
+        str((doc.get("fields") or doc.get("content") or {}).get(field, ""))
+        for doc in documents for field in ("diagnosis", "treatment", "test_name")
+    )
     exclusions = policy.get("exclusions", {})
     exclusion_terms = [*exclusions.get("conditions", []), *exclusions.get("condition_aliases", [])]
-    exclusion_hits = _matching_terms(content, exclusion_terms)
+    exclusion_hits = _affirmative_term_hits(clinical_content, exclusion_terms)
     excluded_condition = bool(exclusion_hits)
     trace.append({"stage": "policy", "rule_id": "excluded_condition", "status": "FAIL" if excluded_condition else "PASS", "policy_ref": "exclusions.conditions", "evidence": exclusion_hits})
     if excluded_condition:
@@ -419,10 +444,7 @@ def _evaluate_claim(
             isinstance(pre_auth, dict) and isinstance(pre_auth.get("obtained"), bool)
         )
         obtained = pre_auth is True or (isinstance(pre_auth, dict) and pre_auth.get("obtained") is True)
-        # The structured fixtures intentionally omit this field while TC007 expects
-        # rejection. Preserve that explicit fixture contract; live evidence with no
-        # status is unknown and must be reviewed rather than treated as denial.
-        pre_auth_status_unknown = not explicit_status and not fixture_evidence
+        pre_auth_status_unknown = not explicit_status
         status = "NOT_EVALUATED" if pre_auth_status_unknown else "PASS" if obtained else "FAIL"
         trace.append({"stage": "policy", "rule_id": "pre_authorization", "status": status, "policy_ref": "pre_authorization.required_for / opd_categories.requires_pre_auth", "evidence": {"matched_rules": matched_pre_auth_rules, "claimed_amount": _rupees(claimed), "pre_authorization": pre_auth, "status_source": "claim_evidence" if explicit_status else "missing_or_unconfirmed"}})
         if pre_auth_status_unknown:
@@ -458,10 +480,8 @@ def _evaluate_claim(
         trace.append({"stage": "optional_risk_enrichment", "rule_id": "risk_enrichment", "status": "PASS", "degraded": False})
 
     per_claim = _paise(policy.get("coverage", {}).get("per_claim_limit", 0))
-    skip_claim_cap = "global_per_claim_limit_not_applied" in fixture_assumptions
-    claim_cap_fail = claimed > per_claim and not skip_claim_cap
-    limit_details = "Fixture compatibility assumption: global per-claim limit is not applied for this case; insurer confirmation required." if skip_claim_cap else None
-    trace.append(_rule_trace("per_claim_limit", "FAIL" if claim_cap_fail else "ASSUMPTION" if skip_claim_cap else "PASS", "coverage.per_claim_limit", {"claimed_amount": _rupees(claimed), "limit": _rupees(per_claim), "fixture_compatibility": skip_claim_cap}, limit_details))
+    claim_cap_fail = claimed > per_claim
+    trace.append(_rule_trace("per_claim_limit", "FAIL" if claim_cap_fail else "PASS", "coverage.per_claim_limit", {"claimed_amount": _rupees(claimed), "limit": _rupees(per_claim)}))
     if claim_cap_fail:
         reasons.append({"code": "PER_CLAIM_EXCEEDED", "message": f"Claimed amount ₹{_rupees(claimed)} exceeds the per-claim limit of ₹{_rupees(per_claim)}."})
 
@@ -469,7 +489,7 @@ def _evaluate_claim(
     ytd = payload.get("ytd_claims_amount")
     annual_remaining = None if ytd is None else max(0, annual_limit - _paise(ytd))
     trace.append({"stage": "policy", "rule_id": "annual_opd_limit", "status": "NOT_EVALUATED" if annual_remaining is None else "PASS" if annual_remaining >= claimed else "LIMITED", "policy_ref": "coverage.annual_opd_limit", "evidence": {"annual_limit": _rupees(annual_limit), "ytd_claims_amount": ytd, "ytd_source": payload.get("ytd_claims_source", "fixture_or_supplied_history"), "remaining": None if annual_remaining is None else _rupees(annual_remaining)}})
-    annual_usage_unknown = annual_remaining is None and not fixture_evidence
+    annual_usage_unknown = annual_remaining is None
     if annual_usage_unknown:
         reasons.append({"code": "ANNUAL_USAGE_UNKNOWN", "message": "Annual OPD usage is unavailable. A reviewer must verify the remaining benefit before payment."})
         result["confidence_score"] = round(max(0.0, result["confidence_score"] - 0.12), 2)
@@ -479,16 +499,14 @@ def _evaluate_claim(
         str(doc.get("doc_type") or doc.get("actual_type") or "").upper() == str(special_document_type).upper()
         for doc in documents
     )
-    special_document_compatibility = "special_document_requirement_conflicts_with_document_matrix" in fixture_assumptions
     if special_document_missing:
         trace.append(_rule_trace(
-            "additional_document_requirement", "ASSUMPTION" if special_document_compatibility else "FAIL",
+            "additional_document_requirement", "FAIL",
             f"opd_categories.{category_key}.required_additional_document",
             {"required_document": special_document_type},
-            "Fixture compatibility assumption: category requirement conflicts with the document matrix; insurer confirmation required." if special_document_compatibility else "A required category document is missing.",
+            "A required category document is missing.",
         ))
-        if not special_document_compatibility:
-            reasons.append({"code": "ADDITIONAL_DOCUMENT_MISSING", "message": f"The policy requires a {special_document_type}; upload it before adjudication."})
+        reasons.append({"code": "ADDITIONAL_DOCUMENT_MISSING", "message": f"The policy requires a {special_document_type}; upload it before adjudication."})
 
     systems = category_policy.get("covered_systems") or []
     if systems:
@@ -535,7 +553,7 @@ def _evaluate_claim(
     branded_items_paise = 0
     for item in items:
         description = str(item["description"] or "").strip()
-        excluded = bool(description) and any(_contains_phrase(description, procedure) for procedure in excluded_procedures)
+        excluded = bool(description) and bool(_affirmative_term_hits(description, [*excluded_procedures, *exclusion_terms]))
         outside_allowlist = bool(affirmative_cover) and bool(description) and not excluded and not any(_contains_phrase(description, covered) for covered in affirmative_cover)
         amount = item["amount_paise"]
         if not description:
@@ -564,14 +582,8 @@ def _evaluate_claim(
     category_limit = category_policy.get("sub_limit")
     if category_limit is not None:
         cap = _paise(category_limit)
-        sub_limit_phrase = payload.get("fixture_sub_limit_item_phrase") if "category_sub_limit_applies_to_matching_lines" in fixture_assumptions else None
-        if sub_limit_phrase:
-            limited_basis = sum(item["amount_paise"] for item in items if _contains_phrase(item["description"], sub_limit_phrase) and item["amount_paise"] > 0)
-            capped = max(0, limited_basis - cap)
-            trace.append(_rule_trace("category_sub_limit", "ASSUMPTION" if not capped else "LIMITED", f"opd_categories.{category_key}.sub_limit", {"matching_line_amount": _rupees(limited_basis), "sub_limit": _rupees(cap), "matching_phrase": sub_limit_phrase}, "Fixture compatibility assumption: sub-limit applies only to explicitly matched line items; insurer confirmation required."))
-        else:
-            capped = max(0, eligible - cap)
-            trace.append(_rule_trace("category_sub_limit", "LIMITED" if capped else "PASS", f"opd_categories.{category_key}.sub_limit", {"eligible_before_cap": _rupees(eligible), "sub_limit": _rupees(cap)}))
+        capped = max(0, eligible - cap)
+        trace.append(_rule_trace("category_sub_limit", "LIMITED" if capped else "PASS", f"opd_categories.{category_key}.sub_limit", {"eligible_before_cap": _rupees(eligible), "sub_limit": _rupees(cap)}))
         if capped:
             eligible -= capped
             ledger.append({"kind": "adjustment", "description": "Category sub-limit", "amount_paise": -capped, "amount": _rupees(-capped), "policy_ref": f"opd_categories.{category_key}.sub_limit"})
@@ -620,7 +632,7 @@ def _evaluate_claim(
     primary = next((code for code in reject_priority if code in codes), None)
     if primary:
         decision, approved = "REJECTED", 0
-    elif fraud_flag or monthly_flag or (special_document_missing and not special_document_compatibility) or annual_usage_unknown or unknown_line_description or brand_status_needs_review or pre_auth_status_unknown or "MEMBER_START_DATE_UNKNOWN" in codes or "DOCUMENT_DATE_CONFLICT" in codes or "PRACTITIONER_REGISTRATION_UNKNOWN" in codes:
+    elif fraud_flag or monthly_flag or special_document_missing or annual_usage_unknown or unknown_line_description or brand_status_needs_review or pre_auth_status_unknown or "MEMBER_START_DATE_UNKNOWN" in codes or "DOCUMENT_DATE_CONFLICT" in codes or "PRACTITIONER_REGISTRATION_UNKNOWN" in codes:
         decision, approved = "MANUAL_REVIEW", 0
     elif payable < claimed and any(item["status"] in {"EXCLUDED", "NOT_COVERED"} for item in ledger if item["kind"] == "line_item"):
         decision, approved = "PARTIAL", payable

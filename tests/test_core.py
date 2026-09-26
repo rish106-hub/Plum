@@ -72,20 +72,19 @@ class ClaimCoreTests(unittest.TestCase):
         self.assertEqual(next(step for step in mri["trace"] if step["rule_id"] == "waiting_period")["status"], "PASS")
         self.assertEqual(mri["trace"][-1]["evidence"]["primary_reason"], "PRE_AUTH_MISSING")
 
-    def test_dental_item_exclusion_and_assumptions_are_visible(self) -> None:
+    def test_dental_item_exclusion_and_global_cap_are_visible(self) -> None:
         result = self.evaluate("TC006")
-        self.assertEqual(result["approved_amount_paise"], 800000)
+        self.assertEqual(result["approved_amount_paise"], 0)
         self.assertEqual([entry["status"] for entry in result["ledger"] if entry["kind"] == "line_item"], ["ELIGIBLE", "EXCLUDED"])
-        self.assertTrue(any(step["status"] == "ASSUMPTION" and step["rule_id"] == "additional_document_requirement" for step in result["trace"]))
-        self.assertTrue(any(step["status"] == "ASSUMPTION" and step["rule_id"] == "per_claim_limit" for step in result["trace"]))
+        self.assertEqual(next(step for step in result["trace"] if step["rule_id"] == "per_claim_limit")["status"], "FAIL")
 
     def test_discount_precedes_copay_and_uses_integer_paise(self) -> None:
         result = self.evaluate("TC010")
         pricing = next(step for step in result["trace"] if step["rule_id"] == "payable_amount")["evidence"]
-        self.assertEqual(pricing["eligible_paise"], 450000)
-        self.assertEqual(pricing["network_discount_paise"], 90000)
-        self.assertEqual(pricing["copay_paise"], 36000)
-        self.assertEqual(pricing["payable_paise"], 324000)
+        self.assertEqual(pricing["eligible_paise"], 200000)
+        self.assertEqual(pricing["network_discount_paise"], 40000)
+        self.assertEqual(pricing["copay_paise"], 16000)
+        self.assertEqual(pricing["payable_paise"], 144000)
 
     def test_all_matching_bill_lines_are_used_for_pricing(self) -> None:
         claim = normalize_fixture(self.cases["TC004"])
@@ -155,6 +154,29 @@ class ClaimCoreTests(unittest.TestCase):
         result = evaluate_claim(claim, self.policy)
         self.assertIsNone(result["decision"])
         self.assertEqual(result["correction_requests"][0]["code"], "PATIENT_NOT_COVERED")
+
+    def test_honorific_is_ignored_for_covered_patient_matching(self) -> None:
+        claim = normalize_fixture(self.cases["TC004"])
+        for document in claim["documents"]:
+            document["patient_name"] = "Mr. Rajesh Kumar"
+            document["fields"]["patient_name"] = "Mr. Rajesh Kumar"
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "APPROVED")
+
+    def test_negated_condition_and_excluded_line_produce_a_partial_result(self) -> None:
+        claim = normalize_fixture(self.cases["TC004"])
+        prescription = claim["documents"][0]["fields"]
+        prescription["diagnosis"] = "Viral fever with no history of substance abuse"
+        bill = claim["documents"][1]["fields"]
+        bill["line_items"] = [
+            {"description": "Consultation fee", "amount": 1300},
+            {"description": "Multivitamin supplement", "amount": 200},
+        ]
+        bill["total"] = 1500
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "PARTIAL")
+        self.assertNotIn("EXCLUDED_CONDITION", {reason["code"] for reason in result["reasons"]})
+        self.assertIn("EXCLUDED_PROCEDURE", {reason["code"] for reason in result["reasons"]})
 
     def test_claim_bill_and_line_items_must_reconcile(self) -> None:
         claim = normalize_fixture(self.cases["TC004"])
@@ -343,7 +365,7 @@ class ClaimCoreTests(unittest.TestCase):
         result = evaluate_claim(claim, self.policy)
         pricing = next(step for step in result["trace"] if step["rule_id"] == "payable_amount")["evidence"]
         self.assertTrue(pricing["network_hospital"])
-        self.assertEqual(result["approved_amount"], 3240)
+        self.assertEqual(result["approved_amount"], 1440)
 
     def test_document_date_conflict_routes_to_review(self) -> None:
         claim = normalize_fixture(self.cases["TC004"])
@@ -387,16 +409,13 @@ class ClaimCoreTests(unittest.TestCase):
         self.assertEqual(result["decision"], "REJECTED")
         self.assertIn("SUBMISSION_LATE", {reason["code"] for reason in result["reasons"]})
 
-    def test_fixture_limit_interpretations_are_explicit_and_not_general_rules(self) -> None:
+    def test_policy_limits_apply_without_fixture_overrides(self) -> None:
         dental = normalize_fixture(self.cases["TC006"])
-        dental.pop("fixture_compatibility_assumptions")
         result = evaluate_claim(dental, self.policy)
         self.assertEqual(result["decision"], "REJECTED")
         self.assertIn("PER_CLAIM_EXCEEDED", {reason["code"] for reason in result["reasons"]})
 
         consultation = normalize_fixture(self.cases["TC010"])
-        consultation.pop("fixture_compatibility_assumptions")
-        consultation.pop("fixture_sub_limit_item_phrase")
         result = evaluate_claim(consultation, self.policy)
         cap = next(step for step in result["trace"] if step["rule_id"] == "category_sub_limit")
         self.assertEqual(cap["status"], "LIMITED")

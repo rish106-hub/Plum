@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -50,6 +50,12 @@ CATEGORIES = (
 
 
 def _now() -> str:
+    test_now = os.getenv("PLUM_TEST_NOW")
+    if test_now:
+        try:
+            return datetime.fromisoformat(test_now.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat()
+        except ValueError as exc:
+            raise RuntimeError("PLUM_TEST_NOW must be an ISO-8601 timestamp") from exc
     return datetime.now(timezone.utc).isoformat()
 
 
@@ -111,6 +117,7 @@ def init_db() -> None:
             ("treatment_date", "TEXT"),
             ("decision", "TEXT"),
             ("approved_amount_paise", "INTEGER NOT NULL DEFAULT 0"),
+            ("bill_fingerprints_json", "TEXT NOT NULL DEFAULT '[]'"),
         ):
             if name not in columns:
                 connection.execute(f"ALTER TABLE claims ADD COLUMN {name} {definition}")
@@ -331,36 +338,68 @@ def _member_claim_history(
     covered_ids = {owner_id, *[str(value) for value in owner.get("dependents", [])]}
     start = str(policy.get("policy_holder", {}).get("policy_start_date", "0001-01-01"))
     end = str(policy.get("policy_holder", {}).get("policy_end_date", "9999-12-31"))
-    marks = ",".join("?" for _ in covered_ids)
     with _connect() as connection:
         rows = connection.execute(
-            f"SELECT id, treatment_date, state, decision, approved_amount_paise FROM claims WHERE id<>? AND member_id IN ({marks}) AND treatment_date BETWEEN ? AND ? ORDER BY created_at",
-            (claim_id, *sorted(covered_ids), start, end),
+            """SELECT id, treatment_date, state, decision, approved_amount_paise
+               FROM claims WHERE id<>? AND member_id=? AND treatment_date BETWEEN ? AND ?
+                 AND state='DECIDED' AND decision IN ('APPROVED', 'PARTIAL')
+                 AND approved_amount_paise>0 ORDER BY created_at""",
+            (claim_id, member_id, start, end),
         ).fetchall()
     history = [{"date": row["treatment_date"]} for row in rows if row["treatment_date"]]
     # The prototype has adjudication records but no insurer remittance feed.
     # Approved amounts are therefore the best available consumed-benefit proxy;
     # the trace labels them as adjudicated amounts rather than paid reimbursements.
-    approved_ytd_paise = sum(
-        int(row["approved_amount_paise"] or 0)
-        for row in rows
-        if row["state"] == "DECIDED" and row["decision"] in {"APPROVED", "PARTIAL"}
-    )
+    marks = ",".join("?" for _ in covered_ids)
+    with _connect() as connection:
+        benefit_rows = connection.execute(
+            f"""SELECT approved_amount_paise FROM claims WHERE id<>? AND member_id IN ({marks})
+                 AND treatment_date BETWEEN ? AND ? AND state='DECIDED'
+                 AND decision IN ('APPROVED', 'PARTIAL')""",
+            (claim_id, *sorted(covered_ids), start, end),
+        ).fetchall()
+    approved_ytd_paise = sum(int(row["approved_amount_paise"] or 0) for row in benefit_rows)
     return history, approved_ytd_paise
 
 
+def _bill_fingerprints(request_data: dict[str, Any], inspected_documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Stable evidence keys for reprinted bills; all four facts must be present."""
+    fingerprints: list[dict[str, Any]] = []
+    for document in inspected_documents:
+        if not str(document.get("actual_type") or document.get("doc_type") or "").upper().endswith("BILL"):
+            continue
+        fields = document.get("content") or document.get("fields") or {}
+        bill_number = re.sub(r"[^a-z0-9]", "", str(fields.get("bill_number") or "").casefold())
+        provider = re.sub(r"[^a-z0-9]", "", str(fields.get("hospital_name") or "").casefold())
+        total = fields.get("total")
+        if not bill_number or not provider or total is None:
+            continue
+        try:
+            total_paise = int(Decimal(str(total)) * 100)
+        except (InvalidOperation, ValueError):
+            continue
+        fingerprints.append({
+            "bill_number": bill_number, "provider": provider, "total_paise": total_paise,
+            "treatment_date": str(request_data.get("treatment_date") or ""),
+        })
+    return fingerprints
+
+
+def _save_bill_fingerprints(claim_id: str, fingerprints: list[dict[str, Any]]) -> None:
+    with _connect() as connection:
+        connection.execute("UPDATE claims SET bill_fingerprints_json=? WHERE id=?", (json.dumps(fingerprints), claim_id))
+
+
 def _duplicate_bill_hits(
-    claim_id: str, inspected_documents: list[dict[str, Any]]
+    claim_id: str, request_data: dict[str, Any], inspected_documents: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    """Find previously submitted byte-identical bills without treating reused prescriptions as duplicates."""
+    """Find paid exact-file or evidenced logical bill duplicates."""
     bill_hashes = {
         str(document.get("sha256"))
         for document in inspected_documents
         if str(document.get("actual_type") or document.get("doc_type") or "").upper().endswith("BILL")
         and document.get("sha256")
     }
-    if not bill_hashes:
-        return []
     hits: list[dict[str, Any]] = []
     with _connect() as connection:
         for digest in sorted(bill_hashes):
@@ -376,6 +415,21 @@ def _duplicate_bill_hits(
             ).fetchall()
             if rows:
                 hits.append({"previous_claim_ids": [row["claim_id"] for row in rows]})
+        fingerprints = _bill_fingerprints(request_data, inspected_documents)
+        if fingerprints:
+            rows = connection.execute(
+                """SELECT id, bill_fingerprints_json FROM claims
+                   WHERE id<>? AND state='DECIDED' AND decision IN ('APPROVED', 'PARTIAL')
+                     AND approved_amount_paise>0""",
+                (claim_id,),
+            ).fetchall()
+            logical_ids = []
+            for row in rows:
+                saved = json.loads(row["bill_fingerprints_json"] or "[]")
+                if any(item in saved for item in fingerprints):
+                    logical_ids.append(row["id"])
+            if logical_ids:
+                hits.append({"previous_claim_ids": logical_ids, "match_type": "logical_bill_fingerprint"})
     return hits
 
 
@@ -386,11 +440,11 @@ def _duplicate_review_result(hits: list[dict[str, Any]], metrics: dict[str, Any]
         "decision": "MANUAL_REVIEW",
         "approved_amount": 0,
         "approved_amount_paise": 0,
-        "reasons": [{"code": "DUPLICATE_BILL", "message": "An identical bill file was submitted on another claim. Verify that the same expense has not already been reimbursed."}],
+        "reasons": [{"code": "DUPLICATE_BILL", "message": "A previously paid claim has an identical bill file or matching bill number, provider, treatment date, and amount. Verify that the expense has not already been reimbursed."}],
         "correction_requests": [],
         "confidence_score": 0.2,
         "ledger": [],
-        "trace": [{"stage": "duplicate_check", "rule_id": "previous_bill_hash", "status": "FLAG", "evidence": {"matching_claim_count": len(prior_ids), "matching_claim_ids": prior_ids}, "details": "Exact file match; a human must verify whether this is a repeat expense."}],
+        "trace": [{"stage": "duplicate_check", "rule_id": "previous_bill_match", "status": "FLAG", "evidence": {"matching_claim_count": len(prior_ids), "matching_claim_ids": prior_ids}, "details": "Exact-file and complete logical-bill fingerprints are checked against paid claims."}],
         "document_metrics": metrics,
     }
 
@@ -423,6 +477,7 @@ def process_claim(claim_id: str) -> None:
             request_data["claim_category"],
             _member_name(policy, request_data["member_id"]),
             policy,
+            allowed_patient_names=_covered_member_names(policy, request_data["member_id"]),
         )
         # OCR page text is available only during this worker call. It is removed
         # from the inspection before metrics, events, or results are persisted.
@@ -482,7 +537,9 @@ def process_claim(claim_id: str) -> None:
                 result = _correction_result(issues, metrics, gemini_trace)
                 _set_state(claim_id, "DOCUMENT_CORRECTION_REQUIRED", result=result, detail={"issue_count": len(issues)})
             return
-        duplicate_hits = _duplicate_bill_hits(claim_id, inspection.get("documents", []))
+        fingerprints = _bill_fingerprints(request_data, inspection.get("documents", []))
+        _save_bill_fingerprints(claim_id, fingerprints)
+        duplicate_hits = _duplicate_bill_hits(claim_id, request_data, inspection.get("documents", []))
         if duplicate_hits:
             result = _duplicate_review_result(duplicate_hits, inspection.get("metrics", {}))
             _set_state(
@@ -560,6 +617,7 @@ async def submit_claim(
     claim_category: str = Form(...),
     treatment_date: str = Form(...),
     claimed_amount: str = Form(...),
+    pre_authorization_obtained: str | None = Form(None),
 ) -> JSONResponse:
     member_id = member_id.strip().upper()
     claim_category = claim_category.strip().upper()
@@ -608,7 +666,10 @@ async def submit_claim(
         "claim_category": claim_category,
         "treatment_date": treatment_date,
         "claimed_amount": float(Decimal(amount_paise) / 100),
+        "submission_date": now[:10],
     }
+    if pre_authorization_obtained in {"true", "false"}:
+        request_data["pre_authorization"] = {"obtained": pre_authorization_obtained == "true"}
     with _connect() as connection:
         connection.execute(
             "INSERT INTO claims (id, created_at, updated_at, state, member_id, treatment_date, request_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -629,6 +690,35 @@ def get_claim(claim_id: str) -> dict[str, Any]:
     if claim is None:
         raise HTTPException(status_code=404, detail="Claim not found")
     return claim
+
+
+@app.post("/api/claims/{claim_id}/review-decision")
+def resolve_manual_review(claim_id: str, disposition: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Record a local reviewer disposition for a claim that was safely escalated."""
+    claim = _load_claim(claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    if claim["state"] != "MANUAL_REVIEW":
+        raise HTTPException(status_code=409, detail="Only a manual-review claim can receive a reviewer disposition.")
+    decision = str(disposition.get("decision") or "").upper()
+    if decision not in {"APPROVED", "PARTIAL", "REJECTED"}:
+        raise _input_error("Reviewer decision must be APPROVED, PARTIAL, or REJECTED.")
+    try:
+        amount = Decimal(str(disposition.get("approved_amount", 0)))
+        if not amount.is_finite() or amount * 100 != (amount * 100).to_integral_value():
+            raise InvalidOperation
+        amount_paise = int(amount * 100)
+    except (InvalidOperation, ValueError) as exc:
+        raise _input_error("Reviewer approved amount must be a valid amount.") from exc
+    claimed_paise = int(Decimal(str(claim["request"]["claimed_amount"])) * 100)
+    if amount_paise < 0 or amount_paise > claimed_paise or (decision == "REJECTED" and amount_paise != 0) or (decision != "REJECTED" and amount_paise <= 0):
+        raise _input_error("Reviewer amount is inconsistent with the requested decision or claim amount.")
+    result = dict(claim["result"] or {})
+    result.update({"state": "DECIDED", "decision": decision, "approved_amount_paise": amount_paise, "approved_amount": amount_paise / 100})
+    result.setdefault("reasons", []).append({"code": "REVIEWER_DISPOSITION", "message": "A reviewer recorded the final decision after inspecting the escalated claim."})
+    result.setdefault("trace", []).append({"stage": "manual_review", "rule_id": "reviewer_disposition", "status": decision, "evidence": {"approved_amount_paise": amount_paise}})
+    _set_state(claim_id, "DECIDED", result=result, detail={"decision": decision, "source": "reviewer_disposition"})
+    return _load_claim(claim_id) or result
 
 
 @app.get("/api/claims")

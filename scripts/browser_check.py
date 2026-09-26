@@ -20,6 +20,7 @@ def _fill(page: Page, documents: list[Path]) -> dict:
     page.locator('select[name="claim_category"]').select_option("CONSULTATION")
     page.locator('input[name="treatment_date"]').fill("2024-11-01")
     page.locator('input[name="claimed_amount"]').fill("1500")
+    page.locator('select[name="pre_authorization_obtained"]').select_option("")
     page.locator('input[name="files"]').set_input_files([str(path) for path in documents])
     page.locator('#submit-button').click()
     page.wait_for_url("**/claims/*")
@@ -92,6 +93,17 @@ def main() -> None:
         assert page.locator("#ledger-total").is_hidden()
         page.screenshot(path=str(SCREENSHOTS / "duplicate-review.png"), full_page=True)
 
+        page.goto(f"{BASE_URL}/ops", wait_until="networkidle")
+        page.locator(".worklist-row").filter(has_text="MANUAL REVIEW").click()
+        page.locator("#ops-review-form").wait_for(state="visible")
+        page.locator("#ops-review-decision").select_option("REJECTED")
+        page.locator("#ops-review-amount").fill("0")
+        page.locator("#ops-review-form button[type='submit']").click()
+        page.locator("#ops-review-action").wait_for(state="hidden")
+        reviewed = page.request.get(f"{BASE_URL}/api/claims/{duplicate['id']}").json()
+        assert reviewed["state"] == "DECIDED"
+        assert reviewed["result"]["decision"] == "REJECTED"
+
         assert not errors, errors
         browser.close()
 
@@ -101,6 +113,7 @@ def main() -> None:
                 "approval": {"id": approval["id"], "decision": approval["result"]["decision"], "approved_amount": approval["result"]["approved_amount"]},
                 "correction": {"id": correction["id"], "decision": correction["result"]["decision"], "state": correction["state"]},
                 "duplicate_bill": {"id": duplicate["id"], "decision": duplicate["result"]["decision"], "reason": duplicate["result"]["reasons"][0]["code"]},
+                "reviewer_disposition": {"id": reviewed["id"], "decision": reviewed["result"]["decision"]},
                 "browser_errors": errors,
             },
             indent=2,

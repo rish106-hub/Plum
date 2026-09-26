@@ -11,19 +11,19 @@ These are structured fixtures with no actual image or PDF bytes. A pass establis
 | TC003 | None | None | None | Yes |
 | TC004 | APPROVED | APPROVED | 1350 | Yes |
 | TC005 | REJECTED | REJECTED | 0 | Yes |
-| TC006 | PARTIAL | PARTIAL | 8000 | Yes |
+| TC006 | REJECTED | REJECTED | 0 | Yes |
 | TC007 | REJECTED | REJECTED | 0 | Yes |
 | TC008 | REJECTED | REJECTED | 0 | Yes |
 | TC009 | MANUAL_REVIEW | MANUAL_REVIEW | 0 | Yes |
-| TC010 | APPROVED | APPROVED | 3240 | Yes |
+| TC010 | APPROVED | APPROVED | 1440 | Yes |
 | TC011 | APPROVED | APPROVED | 4000 | Yes |
 | TC012 | REJECTED | REJECTED | 0 | Yes |
 
 ## Interpretation and limits
 
-- TC006 uses the dental sub-limit over the general claim cap and accepts a bill without a dental report, solely as a documented fixture compatibility interpretation. A real case with this policy conflict routes to review.
-- TC010 treats the consultation sub-limit as applying to the consultation-fee line and applies network discount before co-pay.
-- The fixtures contain no submission timestamp. The 30-day deadline is `NOT_EVALUATED`, rather than compared with today's date.
+- Policy limits apply uniformly to fixture and upload payloads. TC006 is rejected because its claimed amount exceeds the configured global per-claim limit; the dental report remains optional in the document matrix.
+- TC010 applies the consultation category sub-limit to all eligible lines, then applies the network discount before co-pay.
+- Fixture payloads without a submission timestamp retain `NOT_EVALUATED`; uploaded claims use their persisted creation date for the 30-day deadline check.
 - The confidence values are evidence-quality scores, not calibrated probabilities. TC011's simulated optional failure lowers confidence and is recorded in the trace.
 - Provider accuracy, handwriting, multilingual extraction, and image quality require a separately labelled image/PDF set. The fixture results make no claim about those capabilities.
 
@@ -473,8 +473,7 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 1500,
-        "limit": 5000,
-        "fixture_compatibility": false
+        "limit": 5000
       }
     },
     {
@@ -598,10 +597,14 @@ Explicit behavior checks: **Passed**.
     {
       "code": "WAITING_PERIOD",
       "message": "The diabetes waiting period ends on 2024-11-30; treatment was on 2024-10-15."
+    },
+    {
+      "code": "ANNUAL_USAGE_UNKNOWN",
+      "message": "Annual OPD usage is unavailable. A reviewer must verify the remaining benefit before payment."
     }
   ],
   "correction_requests": [],
-  "confidence_score": 0.96,
+  "confidence_score": 0.84,
   "trace": [
     {
       "stage": "document_gate",
@@ -836,8 +839,7 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 3000,
-        "limit": 5000,
-        "fixture_compatibility": false
+        "limit": 5000
       }
     },
     {
@@ -937,10 +939,14 @@ Explicit behavior checks: **Passed**.
 ```json
 {
   "state": "DECIDED",
-  "decision": "PARTIAL",
-  "approved_amount": 8000,
-  "approved_amount_paise": 800000,
+  "decision": "REJECTED",
+  "approved_amount": 0,
+  "approved_amount_paise": 0,
   "reasons": [
+    {
+      "code": "PER_CLAIM_EXCEEDED",
+      "message": "Claimed amount ₹12000 exceeds the per-claim limit of ₹5000."
+    },
     {
       "code": "EXCLUDED_PROCEDURE",
       "message": "Teeth Whitening is excluded; ₹4000 removed."
@@ -1163,36 +1169,24 @@ Explicit behavior checks: **Passed**.
     {
       "stage": "policy",
       "rule_id": "per_claim_limit",
-      "status": "ASSUMPTION",
+      "status": "FAIL",
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 12000,
-        "limit": 5000,
-        "fixture_compatibility": true
-      },
-      "details": "Fixture compatibility assumption: global per-claim limit is not applied for this case; insurer confirmation required."
-    },
-    {
-      "stage": "policy",
-      "rule_id": "annual_opd_limit",
-      "status": "NOT_EVALUATED",
-      "policy_ref": "coverage.annual_opd_limit",
-      "evidence": {
-        "annual_limit": 50000,
-        "ytd_claims_amount": null,
-        "ytd_source": "fixture_or_supplied_history",
-        "remaining": null
+        "limit": 5000
       }
     },
     {
       "stage": "policy",
-      "rule_id": "additional_document_requirement",
-      "status": "ASSUMPTION",
-      "policy_ref": "opd_categories.dental.required_additional_document",
+      "rule_id": "annual_opd_limit",
+      "status": "PASS",
+      "policy_ref": "coverage.annual_opd_limit",
       "evidence": {
-        "required_document": "DENTAL_REPORT"
-      },
-      "details": "Fixture compatibility assumption: category requirement conflicts with the document matrix; insurer confirmation required."
+        "annual_limit": 50000,
+        "ytd_claims_amount": 0,
+        "ytd_source": "fixture_or_supplied_history",
+        "remaining": 50000
+      }
     },
     {
       "stage": "policy",
@@ -1222,10 +1216,10 @@ Explicit behavior checks: **Passed**.
     {
       "stage": "decision",
       "rule_id": "outcome",
-      "status": "PARTIAL",
+      "status": "REJECTED",
       "evidence": {
-        "primary_reason": null,
-        "approved_amount_paise": 800000
+        "primary_reason": "PER_CLAIM_EXCEEDED",
+        "approved_amount_paise": 0
       }
     }
   ],
@@ -1503,8 +1497,8 @@ Explicit behavior checks: **Passed**.
           }
         ],
         "claimed_amount": 15000,
-        "pre_authorization": null,
-        "status_source": "missing_or_unconfirmed"
+        "pre_authorization": false,
+        "status_source": "claim_evidence"
       }
     },
     {
@@ -1543,20 +1537,19 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 15000,
-        "limit": 5000,
-        "fixture_compatibility": false
+        "limit": 5000
       }
     },
     {
       "stage": "policy",
       "rule_id": "annual_opd_limit",
-      "status": "NOT_EVALUATED",
+      "status": "PASS",
       "policy_ref": "coverage.annual_opd_limit",
       "evidence": {
         "annual_limit": 50000,
-        "ytd_claims_amount": null,
+        "ytd_claims_amount": 0,
         "ytd_source": "fixture_or_supplied_history",
-        "remaining": null
+        "remaining": 50000
       }
     },
     {
@@ -1883,8 +1876,7 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 7500,
-        "limit": 5000,
-        "fixture_compatibility": false
+        "limit": 5000
       }
     },
     {
@@ -2003,10 +1995,14 @@ Explicit behavior checks: **Passed**.
     {
       "code": "SAME_DAY_CLAIMS",
       "message": "This is claim 4 on the same treatment date; policy review threshold is 2. Manual review is required."
+    },
+    {
+      "code": "ANNUAL_USAGE_UNKNOWN",
+      "message": "Annual OPD usage is unavailable. A reviewer must verify the remaining benefit before payment."
     }
   ],
   "correction_requests": [],
-  "confidence_score": 0.92,
+  "confidence_score": 0.8,
   "trace": [
     {
       "stage": "document_gate",
@@ -2235,8 +2231,7 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 4800,
-        "limit": 5000,
-        "fixture_compatibility": false
+        "limit": 5000
       }
     },
     {
@@ -2337,8 +2332,8 @@ Explicit behavior checks: **Passed**.
 {
   "state": "DECIDED",
   "decision": "APPROVED",
-  "approved_amount": 3240,
-  "approved_amount_paise": 324000,
+  "approved_amount": 1440,
+  "approved_amount_paise": 144000,
   "reasons": [
     {
       "code": "COVERED",
@@ -2573,8 +2568,7 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 4500,
-        "limit": 5000,
-        "fixture_compatibility": false
+        "limit": 5000
       }
     },
     {
@@ -2592,27 +2586,25 @@ Explicit behavior checks: **Passed**.
     {
       "stage": "policy",
       "rule_id": "category_sub_limit",
-      "status": "ASSUMPTION",
+      "status": "LIMITED",
       "policy_ref": "opd_categories.consultation.sub_limit",
       "evidence": {
-        "matching_line_amount": 1500,
-        "sub_limit": 2000,
-        "matching_phrase": "consultation fee"
-      },
-      "details": "Fixture compatibility assumption: sub-limit applies only to explicitly matched line items; insurer confirmation required."
+        "eligible_before_cap": 4500,
+        "sub_limit": 2000
+      }
     },
     {
       "stage": "pricing",
       "rule_id": "payable_amount",
       "status": "CALCULATED",
       "evidence": {
-        "eligible_paise": 450000,
+        "eligible_paise": 200000,
         "network_hospital": true,
-        "network_discount_paise": 90000,
-        "copay_paise": 36000,
+        "network_discount_paise": 40000,
+        "copay_paise": 16000,
         "branded_basis_paise": 0,
         "branded_copay_paise": 0,
-        "payable_paise": 324000
+        "payable_paise": 144000
       },
       "details": "Network discount applied before co-pay."
     },
@@ -2622,7 +2614,7 @@ Explicit behavior checks: **Passed**.
       "status": "APPROVED",
       "evidence": {
         "primary_reason": null,
-        "approved_amount_paise": 324000
+        "approved_amount_paise": 144000
       }
     }
   ],
@@ -2653,20 +2645,27 @@ Explicit behavior checks: **Passed**.
     },
     {
       "kind": "adjustment",
+      "description": "Category sub-limit",
+      "amount_paise": -250000,
+      "amount": -2500,
+      "policy_ref": "opd_categories.consultation.sub_limit"
+    },
+    {
+      "kind": "adjustment",
       "description": "Network discount",
-      "amount_paise": -90000,
-      "amount": -900,
+      "amount_paise": -40000,
+      "amount": -400,
       "policy_ref": "opd_categories.consultation.network_discount_percent",
-      "basis_paise": 450000,
+      "basis_paise": 200000,
       "percent": 20
     },
     {
       "kind": "adjustment",
       "description": "Member co-pay",
-      "amount_paise": -36000,
-      "amount": -360,
+      "amount_paise": -16000,
+      "amount": -160,
       "policy_ref": "opd_categories.consultation.copay_percent",
-      "basis_paise": 360000,
+      "basis_paise": 160000,
       "percent": 10
     }
   ]
@@ -2922,20 +2921,19 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 4000,
-        "limit": 5000,
-        "fixture_compatibility": false
+        "limit": 5000
       }
     },
     {
       "stage": "policy",
       "rule_id": "annual_opd_limit",
-      "status": "NOT_EVALUATED",
+      "status": "PASS",
       "policy_ref": "coverage.annual_opd_limit",
       "evidence": {
         "annual_limit": 50000,
-        "ytd_claims_amount": null,
+        "ytd_claims_amount": 0,
         "ytd_source": "fixture_or_supplied_history",
-        "remaining": null
+        "remaining": 50000
       }
     },
     {
@@ -3070,10 +3068,18 @@ Explicit behavior checks: **Passed**.
     {
       "code": "PER_CLAIM_EXCEEDED",
       "message": "Claimed amount ₹8000 exceeds the per-claim limit of ₹5000."
+    },
+    {
+      "code": "ANNUAL_USAGE_UNKNOWN",
+      "message": "Annual OPD usage is unavailable. A reviewer must verify the remaining benefit before payment."
+    },
+    {
+      "code": "EXCLUDED_PROCEDURE",
+      "message": "Bariatric Consultation is excluded; ₹3000 removed."
     }
   ],
   "correction_requests": [],
-  "confidence_score": 0.92,
+  "confidence_score": 0.8,
   "trace": [
     {
       "stage": "document_gate",
@@ -3305,8 +3311,7 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 8000,
-        "limit": 5000,
-        "fixture_compatibility": false
+        "limit": 5000
       }
     },
     {
@@ -3327,7 +3332,7 @@ Explicit behavior checks: **Passed**.
       "status": "LIMITED",
       "policy_ref": "opd_categories.consultation.sub_limit",
       "evidence": {
-        "eligible_before_cap": 8000,
+        "eligible_before_cap": 5000,
         "sub_limit": 2000
       }
     },
@@ -3363,11 +3368,11 @@ Explicit behavior checks: **Passed**.
       "source_document": "F024",
       "amount_paise": 300000,
       "amount": 3000,
-      "status": "ELIGIBLE",
-      "reason_code": null,
+      "status": "EXCLUDED",
+      "reason_code": "EXCLUDED_PROCEDURE",
       "brand_status": null,
       "brand_evidence": null,
-      "policy_ref": "opd_categories.consultation.covered"
+      "policy_ref": "opd_categories.consultation.excluded_procedures"
     },
     {
       "kind": "line_item",
@@ -3384,8 +3389,8 @@ Explicit behavior checks: **Passed**.
     {
       "kind": "adjustment",
       "description": "Category sub-limit",
-      "amount_paise": -600000,
-      "amount": -6000,
+      "amount_paise": -300000,
+      "amount": -3000,
       "policy_ref": "opd_categories.consultation.sub_limit"
     },
     {

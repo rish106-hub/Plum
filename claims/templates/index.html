@@ -49,6 +49,13 @@
             </label>
             <label class="field"><span>Treatment date</span><input type="date" name="treatment_date" required></label>
             <label class="field"><span>Claimed amount <span class="field__unit">INR</span></span><input type="number" name="claimed_amount" min="0.01" max="999999.99" step="0.01" placeholder="0.00" required></label>
+            <label class="field"><span>Pre-authorization</span>
+              <select name="pre_authorization_obtained">
+                <option value="">Not required or not known</option>
+                <option value="true">Obtained</option>
+                <option value="false">Required but not obtained</option>
+              </select>
+            </label>
           </div>
           <p class="field-note">Prior claims for this policy year are included automatically from the claim history.</p>
 

@@ -218,6 +218,7 @@ def test_valid_candidate_recomputes_deterministic_decision(tmp_path, monkeypatch
     transport = FakeGeminiTransport(_successful_bill_response())
     _wire_fake_gemini(monkeypatch, transport)
     _wire_inspection(monkeypatch)
+    monkeypatch.setattr(web, "_now", lambda: "2024-11-02T00:00:00+00:00")
     source_text = "HOSPITAL BILL Patient: Rajesh Kumar Date: 01-Nov-2024 Consultation Fee 1500.00 Grand Total: 1500.00"
     with _client(tmp_path, monkeypatch) as client:
         response = _submit(client, _text_pdf(source_text))
@@ -227,6 +228,7 @@ def test_valid_candidate_recomputes_deterministic_decision(tmp_path, monkeypatch
     assert saved["result"]["decision"] == "APPROVED"
     assert saved["result"]["approved_amount"] == 1350
     assert saved["request"]["claimed_amount"] == 1500.0
+    assert saved["request"]["submission_date"] == "2024-11-02"
     assert saved["request"]["member_id"] == "EMP001"
     assert saved["result"]["trace"][0]["stage"] == "document_evidence"
     assert saved["result"]["trace"][1]["status"] == "CANDIDATES_APPLIED"
@@ -305,7 +307,7 @@ def test_upload_correction_is_persisted_without_decision(tmp_path, monkeypatch):
 def test_upload_decision_and_trace_are_persisted(tmp_path, monkeypatch):
     captured = {}
 
-    def inspect(files, category, member_name, policy):
+    def inspect(files, category, member_name, policy, **_kwargs):
         captured["bytes"] = files[0]["data"]
         captured["name"] = member_name
         return {"documents": [{"actual_type": "HOSPITAL_BILL", "content": {"line_items": []}}], "issues": [], "metrics": {"pages": 1}}
@@ -387,6 +389,41 @@ def test_identical_bill_on_another_claim_routes_to_review(tmp_path, monkeypatch)
         assert saved["result"]["reasons"][0]["code"] == "DUPLICATE_BILL"
         assert saved["result"]["trace"][0]["evidence"]["matching_claim_ids"] == [first["id"]]
         assert calls["adjudications"] == 1
+
+
+def test_logical_bill_duplicate_routes_to_review(tmp_path, monkeypatch):
+    calls = {"count": 0}
+
+    def inspect(files, *_args, **_kwargs):
+        return {"documents": [{
+            "file_id": "UPLOAD-1", "sha256": hashlib.sha256(files[0]["data"]).hexdigest(),
+            "actual_type": "HOSPITAL_BILL", "quality": "GOOD",
+            "content": {"bill_number": "INV-102", "hospital_name": "City Clinic", "total": 1500, "line_items": [{"description": "Consultation", "amount": 1500}]},
+        }], "issues": [], "metrics": {}}
+
+    def decide(*_args):
+        calls["count"] += 1
+        return _mock_decision()
+
+    monkeypatch.setattr(web, "process_uploads", inspect)
+    monkeypatch.setattr(web, "evaluate_claim", decide)
+    with _client(tmp_path, monkeypatch) as client:
+        first = _submit(client, data=PDF + b" original").json()
+        assert client.get(f"/api/claims/{first['id']}").json()["result"]["decision"] == "APPROVED"
+        second = _submit(client, data=PDF + b" reprint").json()
+        saved = client.get(f"/api/claims/{second['id']}").json()
+    assert saved["result"]["decision"] == "MANUAL_REVIEW"
+    assert calls["count"] == 1
+
+
+def test_reviewer_can_resolve_manual_review(tmp_path, monkeypatch):
+    monkeypatch.setattr(web, "process_uploads", lambda *_args, **_kwargs: {"documents": [], "issues": [{"code": "EXTRACTION_UNAVAILABLE", "file_name": "claim.pdf", "message": "Unavailable"}], "metrics": {}})
+    with _client(tmp_path, monkeypatch) as client:
+        claim_id = _submit(client).json()["id"]
+        response = client.post(f"/api/claims/{claim_id}/review-decision", json={"decision": "APPROVED", "approved_amount": 1000})
+    assert response.status_code == 200
+    assert response.json()["state"] == "DECIDED"
+    assert response.json()["result"]["decision"] == "APPROVED"
 
 
 def test_duplicate_hash_of_nonpayable_claim_does_not_block_later_claim(tmp_path, monkeypatch):
@@ -484,7 +521,7 @@ def test_dependent_history_uses_primary_member_family_pool(tmp_path, monkeypatch
         assert client.get(f"/api/claims/{dependent['id']}").json()["result"]["decision"] == "APPROVED"
     assert observed[1]["member_id"] == "DEP001"
     assert observed[1]["ytd_claims_amount"] == 1350
-    assert observed[1]["claims_history"] == [{"date": "2024-11-01"}]
+    assert observed[1]["claims_history"] == []
 
 
 def test_older_local_database_is_migrated_and_history_is_backfilled(tmp_path, monkeypatch):

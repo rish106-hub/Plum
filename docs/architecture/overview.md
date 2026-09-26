@@ -40,7 +40,7 @@ At current published list prices, [Sarvam Document AI](https://www.sarvam.ai/api
 
 ## Rule interpretation and trace
 
-The supplied policy and expected fixtures disagree in material places. `PLAN.md` records every compatibility interpretation, including TC006's dental ₹8,000 amount despite the global ₹5,000 cap and the optional/required dental report conflict. The evaluator emits these as trace assumptions. In an insurer integration, those rules require authoritative clarification before automatic payment.
+Policy limits apply identically to fixtures and uploaded claims. TC006 is rejected because its requested amount exceeds the configured global per-claim limit; the dental report is optional because the document matrix is authoritative. In an insurer integration, policy ownership must still confirm this interpretation before automatic payment.
 
 Each trace event records a stage, rule ID, status, policy reference and evidence or explanation. `NOT_EVALUATED` is distinct from `PASS`; for example, the 30-day submission deadline cannot be checked when a fixture has no submission timestamp. Exclusion and waiting period can dominate a financial cap as the primary reason while the trace still shows the other checks. Line items and adjustments use integer paise and explicit order: eligible items, caps, network discount, then co-pay. A separate confidence score records evidence quality and degraded processing. It is not a calibrated probability until measured against labelled outcomes.
 

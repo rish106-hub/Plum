@@ -434,6 +434,12 @@
     renderTrace(result.trace);
     renderLedger(result);
     renderFilesAndEvents(claim);
+    const action = byId("ops-review-action");
+    action.hidden = claim.state !== "MANUAL_REVIEW";
+    if (!action.hidden) {
+      byId("ops-review-amount").value = "";
+      byId("ops-review-error").hidden = true;
+    }
   }
 
   async function selectClaim(id) {
@@ -506,5 +512,33 @@
   });
 
   byId("ops-retry").addEventListener("click", loadClaims);
+  byId("ops-review-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const error = byId("ops-review-error");
+    error.hidden = true;
+    if (!state.selectedId) return;
+    const decision = byId("ops-review-decision").value;
+    const approvedAmount = Number(byId("ops-review-amount").value);
+    if (!Number.isFinite(approvedAmount) || approvedAmount < 0 || (decision !== "REJECTED" && approvedAmount <= 0)) {
+      error.textContent = "Enter a valid approved amount for the selected decision.";
+      error.hidden = false;
+      return;
+    }
+    try {
+      const response = await fetch(`/api/claims/${encodeURIComponent(state.selectedId)}/review-decision`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, approved_amount: approvedAmount }),
+      });
+      if (!response.ok) throw new Error(await response.json().then((body) => body.detail || "Decision could not be saved."));
+      const claim = await response.json();
+      state.claims = state.claims.map((item) => item.id === claim.id ? { ...item, state: claim.state, decision: claim.result?.decision } : item);
+      updateMetrics();
+      renderList();
+      renderDetail(claim);
+    } catch (cause) {
+      error.textContent = cause.message || "Decision could not be saved.";
+      error.hidden = false;
+    }
+  });
   loadClaims();
 })();
