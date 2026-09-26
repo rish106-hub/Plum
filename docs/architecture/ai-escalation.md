@@ -2,7 +2,7 @@
 
 ## Authority and purpose
 
-Gemini is an optional document evidence resolver. It can propose a document type or a value that the local parser could not confidently obtain. It cannot decide coverage, interpret a policy clause, change claim intake fields, or set an approved/payable amount. The caller must pass only validated evidence candidates to the deterministic claim evaluator; that evaluator recomputes limits, co-pay, discounts, and the final outcome from `policy_terms.json`.
+Gemini is an optional document evidence resolver. It can propose a document type or a value that the local parser could not confidently obtain. It cannot decide coverage, interpret a policy clause, change claim intake fields, or set an approved/payable amount. The caller must pass only validated evidence candidates to the deterministic claim evaluator; that evaluator recomputes limits, co-pay, discounts, and the final outcome from the canonical policy config that `claims.policy` builds from the unmodified `policy_terms.json`.
 
 This boundary follows an evidence-first claims flow: validate intake, confirm the evidence set, extract facts with page-level provenance, reconcile facts, apply versioned deterministic rules, then route only unresolved exceptions. Structured JSON constrains response shape; it does not prove factual accuracy. Every proposed fact is independently checked against OCR text, page bounds, identity roster, date parsing, positive integer paise, and bill arithmetic before it is returned as a candidate.
 

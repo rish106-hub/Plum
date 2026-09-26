@@ -68,7 +68,7 @@ There are two separate reports, and neither one stands in for the other.
 | bill_phone_photo_skewed | 6° skew, shadow, blur, noise | extract (re-upload acceptable) |
 | bill_multipage_scan | 2-page scanned PDF, total on page 2 | extract, aggregate items |
 | bill_cropped_partial | torn below the second item | re-upload; any total is hallucinated |
-| bill_struck_correction | struck amounts with handwritten corrections | abstain; 1200/1500 forbidden |
+| bill_struck_correction | struck amounts with handwritten corrections | abstain; reading 1200 or 1500 is forbidden |
 | bill_low_contrast | faded photocopy that passes the local gate | re-upload preferred |
 | blank_page | near-blank photo | re-upload (rejected locally) |
 | lab_report_scan | NABL lab report table | extract |

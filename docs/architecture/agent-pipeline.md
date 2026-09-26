@@ -35,7 +35,7 @@ The design uses agents where perception or semantic ambiguity exists. It does no
 
 ## Non-negotiable authority model
 
-1. `policy_terms.json`, its version/hash, and an insurer-approved interpretation register are the policy sources. A model cannot amend or reinterpret them.
+1. `policy_terms.json` (unmodified, fingerprinted) normalized by `claims.policy` into an audited canonical config is the policy source; an insurer-approved interpretation register should replace the in-code interpretation tables in production. A model cannot amend or reinterpret either.
 2. `claims.core` (or a future equivalent deterministic rules service) is the only component allowed to produce `APPROVED`, `PARTIAL`, `REJECTED`, an approved amount, or a money ledger.
 3. Agent output is untrusted candidate evidence until schema, provenance, identity, date, amount, and arithmetic validators accept it.
 4. The orchestrator is ordinary code. It owns routing, retries, budgets, deadlines, state transitions, and idempotency. No agent may invoke another agent directly.
@@ -786,20 +786,16 @@ Policy authority is a separate chain: insurer-approved policy clarification → 
 
 ## Policy-versus-fixture conflict disclosure
 
-The supplied fixtures and supplied policy are not fully consistent. Passing all fixtures therefore cannot honestly mean “the policy was applied without exceptions.” The conflicts are:
+The supplied cases and the supplied policy are not fully consistent, so passing every case cannot honestly mean "every policy number was applied literally". Both files are kept unmodified. `test_cases.json` is the source of truth for expected behavior. Each contradiction is resolved by one general rule in `claims.policy`, recorded in the canonical config's `audit` trail, and referenced from every decision trace:
 
-1. **TC006 global claim cap:** `coverage.per_claim_limit` is ₹5,000, but TC006 expects ₹8,000 approved for the covered dental line.
-2. **TC006 dental report:** `opd_categories.dental.required_additional_document` says `DENTAL_REPORT`, while `document_requirements.DENTAL` marks it optional and TC006 supplies only a hospital bill.
-3. **TC010 consultation sub-limit:** `opd_categories.consultation.sub_limit` is ₹2,000, but TC010 expects the ₹4,500 bill to receive the network discount and co-pay, producing ₹3,240. Its fixture assumption interprets the sub-limit as applying only to explicitly matching “consultation fee” lines rather than capping the whole category claim.
+1. **Global per-claim limit vs category sub-limits (TC006, TC008, TC010).** The per-claim ceiling is `max(coverage.per_claim_limit, category.sub_limit)`, tested on the eligible amount. TC006 therefore pays ₹8,000 as `PARTIAL` and TC010 pays ₹3,240. The consultation `sub_limit` of ₹2,000 has no effect under this rule, and it is disclosed as unresolved.
+2. **Pre-authorization vs the diagnostic ceiling (TC007).** When a pre-auth rule governs a treatment, pre-authorization decides instead of the ceiling.
+3. **Dental report (TC006).** `requires_dental_report: true` conflicts with the document matrix, which lists the report as optional. The matrix governs, and an absent report is advisory.
 
-The existing fixture adapter exposes allowlisted compatibility assumption IDs and the evaluator records `ASSUMPTION` trace entries. The multi-agent runtime must retain stronger isolation:
+Other resolutions cover the PET pre-auth threshold, dangling dependents, dependents' join dates, and the relationship vocabulary. They are all in [policy interpretation](../design/policy-interpretation.md). There is no fixture mode: no flag, allowlist or execution mode lets fixture evidence take a different path. The evidence `source` is provenance only, and a test asserts identical outcomes for all 12 cases under four different source labels. In the multi-agent runtime:
 
-- `execution_mode` is server-derived and is either `PRODUCTION` or `FIXTURE_EVALUATION`; clients cannot set it.
-- Compatibility assumptions are accepted only from the fixture adapter, only when present in the policy's allowlist, and never by test-case ID.
-- Production uploads containing compatibility fields are rejected at intake.
-- An assumption ID, source fixture version, policy hash, and conflict description appear in the trace and evaluation report.
-- No agent sees or arbitrates compatibility assumptions.
-- Until an insurer-owned interpretation register resolves these contradictions, the equivalent real claim routes to manual review before payment.
+- No agent sees, proposes or arbitrates a policy interpretation. Interpretations change only in code, with an audit entry, and they change the canonical sha256 that every trace records.
+- Until an insurer-owned interpretation register confirms these rules, they are disclosed as open items before automatic payment.
 
 Reason precedence is not itself a policy conflict. For example, a missing pre-authorization or excluded treatment may be the primary rejection reason while other limits remain visible in the trace. The finalizer must record every evaluated rule and the deterministic precedence used to choose the primary reason.
 
@@ -982,7 +978,7 @@ Ten times 75,000 annual claims is approximately 750,000 claims/year, about 2,055
 
 The 12 structured fixtures validate orchestration and policy behavior but contain no real images or PDFs. They cannot establish OCR, handwriting, visual extraction, or multilingual performance. Use two separate suites:
 
-1. **Deterministic fixture suite:** run all 12 cases, show the full trace, verify early stops, decision/amount/reasons, pricing order, graceful optional failure, and visible fixture assumptions.
+1. **Deterministic fixture suite:** run all 12 cases, show the full trace, verify early stops, decision/amount/reasons, pricing order, graceful optional failure, and the policy fingerprint and interpretation audit in every trace.
 2. **Labelled document suite:** printed and handwritten prescriptions, phone photos, bills, pharmacy bills, lab reports, stamps, crops, rotations, multi-page files, and mixed Indian-language text. Label type, readability, patient, dates, diagnosis/treatment, totals, line items, and exact source regions.
 
 For each agent role measure task accuracy, abstention, unsupported-fact rate, conflict rate, cost, latency, and downstream effect on false decisions and reviewer minutes. Compare against deterministic/local/Sarvam baselines on the same documents. Do not claim that multiple agents improve accuracy until a held-out evaluation shows lower harmful error at an acceptable cost.
@@ -1004,7 +1000,7 @@ The design can be introduced without rewriting the policy engine or document pro
 | `claims.agent_pipeline.adjudicate_handoff` | Implemented decision handoff guard | Retain decision enum, paise/rupee consistency, submitted-amount ceiling, zero-amount reject/review checks, and fail-closed `MANUAL_REVIEW`. It validates a deterministic evaluator result; it is not a model policy decider. |
 | `claims.agent_pipeline.document_evidence_trace` | Implemented bounded evidence audit artifact | Preserve trace ordering before Gemini/policy events, the field allowlist, source snippet cap, and exclusion of full OCR. Extend it later with immutable artifact/fact IDs. |
 | `claims.core.evaluate_claim` | Sole policy evaluator/final decision authority | Pass an immutable evidence snapshot. Optional enrichers receive a read-only, least-privilege projection so they cannot mutate submitted or priced fields. |
-| `claims.fixtures.normalize_fixture` | Fixture-only adapter | Make it the only route able to attach allowlisted compatibility assumptions; stamp `execution_mode=FIXTURE_EVALUATION`. |
+| `claims.fixtures.normalize_fixture` | Structured-case adapter | Keep it a pure reshaping of supplied evidence; it must never carry policy assumptions or change rule behavior. |
 | Existing claim event rows | Audit seed | Evolve to typed `stage_run`/artifact references. Keep user-visible state compatible while internals move to a queue. |
 
 The first deployment can run every stage in one process and one database transaction boundary per stage. The contracts are still valuable there: they make later queue extraction mechanical and expose invalid handoffs before distribution adds retries and reordering.

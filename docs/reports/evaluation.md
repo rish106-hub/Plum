@@ -2,6 +2,10 @@
 
 Policy: `PLUM_GHI_2024`. Cases: 12. Expected decision, amount, reason, confidence, and explicitly checked behavior matched: **12/12**.
 
+- Policy file sha256: `1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce`
+- Canonical policy sha256: `1f1299e97fc82a28c0c02042b69e1daacf5e686fe81588975f81399f4c07bbf0`
+- Fixture file sha256: `4b9b9a047ec6a6479a81f6b2767f00f931920ad7bedb3f547abb54b771034e63`
+
 These are structured fixtures with no actual image or PDF bytes. A pass establishes policy-pipeline behavior, not OCR accuracy. The complete machine-readable outputs are also in [evaluation-data.json](evaluation-data.json).
 
 | Case | Expected | Produced | Amount | Match |
@@ -11,20 +15,21 @@ These are structured fixtures with no actual image or PDF bytes. A pass establis
 | TC003 | None | None | None | Yes |
 | TC004 | APPROVED | APPROVED | 1350 | Yes |
 | TC005 | REJECTED | REJECTED | 0 | Yes |
-| TC006 | REJECTED | REJECTED | 0 | Yes |
+| TC006 | PARTIAL | PARTIAL | 8000 | Yes |
 | TC007 | REJECTED | REJECTED | 0 | Yes |
 | TC008 | REJECTED | REJECTED | 0 | Yes |
 | TC009 | MANUAL_REVIEW | MANUAL_REVIEW | 0 | Yes |
-| TC010 | APPROVED | APPROVED | 1440 | Yes |
+| TC010 | APPROVED | APPROVED | 3240 | Yes |
 | TC011 | APPROVED | APPROVED | 4000 | Yes |
 | TC012 | REJECTED | REJECTED | 0 | Yes |
 
 ## Interpretation and limits
 
-- Policy limits apply uniformly to fixture and upload payloads. TC006 is rejected because its claimed amount exceeds the configured global per-claim limit; the dental report remains optional in the document matrix.
-- TC010 applies the consultation category sub-limit to all eligible lines, then applies the network discount before co-pay.
-- Fixture payloads without a submission timestamp retain `NOT_EVALUATED`; uploaded claims use their persisted creation date for the 30-day deadline check.
-- The confidence values are evidence-quality scores, not calibrated probabilities. TC011's simulated optional failure lowers confidence and is recorded in the trace.
+- The engine reads only the canonical policy produced by `claims.policy` from the unmodified policy file; every interpretation, merge, and conflict resolution is listed in the canonical config's `audit` array and referenced from the trace.
+- Per-claim ceiling: max(global `per_claim_limit`, category `sub_limit`), tested on the eligible amount after excluded lines are removed. A matched pre-authorization rule governs amounts above the ceiling instead.
+- Aggregate limits (annual OPD, sum insured, family floater, annual sessions) apply when utilisation accompanies the claim; otherwise they are `NOT_EVALUATED`, disclosed as advisory reasons on payable outcomes, and lower confidence.
+- The supplied cases carry no submission date, so the 30-day submission deadline is `NOT_EVALUATED` for them. Web intake stamps a server-side `submission_date` at intake (the real clock; `PLUM_DEMO_CLOCK` only when `PLUM_ENV` is development or test, traced as `clock/demo_clock`) and the deadline is checked against it.
+- The confidence values are a heuristic evidence-completeness rubric, not calibrated probabilities. Deductions apply only for unknowns material to the outcome reached. TC011's simulated optional failure lowers confidence and is recorded in the trace.
 - Provider accuracy, handwriting, multilingual extraction, and image quality require a separately labelled image/PDF set. The fixture results make no claim about those capabilities.
 
 ## Complete outputs and traces
@@ -54,6 +59,30 @@ Explicit behavior checks: **Passed**.
   "confidence_score": 0.9,
   "trace": [
     {
+      "stage": "configuration",
+      "rule_id": "policy_source",
+      "status": "LOADED",
+      "policy_ref": "policy",
+      "evidence": {
+        "policy_id": "PLUM_GHI_2024",
+        "schema_version": "plum.canonical_policy.v1",
+        "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
+        "canonical_sha256": "1f1299e97fc82a28c0c02042b69e1daacf5e686fe81588975f81399f4c07bbf0",
+        "audit_entries": 72,
+        "interpretation_entries": 40,
+        "conflict_resolutions": [
+          "DENTAL_REPORT_CONFLICT.DENTAL",
+          "PER_CLAIM_CEILING_RULE",
+          "EXCLUSION_MERGED.DENTAL.teeth_whitening",
+          "EXCLUSION_MERGED.DENTAL.orthodontic_treatment",
+          "EXCLUSION_MERGED.VISION.lasik_surgery",
+          "EXCLUSION_MERGED.VISION.refractive_surgery",
+          "PRE_AUTH_THRESHOLD_CONFLICT.pet_scan"
+        ]
+      },
+      "details": "Canonical policy configuration; the complete normalizer audit trail is in policy['audit']."
+    },
+    {
       "stage": "document_gate",
       "rule_id": "document_requirements",
       "status": "FAIL",
@@ -63,13 +92,15 @@ Explicit behavior checks: **Passed**.
           "file_id": "F001",
           "type": "PRESCRIPTION",
           "quality": "GOOD",
-          "patient_name": null
+          "patient_name": null,
+          "provenance": "fixture_metadata"
         },
         {
           "file_id": "F002",
           "type": "PRESCRIPTION",
           "quality": "GOOD",
-          "patient_name": null
+          "patient_name": null,
+          "provenance": "fixture_metadata"
         }
       ],
       "details": [
@@ -111,6 +142,30 @@ Explicit behavior checks: **Passed**.
   "confidence_score": 0.9,
   "trace": [
     {
+      "stage": "configuration",
+      "rule_id": "policy_source",
+      "status": "LOADED",
+      "policy_ref": "policy",
+      "evidence": {
+        "policy_id": "PLUM_GHI_2024",
+        "schema_version": "plum.canonical_policy.v1",
+        "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
+        "canonical_sha256": "1f1299e97fc82a28c0c02042b69e1daacf5e686fe81588975f81399f4c07bbf0",
+        "audit_entries": 72,
+        "interpretation_entries": 40,
+        "conflict_resolutions": [
+          "DENTAL_REPORT_CONFLICT.DENTAL",
+          "PER_CLAIM_CEILING_RULE",
+          "EXCLUSION_MERGED.DENTAL.teeth_whitening",
+          "EXCLUSION_MERGED.DENTAL.orthodontic_treatment",
+          "EXCLUSION_MERGED.VISION.lasik_surgery",
+          "EXCLUSION_MERGED.VISION.refractive_surgery",
+          "PRE_AUTH_THRESHOLD_CONFLICT.pet_scan"
+        ]
+      },
+      "details": "Canonical policy configuration; the complete normalizer audit trail is in policy['audit']."
+    },
+    {
       "stage": "document_gate",
       "rule_id": "document_requirements",
       "status": "FAIL",
@@ -120,13 +175,15 @@ Explicit behavior checks: **Passed**.
           "file_id": "F003",
           "type": "PRESCRIPTION",
           "quality": "GOOD",
-          "patient_name": null
+          "patient_name": null,
+          "provenance": "fixture_metadata"
         },
         {
           "file_id": "F004",
           "type": "PHARMACY_BILL",
           "quality": "UNREADABLE",
-          "patient_name": null
+          "patient_name": null,
+          "provenance": "fixture_metadata"
         }
       ],
       "details": [
@@ -174,6 +231,30 @@ Explicit behavior checks: **Passed**.
   "confidence_score": 0.9,
   "trace": [
     {
+      "stage": "configuration",
+      "rule_id": "policy_source",
+      "status": "LOADED",
+      "policy_ref": "policy",
+      "evidence": {
+        "policy_id": "PLUM_GHI_2024",
+        "schema_version": "plum.canonical_policy.v1",
+        "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
+        "canonical_sha256": "1f1299e97fc82a28c0c02042b69e1daacf5e686fe81588975f81399f4c07bbf0",
+        "audit_entries": 72,
+        "interpretation_entries": 40,
+        "conflict_resolutions": [
+          "DENTAL_REPORT_CONFLICT.DENTAL",
+          "PER_CLAIM_CEILING_RULE",
+          "EXCLUSION_MERGED.DENTAL.teeth_whitening",
+          "EXCLUSION_MERGED.DENTAL.orthodontic_treatment",
+          "EXCLUSION_MERGED.VISION.lasik_surgery",
+          "EXCLUSION_MERGED.VISION.refractive_surgery",
+          "PRE_AUTH_THRESHOLD_CONFLICT.pet_scan"
+        ]
+      },
+      "details": "Canonical policy configuration; the complete normalizer audit trail is in policy['audit']."
+    },
+    {
       "stage": "document_gate",
       "rule_id": "document_requirements",
       "status": "FAIL",
@@ -183,13 +264,15 @@ Explicit behavior checks: **Passed**.
           "file_id": "F005",
           "type": "PRESCRIPTION",
           "quality": "GOOD",
-          "patient_name": "Rajesh Kumar"
+          "patient_name": "Rajesh Kumar",
+          "provenance": "fixture_metadata"
         },
         {
           "file_id": "F006",
           "type": "HOSPITAL_BILL",
           "quality": "GOOD",
-          "patient_name": "Arjun Mehta"
+          "patient_name": "Arjun Mehta",
+          "provenance": "fixture_metadata"
         }
       ],
       "details": [
@@ -235,6 +318,30 @@ Explicit behavior checks: **Passed**.
   "confidence_score": 0.96,
   "trace": [
     {
+      "stage": "configuration",
+      "rule_id": "policy_source",
+      "status": "LOADED",
+      "policy_ref": "policy",
+      "evidence": {
+        "policy_id": "PLUM_GHI_2024",
+        "schema_version": "plum.canonical_policy.v1",
+        "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
+        "canonical_sha256": "1f1299e97fc82a28c0c02042b69e1daacf5e686fe81588975f81399f4c07bbf0",
+        "audit_entries": 72,
+        "interpretation_entries": 40,
+        "conflict_resolutions": [
+          "DENTAL_REPORT_CONFLICT.DENTAL",
+          "PER_CLAIM_CEILING_RULE",
+          "EXCLUSION_MERGED.DENTAL.teeth_whitening",
+          "EXCLUSION_MERGED.DENTAL.orthodontic_treatment",
+          "EXCLUSION_MERGED.VISION.lasik_surgery",
+          "EXCLUSION_MERGED.VISION.refractive_surgery",
+          "PRE_AUTH_THRESHOLD_CONFLICT.pet_scan"
+        ]
+      },
+      "details": "Canonical policy configuration; the complete normalizer audit trail is in policy['audit']."
+    },
+    {
       "stage": "document_gate",
       "rule_id": "document_requirements",
       "status": "PASS",
@@ -244,32 +351,24 @@ Explicit behavior checks: **Passed**.
           "file_id": "F007",
           "type": "PRESCRIPTION",
           "quality": "GOOD",
-          "patient_name": "Rajesh Kumar"
+          "patient_name": "Rajesh Kumar",
+          "provenance": "fixture_metadata"
         },
         {
           "file_id": "F008",
           "type": "HOSPITAL_BILL",
           "quality": "GOOD",
-          "patient_name": "Rajesh Kumar"
+          "patient_name": "Rajesh Kumar",
+          "provenance": "fixture_metadata"
         }
       ],
       "details": []
     },
     {
-      "stage": "confidence",
-      "rule_id": "evidence_quality",
-      "status": "PASS",
-      "evidence": {
-        "deductions": [],
-        "score": 0.96
-      },
-      "details": "Evidence-quality score; not a calibrated probability."
-    },
-    {
       "stage": "eligibility",
       "rule_id": "membership",
       "status": "PASS",
-      "policy_ref": "members / policy_id / opd_categories",
+      "policy_ref": "members[0] / policy_id / opd_categories.consultation",
       "evidence": {
         "member_id": "EMP001",
         "category": "CONSULTATION"
@@ -289,7 +388,8 @@ Explicit behavior checks: **Passed**.
           "arjun kumar",
           "rajesh kumar",
           "sunita kumar"
-        ]
+        ],
+        "unresolved_roster_dependents": []
       }
     },
     {
@@ -361,7 +461,7 @@ Explicit behavior checks: **Passed**.
         "used_paise": null,
         "remaining_paise": null
       },
-      "details": "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."
+      "details": "Aggregate limit; applied only when utilisation is supplied with the claim."
     },
     {
       "stage": "policy",
@@ -374,7 +474,7 @@ Explicit behavior checks: **Passed**.
         "used_paise": null,
         "remaining_paise": null
       },
-      "details": "A separate family utilisation feed is required; annual OPD usage is not substituted."
+      "details": "Aggregate limit; applied only when family utilisation is supplied with the claim."
     },
     {
       "stage": "policy",
@@ -403,7 +503,9 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "waiting_periods.initial_waiting_period_days",
       "evidence": {
         "condition": "initial",
+        "matched_terms": [],
         "join_date": "2024-04-01",
+        "join_date_source": "members[0].join_date",
         "treatment_date": "2024-11-01",
         "eligible_from": "2024-05-01"
       }
@@ -440,7 +542,7 @@ Explicit behavior checks: **Passed**.
       "stage": "policy",
       "rule_id": "pre_authorization",
       "status": "PASS",
-      "policy_ref": "opd_categories.consultation.requires_pre_auth",
+      "policy_ref": "opd_categories.consultation.requires_pre_auth / pre_authorization.required_for",
       "details": "Not required for this evidence and amount."
     },
     {
@@ -451,7 +553,8 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "same_day_claim_count_including_current": 1,
         "limit": 2,
-        "history_source": "fixture_or_supplied_history"
+        "prior_claims": [],
+        "history_source": "claim_payload"
       }
     },
     {
@@ -463,7 +566,7 @@ Explicit behavior checks: **Passed**.
         "monthly_claim_count_including_current": 1,
         "limit": 6,
         "month": "2024-11",
-        "history_source": "fixture_or_supplied_history"
+        "history_source": "claim_payload"
       }
     },
     {
@@ -509,7 +612,12 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 1500,
-        "limit": 5000
+        "eligible_amount": 1500,
+        "limit": 5000,
+        "global_per_claim_limit": 5000,
+        "category_sub_limit": 2000,
+        "limit_source": "coverage.per_claim_limit",
+        "interpretation": "PER_CLAIM_CEILING_RULE"
       }
     },
     {
@@ -520,18 +628,21 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "annual_limit": 50000,
         "ytd_claims_amount": 5000,
-        "ytd_source": "fixture_or_supplied_history",
+        "ytd_source": "claim_payload",
         "remaining": 45000
-      }
+      },
+      "details": null
     },
     {
       "stage": "policy",
-      "rule_id": "category_sub_limit",
-      "status": "PASS",
-      "policy_ref": "opd_categories.consultation.sub_limit",
+      "rule_id": "network_hospital",
+      "status": "NOT_APPLICABLE",
+      "policy_ref": "network_hospitals",
       "evidence": {
-        "eligible_before_cap": 1500,
-        "sub_limit": 2000
+        "hospital_name": "City Clinic, Bengaluru",
+        "match": null,
+        "match_rule": "exact_or_branch_suffix",
+        "discount_percent": 0
       }
     },
     {
@@ -560,11 +671,23 @@ Explicit behavior checks: **Passed**.
       "details": "Network discount applied before co-pay."
     },
     {
+      "stage": "confidence",
+      "rule_id": "confidence_rubric",
+      "status": "PASS",
+      "evidence": {
+        "base": 0.96,
+        "factors": [],
+        "score": 0.96
+      },
+      "details": "Heuristic evidence-completeness rubric, not a calibrated probability: the base score is reduced only by unknowns and degradations that are material to the outcome that was reached."
+    },
+    {
       "stage": "decision",
       "rule_id": "outcome",
       "status": "APPROVED",
       "evidence": {
         "primary_reason": null,
+        "review_reasons": [],
         "approved_amount_paise": 135000
       }
     }
@@ -578,6 +701,8 @@ Explicit behavior checks: **Passed**.
       "amount": 1000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "reason": "Covered.",
+      "exclusion_matches": null,
       "brand_status": null,
       "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
@@ -590,6 +715,8 @@ Explicit behavior checks: **Passed**.
       "amount": 300,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "reason": "Covered.",
+      "exclusion_matches": null,
       "brand_status": null,
       "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
@@ -602,6 +729,8 @@ Explicit behavior checks: **Passed**.
       "amount": 200,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "reason": "Covered.",
+      "exclusion_matches": null,
       "brand_status": null,
       "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
@@ -642,16 +771,36 @@ Explicit behavior checks: **Passed**.
   "reasons": [
     {
       "code": "WAITING_PERIOD",
-      "message": "The diabetes waiting period ends on 2024-11-30; treatment was on 2024-10-15."
-    },
-    {
-      "code": "ANNUAL_USAGE_UNKNOWN",
-      "message": "Annual OPD usage is unavailable. A reviewer must verify the remaining benefit before payment."
+      "message": "The diabetes waiting period ends on 2024-11-30; treatment was on 2024-10-15. Claims for this condition are eligible from 2024-11-30."
     }
   ],
   "correction_requests": [],
-  "confidence_score": 0.84,
+  "confidence_score": 0.96,
   "trace": [
+    {
+      "stage": "configuration",
+      "rule_id": "policy_source",
+      "status": "LOADED",
+      "policy_ref": "policy",
+      "evidence": {
+        "policy_id": "PLUM_GHI_2024",
+        "schema_version": "plum.canonical_policy.v1",
+        "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
+        "canonical_sha256": "1f1299e97fc82a28c0c02042b69e1daacf5e686fe81588975f81399f4c07bbf0",
+        "audit_entries": 72,
+        "interpretation_entries": 40,
+        "conflict_resolutions": [
+          "DENTAL_REPORT_CONFLICT.DENTAL",
+          "PER_CLAIM_CEILING_RULE",
+          "EXCLUSION_MERGED.DENTAL.teeth_whitening",
+          "EXCLUSION_MERGED.DENTAL.orthodontic_treatment",
+          "EXCLUSION_MERGED.VISION.lasik_surgery",
+          "EXCLUSION_MERGED.VISION.refractive_surgery",
+          "PRE_AUTH_THRESHOLD_CONFLICT.pet_scan"
+        ]
+      },
+      "details": "Canonical policy configuration; the complete normalizer audit trail is in policy['audit']."
+    },
     {
       "stage": "document_gate",
       "rule_id": "document_requirements",
@@ -662,32 +811,24 @@ Explicit behavior checks: **Passed**.
           "file_id": "F009",
           "type": "PRESCRIPTION",
           "quality": "GOOD",
-          "patient_name": "Vikram Joshi"
+          "patient_name": "Vikram Joshi",
+          "provenance": "fixture_metadata"
         },
         {
           "file_id": "F010",
           "type": "HOSPITAL_BILL",
           "quality": "GOOD",
-          "patient_name": "Vikram Joshi"
+          "patient_name": "Vikram Joshi",
+          "provenance": "fixture_metadata"
         }
       ],
       "details": []
     },
     {
-      "stage": "confidence",
-      "rule_id": "evidence_quality",
-      "status": "PASS",
-      "evidence": {
-        "deductions": [],
-        "score": 0.96
-      },
-      "details": "Evidence-quality score; not a calibrated probability."
-    },
-    {
       "stage": "eligibility",
       "rule_id": "membership",
       "status": "PASS",
-      "policy_ref": "members / policy_id / opd_categories",
+      "policy_ref": "members[4] / policy_id / opd_categories.consultation",
       "evidence": {
         "member_id": "EMP005",
         "category": "CONSULTATION"
@@ -705,7 +846,8 @@ Explicit behavior checks: **Passed**.
         ],
         "allowed_names": [
           "vikram joshi"
-        ]
+        ],
+        "unresolved_roster_dependents": []
       }
     },
     {
@@ -773,7 +915,7 @@ Explicit behavior checks: **Passed**.
         "used_paise": null,
         "remaining_paise": null
       },
-      "details": "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."
+      "details": "Aggregate limit; applied only when utilisation is supplied with the claim."
     },
     {
       "stage": "policy",
@@ -786,7 +928,7 @@ Explicit behavior checks: **Passed**.
         "used_paise": null,
         "remaining_paise": null
       },
-      "details": "A separate family utilisation feed is required; annual OPD usage is not substituted."
+      "details": "Aggregate limit; applied only when family utilisation is supplied with the claim."
     },
     {
       "stage": "policy",
@@ -815,7 +957,18 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "waiting_periods.specific_conditions.diabetes",
       "evidence": {
         "condition": "diabetes",
+        "matched_terms": [
+          {
+            "text": "diabetes",
+            "provenance": "policy_text"
+          },
+          {
+            "text": "diabetes mellitus",
+            "provenance": "interpretation"
+          }
+        ],
         "join_date": "2024-09-01",
+        "join_date_source": "members[4].join_date",
         "treatment_date": "2024-10-15",
         "eligible_from": "2024-11-30"
       }
@@ -852,7 +1005,7 @@ Explicit behavior checks: **Passed**.
       "stage": "policy",
       "rule_id": "pre_authorization",
       "status": "PASS",
-      "policy_ref": "opd_categories.consultation.requires_pre_auth",
+      "policy_ref": "opd_categories.consultation.requires_pre_auth / pre_authorization.required_for",
       "details": "Not required for this evidence and amount."
     },
     {
@@ -863,7 +1016,8 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "same_day_claim_count_including_current": 1,
         "limit": 2,
-        "history_source": "fixture_or_supplied_history"
+        "prior_claims": [],
+        "history_source": "claim_payload"
       }
     },
     {
@@ -875,7 +1029,7 @@ Explicit behavior checks: **Passed**.
         "monthly_claim_count_including_current": 1,
         "limit": 6,
         "month": "2024-10",
-        "history_source": "fixture_or_supplied_history"
+        "history_source": "claim_payload"
       }
     },
     {
@@ -921,7 +1075,12 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 3000,
-        "limit": 5000
+        "eligible_amount": 3000,
+        "limit": 5000,
+        "global_per_claim_limit": 5000,
+        "category_sub_limit": 2000,
+        "limit_source": "coverage.per_claim_limit",
+        "interpretation": "PER_CLAIM_CEILING_RULE"
       }
     },
     {
@@ -932,18 +1091,21 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "annual_limit": 50000,
         "ytd_claims_amount": null,
-        "ytd_source": "fixture_or_supplied_history",
+        "ytd_source": null,
         "remaining": null
-      }
+      },
+      "details": "Year-to-date OPD usage was not supplied; the annual limit is applied at settlement against the utilisation ledger."
     },
     {
       "stage": "policy",
-      "rule_id": "category_sub_limit",
-      "status": "LIMITED",
-      "policy_ref": "opd_categories.consultation.sub_limit",
+      "rule_id": "network_hospital",
+      "status": "NOT_EVALUATED",
+      "policy_ref": "network_hospitals",
       "evidence": {
-        "eligible_before_cap": 3000,
-        "sub_limit": 2000
+        "hospital_name": null,
+        "match": null,
+        "match_rule": "exact_or_branch_suffix",
+        "discount_percent": 0
       }
     },
     {
@@ -961,15 +1123,33 @@ Explicit behavior checks: **Passed**.
       "rule_id": "payable_amount",
       "status": "CALCULATED",
       "evidence": {
-        "eligible_paise": 200000,
+        "eligible_paise": 300000,
         "network_hospital": false,
         "network_discount_paise": 0,
-        "copay_paise": 20000,
+        "copay_paise": 30000,
         "branded_basis_paise": 0,
         "branded_copay_paise": 0,
-        "payable_paise": 180000
+        "payable_paise": 270000
       },
       "details": "Network discount applied before co-pay."
+    },
+    {
+      "stage": "confidence",
+      "rule_id": "confidence_rubric",
+      "status": "PASS",
+      "evidence": {
+        "base": 0.96,
+        "factors": [
+          {
+            "reason": "annual_opd_usage_not_evaluated",
+            "points": 0.04,
+            "applies_to": "payable",
+            "applied": false
+          }
+        ],
+        "score": 0.96
+      },
+      "details": "Heuristic evidence-completeness rubric, not a calibrated probability: the base score is reduced only by unknowns and degradations that are material to the outcome that was reached."
     },
     {
       "stage": "decision",
@@ -977,6 +1157,7 @@ Explicit behavior checks: **Passed**.
       "status": "REJECTED",
       "evidence": {
         "primary_reason": "WAITING_PERIOD",
+        "review_reasons": [],
         "approved_amount_paise": 0
       }
     }
@@ -990,16 +1171,11 @@ Explicit behavior checks: **Passed**.
       "amount": 3000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "reason": "Covered.",
+      "exclusion_matches": null,
       "brand_status": null,
       "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
-    },
-    {
-      "kind": "adjustment",
-      "description": "Category sub-limit",
-      "amount_paise": -100000,
-      "amount": -1000,
-      "policy_ref": "opd_categories.consultation.sub_limit"
     },
     {
       "kind": "adjustment",
@@ -1007,16 +1183,16 @@ Explicit behavior checks: **Passed**.
       "amount_paise": 0,
       "amount": 0,
       "policy_ref": "opd_categories.consultation.network_discount_percent",
-      "basis_paise": 200000,
+      "basis_paise": 300000,
       "percent": 0
     },
     {
       "kind": "adjustment",
       "description": "Member co-pay",
-      "amount_paise": -20000,
-      "amount": -200,
+      "amount_paise": -30000,
+      "amount": -300,
       "policy_ref": "opd_categories.consultation.copay_percent",
-      "basis_paise": 200000,
+      "basis_paise": 300000,
       "percent": 10
     }
   ]
@@ -1031,22 +1207,50 @@ Explicit behavior checks: **Passed**.
 ```json
 {
   "state": "DECIDED",
-  "decision": "REJECTED",
-  "approved_amount": 0,
-  "approved_amount_paise": 0,
+  "decision": "PARTIAL",
+  "approved_amount": 8000,
+  "approved_amount_paise": 800000,
   "reasons": [
     {
-      "code": "PER_CLAIM_EXCEEDED",
-      "message": "Claimed amount ₹12000 exceeds the per-claim limit of ₹5000."
+      "code": "EXCLUDED_PROCEDURE",
+      "message": "Teeth Whitening is excluded (Teeth whitening); ₹4000 removed."
     },
     {
-      "code": "EXCLUDED_PROCEDURE",
-      "message": "Teeth Whitening is excluded; ₹4000 removed."
+      "code": "ANNUAL_LIMIT_NOT_EVALUATED",
+      "message": "Year-to-date OPD usage was not supplied, so the ₹50000 annual OPD limit was not evaluated. Payment is subject to the member's remaining annual OPD balance."
+    },
+    {
+      "code": "ADVISORY_DOCUMENT_ABSENT",
+      "message": "No DENTAL_REPORT was uploaded. It is optional in the document requirements, so the claim was decided without it."
     }
   ],
   "correction_requests": [],
-  "confidence_score": 0.96,
+  "confidence_score": 0.89,
   "trace": [
+    {
+      "stage": "configuration",
+      "rule_id": "policy_source",
+      "status": "LOADED",
+      "policy_ref": "policy",
+      "evidence": {
+        "policy_id": "PLUM_GHI_2024",
+        "schema_version": "plum.canonical_policy.v1",
+        "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
+        "canonical_sha256": "1f1299e97fc82a28c0c02042b69e1daacf5e686fe81588975f81399f4c07bbf0",
+        "audit_entries": 72,
+        "interpretation_entries": 40,
+        "conflict_resolutions": [
+          "DENTAL_REPORT_CONFLICT.DENTAL",
+          "PER_CLAIM_CEILING_RULE",
+          "EXCLUSION_MERGED.DENTAL.teeth_whitening",
+          "EXCLUSION_MERGED.DENTAL.orthodontic_treatment",
+          "EXCLUSION_MERGED.VISION.lasik_surgery",
+          "EXCLUSION_MERGED.VISION.refractive_surgery",
+          "PRE_AUTH_THRESHOLD_CONFLICT.pet_scan"
+        ]
+      },
+      "details": "Canonical policy configuration; the complete normalizer audit trail is in policy['audit']."
+    },
     {
       "stage": "document_gate",
       "rule_id": "document_requirements",
@@ -1057,26 +1261,17 @@ Explicit behavior checks: **Passed**.
           "file_id": "F011",
           "type": "HOSPITAL_BILL",
           "quality": "GOOD",
-          "patient_name": "Priya Singh"
+          "patient_name": "Priya Singh",
+          "provenance": "fixture_metadata"
         }
       ],
       "details": []
     },
     {
-      "stage": "confidence",
-      "rule_id": "evidence_quality",
-      "status": "PASS",
-      "evidence": {
-        "deductions": [],
-        "score": 0.96
-      },
-      "details": "Evidence-quality score; not a calibrated probability."
-    },
-    {
       "stage": "eligibility",
       "rule_id": "membership",
       "status": "PASS",
-      "policy_ref": "members / policy_id / opd_categories",
+      "policy_ref": "members[1] / policy_id / opd_categories.dental",
       "evidence": {
         "member_id": "EMP002",
         "category": "DENTAL"
@@ -1093,7 +1288,8 @@ Explicit behavior checks: **Passed**.
         ],
         "allowed_names": [
           "priya singh"
-        ]
+        ],
+        "unresolved_roster_dependents": []
       }
     },
     {
@@ -1153,7 +1349,7 @@ Explicit behavior checks: **Passed**.
         "used_paise": null,
         "remaining_paise": null
       },
-      "details": "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."
+      "details": "Aggregate limit; applied only when utilisation is supplied with the claim."
     },
     {
       "stage": "policy",
@@ -1166,7 +1362,7 @@ Explicit behavior checks: **Passed**.
         "used_paise": null,
         "remaining_paise": null
       },
-      "details": "A separate family utilisation feed is required; annual OPD usage is not substituted."
+      "details": "Aggregate limit; applied only when family utilisation is supplied with the claim."
     },
     {
       "stage": "policy",
@@ -1195,7 +1391,9 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "waiting_periods.initial_waiting_period_days",
       "evidence": {
         "condition": "initial",
+        "matched_terms": [],
         "join_date": "2024-04-01",
+        "join_date_source": "members[1].join_date",
         "treatment_date": "2024-10-15",
         "eligible_from": "2024-05-01"
       }
@@ -1232,7 +1430,7 @@ Explicit behavior checks: **Passed**.
       "stage": "policy",
       "rule_id": "pre_authorization",
       "status": "PASS",
-      "policy_ref": "opd_categories.dental.requires_pre_auth",
+      "policy_ref": "opd_categories.dental.requires_pre_auth / pre_authorization.required_for",
       "details": "Not required for this evidence and amount."
     },
     {
@@ -1243,7 +1441,8 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "same_day_claim_count_including_current": 1,
         "limit": 2,
-        "history_source": "fixture_or_supplied_history"
+        "prior_claims": [],
+        "history_source": "claim_payload"
       }
     },
     {
@@ -1255,7 +1454,7 @@ Explicit behavior checks: **Passed**.
         "monthly_claim_count_including_current": 1,
         "limit": 6,
         "month": "2024-10",
-        "history_source": "fixture_or_supplied_history"
+        "history_source": "claim_payload"
       }
     },
     {
@@ -1297,33 +1496,53 @@ Explicit behavior checks: **Passed**.
     {
       "stage": "policy",
       "rule_id": "per_claim_limit",
-      "status": "FAIL",
-      "policy_ref": "coverage.per_claim_limit",
+      "status": "PASS",
+      "policy_ref": "opd_categories.dental.sub_limit",
       "evidence": {
         "claimed_amount": 12000,
-        "limit": 5000
+        "eligible_amount": 8000,
+        "limit": 10000,
+        "global_per_claim_limit": 5000,
+        "category_sub_limit": 10000,
+        "limit_source": "opd_categories.dental.sub_limit",
+        "interpretation": "PER_CLAIM_CEILING_RULE"
       }
     },
     {
       "stage": "policy",
       "rule_id": "annual_opd_limit",
-      "status": "PASS",
+      "status": "NOT_EVALUATED",
       "policy_ref": "coverage.annual_opd_limit",
       "evidence": {
         "annual_limit": 50000,
-        "ytd_claims_amount": 0,
-        "ytd_source": "fixture_or_supplied_history",
-        "remaining": 50000
-      }
+        "ytd_claims_amount": null,
+        "ytd_source": null,
+        "remaining": null
+      },
+      "details": "Year-to-date OPD usage was not supplied; the annual limit is applied at settlement against the utilisation ledger."
     },
     {
       "stage": "policy",
-      "rule_id": "category_sub_limit",
-      "status": "PASS",
-      "policy_ref": "opd_categories.dental.sub_limit",
+      "rule_id": "advisory_document",
+      "status": "ADVISORY",
+      "policy_ref": "opd_categories.dental.requires_dental_report",
       "evidence": {
-        "eligible_before_cap": 8000,
-        "sub_limit": 10000
+        "document": "DENTAL_REPORT",
+        "present": false,
+        "interpretation": "DENTAL_REPORT_CONFLICT.DENTAL"
+      },
+      "details": "The category flag and the document matrix disagree; the matrix (optional) governs, so absence does not block."
+    },
+    {
+      "stage": "policy",
+      "rule_id": "network_hospital",
+      "status": "NOT_APPLICABLE",
+      "policy_ref": "network_hospitals",
+      "evidence": {
+        "hospital_name": "Smile Dental Clinic",
+        "match": null,
+        "match_rule": "exact_or_branch_suffix",
+        "discount_percent": 0
       }
     },
     {
@@ -1352,12 +1571,38 @@ Explicit behavior checks: **Passed**.
       "details": "Network discount applied before co-pay."
     },
     {
+      "stage": "confidence",
+      "rule_id": "confidence_rubric",
+      "status": "DEGRADED",
+      "evidence": {
+        "base": 0.96,
+        "factors": [
+          {
+            "reason": "annual_opd_usage_not_evaluated",
+            "points": 0.04,
+            "applies_to": "payable",
+            "applied": true
+          },
+          {
+            "reason": "advisory_document_absent",
+            "points": 0.03,
+            "applies_to": "payable",
+            "document": "DENTAL_REPORT",
+            "applied": true
+          }
+        ],
+        "score": 0.89
+      },
+      "details": "Heuristic evidence-completeness rubric, not a calibrated probability: the base score is reduced only by unknowns and degradations that are material to the outcome that was reached."
+    },
+    {
       "stage": "decision",
       "rule_id": "outcome",
-      "status": "REJECTED",
+      "status": "PARTIAL",
       "evidence": {
-        "primary_reason": "PER_CLAIM_EXCEEDED",
-        "approved_amount_paise": 0
+        "primary_reason": null,
+        "review_reasons": [],
+        "approved_amount_paise": 800000
       }
     }
   ],
@@ -1370,9 +1615,11 @@ Explicit behavior checks: **Passed**.
       "amount": 8000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "reason": "Covered.",
+      "exclusion_matches": null,
       "brand_status": null,
       "brand_evidence": null,
-      "policy_ref": "opd_categories.dental.covered"
+      "policy_ref": "opd_categories.dental.covered_procedures"
     },
     {
       "kind": "line_item",
@@ -1382,9 +1629,28 @@ Explicit behavior checks: **Passed**.
       "amount": 4000,
       "status": "EXCLUDED",
       "reason_code": "EXCLUDED_PROCEDURE",
+      "reason": "Excluded under the policy: Teeth whitening.",
+      "exclusion_matches": [
+        {
+          "exclusion_id": "DENTAL:teeth_whitening",
+          "label": "Teeth whitening",
+          "matched_terms": [
+            {
+              "text": "teeth whitening",
+              "provenance": "policy_text"
+            }
+          ],
+          "qualifier": null,
+          "policy_text_match": true,
+          "source_paths": [
+            "exclusions.dental_exclusions[0]",
+            "opd_categories.dental.excluded_procedures[0]"
+          ]
+        }
+      ],
       "brand_status": null,
       "brand_evidence": null,
-      "policy_ref": "opd_categories.dental.excluded_procedures"
+      "policy_ref": "exclusions.dental_exclusions[0]"
     },
     {
       "kind": "adjustment",
@@ -1422,16 +1688,36 @@ Explicit behavior checks: **Passed**.
   "reasons": [
     {
       "code": "PRE_AUTH_MISSING",
-      "message": "Pre-authorization was required and was explicitly not obtained. Provide the approval record or correct the status if it was granted."
-    },
-    {
-      "code": "PER_CLAIM_EXCEEDED",
-      "message": "Claimed amount ₹15000 exceeds the per-claim limit of ₹5000."
+      "message": "Pre-authorization is required for MRI scan and no approval record was supplied. Obtain pre-authorization from the insurer, then resubmit the claim with the approval record (reference number and issue date)."
     }
   ],
   "correction_requests": [],
-  "confidence_score": 0.92,
+  "confidence_score": 0.96,
   "trace": [
+    {
+      "stage": "configuration",
+      "rule_id": "policy_source",
+      "status": "LOADED",
+      "policy_ref": "policy",
+      "evidence": {
+        "policy_id": "PLUM_GHI_2024",
+        "schema_version": "plum.canonical_policy.v1",
+        "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
+        "canonical_sha256": "1f1299e97fc82a28c0c02042b69e1daacf5e686fe81588975f81399f4c07bbf0",
+        "audit_entries": 72,
+        "interpretation_entries": 40,
+        "conflict_resolutions": [
+          "DENTAL_REPORT_CONFLICT.DENTAL",
+          "PER_CLAIM_CEILING_RULE",
+          "EXCLUSION_MERGED.DENTAL.teeth_whitening",
+          "EXCLUSION_MERGED.DENTAL.orthodontic_treatment",
+          "EXCLUSION_MERGED.VISION.lasik_surgery",
+          "EXCLUSION_MERGED.VISION.refractive_surgery",
+          "PRE_AUTH_THRESHOLD_CONFLICT.pet_scan"
+        ]
+      },
+      "details": "Canonical policy configuration; the complete normalizer audit trail is in policy['audit']."
+    },
     {
       "stage": "document_gate",
       "rule_id": "document_requirements",
@@ -1442,43 +1728,37 @@ Explicit behavior checks: **Passed**.
           "file_id": "F012",
           "type": "PRESCRIPTION",
           "quality": "GOOD",
-          "patient_name": null
+          "patient_name": null,
+          "provenance": "fixture_metadata"
         },
         {
           "file_id": "F013",
           "type": "LAB_REPORT",
           "quality": "GOOD",
-          "patient_name": null
+          "patient_name": null,
+          "provenance": "fixture_metadata"
         },
         {
           "file_id": "F014",
           "type": "HOSPITAL_BILL",
           "quality": "GOOD",
-          "patient_name": null
+          "patient_name": null,
+          "provenance": "fixture_metadata"
         }
       ],
       "details": []
     },
     {
-      "stage": "confidence",
-      "rule_id": "evidence_quality",
-      "status": "DEGRADED",
-      "evidence": {
-        "deductions": [
-          {
-            "reason": "patient_name_unavailable",
-            "points": 0.04
-          }
-        ],
-        "score": 0.92
-      },
-      "details": "Evidence-quality score; not a calibrated probability."
+      "stage": "identity",
+      "rule_id": "patient_identity",
+      "status": "NOT_EVALUATED",
+      "details": "No patient name was extracted from the documents; the claim is attributed to the submitting member."
     },
     {
       "stage": "eligibility",
       "rule_id": "membership",
       "status": "PASS",
-      "policy_ref": "members / policy_id / opd_categories",
+      "policy_ref": "members[6] / policy_id / opd_categories.diagnostic",
       "evidence": {
         "member_id": "EMP007",
         "category": "DIAGNOSTIC"
@@ -1493,6 +1773,10 @@ Explicit behavior checks: **Passed**.
         "document_names": [],
         "allowed_names": [
           "suresh patil"
+        ],
+        "unresolved_roster_dependents": [
+          "DEP004",
+          "DEP005"
         ]
       }
     },
@@ -1553,7 +1837,7 @@ Explicit behavior checks: **Passed**.
         "used_paise": null,
         "remaining_paise": null
       },
-      "details": "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."
+      "details": "Aggregate limit; applied only when utilisation is supplied with the claim."
     },
     {
       "stage": "policy",
@@ -1566,7 +1850,7 @@ Explicit behavior checks: **Passed**.
         "used_paise": null,
         "remaining_paise": null
       },
-      "details": "A separate family utilisation feed is required; annual OPD usage is not substituted."
+      "details": "Aggregate limit; applied only when family utilisation is supplied with the claim."
     },
     {
       "stage": "policy",
@@ -1595,7 +1879,9 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "waiting_periods.initial_waiting_period_days",
       "evidence": {
         "condition": "initial",
+        "matched_terms": [],
         "join_date": "2024-04-01",
+        "join_date_source": "members[6].join_date",
         "treatment_date": "2024-11-02",
         "eligible_from": "2024-05-01"
       }
@@ -1632,21 +1918,36 @@ Explicit behavior checks: **Passed**.
       "stage": "policy",
       "rule_id": "pre_authorization",
       "status": "FAIL",
-      "policy_ref": "pre_authorization.required_for / opd_categories.requires_pre_auth / pre_authorization.validity_days",
+      "policy_ref": "pre_authorization.required_for / opd_categories.*.high_value_tests_requiring_pre_auth / pre_authorization.validity_days",
       "evidence": {
         "matched_rules": [
           {
-            "phrase": "MRI",
-            "amount_greater_than": 10000
+            "rule_id": "mri_scan",
+            "label": "MRI scan",
+            "matched_terms": [
+              {
+                "text": "mri",
+                "provenance": "policy_text"
+              }
+            ],
+            "amount_basis": 15000,
+            "amount_greater_than": 10000,
+            "source_paths": [
+              "pre_authorization.required_for[0]",
+              "opd_categories.diagnostic.high_value_tests_requiring_pre_auth[0]",
+              "opd_categories.diagnostic.pre_auth_threshold"
+            ]
           }
         ],
+        "category_requires_pre_auth": false,
         "claimed_amount": 15000,
-        "obtained": false,
+        "form_status": null,
         "approval_document": null,
         "issued_date": null,
         "approval_reference": null,
+        "authorized_amount": null,
         "validity_days": 30,
-        "status_source": "missing_or_unconfirmed"
+        "status_source": "no_approval_record_supplied"
       }
     },
     {
@@ -1657,7 +1958,8 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "same_day_claim_count_including_current": 1,
         "limit": 2,
-        "history_source": "fixture_or_supplied_history"
+        "prior_claims": [],
+        "history_source": "claim_payload"
       }
     },
     {
@@ -1669,7 +1971,7 @@ Explicit behavior checks: **Passed**.
         "monthly_claim_count_including_current": 1,
         "limit": 6,
         "month": "2024-11",
-        "history_source": "fixture_or_supplied_history"
+        "history_source": "claim_payload"
       }
     },
     {
@@ -1711,33 +2013,41 @@ Explicit behavior checks: **Passed**.
     {
       "stage": "policy",
       "rule_id": "per_claim_limit",
-      "status": "FAIL",
-      "policy_ref": "coverage.per_claim_limit",
+      "status": "DEFERRED_TO_PRE_AUTH",
+      "policy_ref": "opd_categories.diagnostic.sub_limit",
       "evidence": {
         "claimed_amount": 15000,
-        "limit": 5000
+        "eligible_amount": 15000,
+        "limit": 10000,
+        "global_per_claim_limit": 5000,
+        "category_sub_limit": 10000,
+        "limit_source": "opd_categories.diagnostic.sub_limit",
+        "interpretation": "PER_CLAIM_CEILING_RULE"
       }
     },
     {
       "stage": "policy",
       "rule_id": "annual_opd_limit",
-      "status": "PASS",
+      "status": "NOT_EVALUATED",
       "policy_ref": "coverage.annual_opd_limit",
       "evidence": {
         "annual_limit": 50000,
-        "ytd_claims_amount": 0,
-        "ytd_source": "fixture_or_supplied_history",
-        "remaining": 50000
-      }
+        "ytd_claims_amount": null,
+        "ytd_source": null,
+        "remaining": null
+      },
+      "details": "Year-to-date OPD usage was not supplied; the annual limit is applied at settlement against the utilisation ledger."
     },
     {
       "stage": "policy",
-      "rule_id": "category_sub_limit",
-      "status": "LIMITED",
-      "policy_ref": "opd_categories.diagnostic.sub_limit",
+      "rule_id": "network_hospital",
+      "status": "NOT_EVALUATED",
+      "policy_ref": "network_hospitals",
       "evidence": {
-        "eligible_before_cap": 15000,
-        "sub_limit": 10000
+        "hospital_name": null,
+        "match": null,
+        "match_rule": "exact_or_branch_suffix",
+        "discount_percent": 0
       }
     },
     {
@@ -1755,15 +2065,39 @@ Explicit behavior checks: **Passed**.
       "rule_id": "payable_amount",
       "status": "CALCULATED",
       "evidence": {
-        "eligible_paise": 1000000,
+        "eligible_paise": 1500000,
         "network_hospital": false,
         "network_discount_paise": 0,
         "copay_paise": 0,
         "branded_basis_paise": 0,
         "branded_copay_paise": 0,
-        "payable_paise": 1000000
+        "payable_paise": 1500000
       },
       "details": "Network discount applied before co-pay."
+    },
+    {
+      "stage": "confidence",
+      "rule_id": "confidence_rubric",
+      "status": "PASS",
+      "evidence": {
+        "base": 0.96,
+        "factors": [
+          {
+            "reason": "patient_name_unavailable",
+            "points": 0.04,
+            "applies_to": "payable",
+            "applied": false
+          },
+          {
+            "reason": "annual_opd_usage_not_evaluated",
+            "points": 0.04,
+            "applies_to": "payable",
+            "applied": false
+          }
+        ],
+        "score": 0.96
+      },
+      "details": "Heuristic evidence-completeness rubric, not a calibrated probability: the base score is reduced only by unknowns and degradations that are material to the outcome that was reached."
     },
     {
       "stage": "decision",
@@ -1771,6 +2105,7 @@ Explicit behavior checks: **Passed**.
       "status": "REJECTED",
       "evidence": {
         "primary_reason": "PRE_AUTH_MISSING",
+        "review_reasons": [],
         "approved_amount_paise": 0
       }
     }
@@ -1784,16 +2119,11 @@ Explicit behavior checks: **Passed**.
       "amount": 15000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "reason": "Covered.",
+      "exclusion_matches": null,
       "brand_status": null,
       "brand_evidence": null,
       "policy_ref": "opd_categories.diagnostic.covered"
-    },
-    {
-      "kind": "adjustment",
-      "description": "Category sub-limit",
-      "amount_paise": -500000,
-      "amount": -5000,
-      "policy_ref": "opd_categories.diagnostic.sub_limit"
     },
     {
       "kind": "adjustment",
@@ -1801,7 +2131,7 @@ Explicit behavior checks: **Passed**.
       "amount_paise": 0,
       "amount": 0,
       "policy_ref": "opd_categories.diagnostic.network_discount_percent",
-      "basis_paise": 1000000,
+      "basis_paise": 1500000,
       "percent": 0
     },
     {
@@ -1810,7 +2140,7 @@ Explicit behavior checks: **Passed**.
       "amount_paise": 0,
       "amount": 0,
       "policy_ref": "opd_categories.diagnostic.copay_percent",
-      "basis_paise": 1000000,
+      "basis_paise": 1500000,
       "percent": 0
     }
   ]
@@ -1831,12 +2161,36 @@ Explicit behavior checks: **Passed**.
   "reasons": [
     {
       "code": "PER_CLAIM_EXCEEDED",
-      "message": "Claimed amount ₹7500 exceeds the per-claim limit of ₹5000."
+      "message": "Claimed amount ₹7500 (eligible ₹7500) exceeds the per-claim limit of ₹5000 for consultation claims."
     }
   ],
   "correction_requests": [],
-  "confidence_score": 0.92,
+  "confidence_score": 0.96,
   "trace": [
+    {
+      "stage": "configuration",
+      "rule_id": "policy_source",
+      "status": "LOADED",
+      "policy_ref": "policy",
+      "evidence": {
+        "policy_id": "PLUM_GHI_2024",
+        "schema_version": "plum.canonical_policy.v1",
+        "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
+        "canonical_sha256": "1f1299e97fc82a28c0c02042b69e1daacf5e686fe81588975f81399f4c07bbf0",
+        "audit_entries": 72,
+        "interpretation_entries": 40,
+        "conflict_resolutions": [
+          "DENTAL_REPORT_CONFLICT.DENTAL",
+          "PER_CLAIM_CEILING_RULE",
+          "EXCLUSION_MERGED.DENTAL.teeth_whitening",
+          "EXCLUSION_MERGED.DENTAL.orthodontic_treatment",
+          "EXCLUSION_MERGED.VISION.lasik_surgery",
+          "EXCLUSION_MERGED.VISION.refractive_surgery",
+          "PRE_AUTH_THRESHOLD_CONFLICT.pet_scan"
+        ]
+      },
+      "details": "Canonical policy configuration; the complete normalizer audit trail is in policy['audit']."
+    },
     {
       "stage": "document_gate",
       "rule_id": "document_requirements",
@@ -1847,37 +2201,30 @@ Explicit behavior checks: **Passed**.
           "file_id": "F015",
           "type": "PRESCRIPTION",
           "quality": "GOOD",
-          "patient_name": null
+          "patient_name": null,
+          "provenance": "fixture_metadata"
         },
         {
           "file_id": "F016",
           "type": "HOSPITAL_BILL",
           "quality": "GOOD",
-          "patient_name": null
+          "patient_name": null,
+          "provenance": "fixture_metadata"
         }
       ],
       "details": []
     },
     {
-      "stage": "confidence",
-      "rule_id": "evidence_quality",
-      "status": "DEGRADED",
-      "evidence": {
-        "deductions": [
-          {
-            "reason": "patient_name_unavailable",
-            "points": 0.04
-          }
-        ],
-        "score": 0.92
-      },
-      "details": "Evidence-quality score; not a calibrated probability."
+      "stage": "identity",
+      "rule_id": "patient_identity",
+      "status": "NOT_EVALUATED",
+      "details": "No patient name was extracted from the documents; the claim is attributed to the submitting member."
     },
     {
       "stage": "eligibility",
       "rule_id": "membership",
       "status": "PASS",
-      "policy_ref": "members / policy_id / opd_categories",
+      "policy_ref": "members[2] / policy_id / opd_categories.consultation",
       "evidence": {
         "member_id": "EMP003",
         "category": "CONSULTATION"
@@ -1892,6 +2239,9 @@ Explicit behavior checks: **Passed**.
         "document_names": [],
         "allowed_names": [
           "amit verma"
+        ],
+        "unresolved_roster_dependents": [
+          "DEP003"
         ]
       }
     },
@@ -1952,7 +2302,7 @@ Explicit behavior checks: **Passed**.
         "used_paise": null,
         "remaining_paise": null
       },
-      "details": "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."
+      "details": "Aggregate limit; applied only when utilisation is supplied with the claim."
     },
     {
       "stage": "policy",
@@ -1965,7 +2315,7 @@ Explicit behavior checks: **Passed**.
         "used_paise": null,
         "remaining_paise": null
       },
-      "details": "A separate family utilisation feed is required; annual OPD usage is not substituted."
+      "details": "Aggregate limit; applied only when family utilisation is supplied with the claim."
     },
     {
       "stage": "policy",
@@ -1994,7 +2344,9 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "waiting_periods.initial_waiting_period_days",
       "evidence": {
         "condition": "initial",
+        "matched_terms": [],
         "join_date": "2024-04-01",
+        "join_date_source": "members[2].join_date",
         "treatment_date": "2024-10-20",
         "eligible_from": "2024-05-01"
       }
@@ -2031,7 +2383,7 @@ Explicit behavior checks: **Passed**.
       "stage": "policy",
       "rule_id": "pre_authorization",
       "status": "PASS",
-      "policy_ref": "opd_categories.consultation.requires_pre_auth",
+      "policy_ref": "opd_categories.consultation.requires_pre_auth / pre_authorization.required_for",
       "details": "Not required for this evidence and amount."
     },
     {
@@ -2042,7 +2394,8 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "same_day_claim_count_including_current": 1,
         "limit": 2,
-        "history_source": "fixture_or_supplied_history"
+        "prior_claims": [],
+        "history_source": "claim_payload"
       }
     },
     {
@@ -2054,7 +2407,7 @@ Explicit behavior checks: **Passed**.
         "monthly_claim_count_including_current": 1,
         "limit": 6,
         "month": "2024-10",
-        "history_source": "fixture_or_supplied_history"
+        "history_source": "claim_payload"
       }
     },
     {
@@ -2100,7 +2453,12 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 7500,
-        "limit": 5000
+        "eligible_amount": 7500,
+        "limit": 5000,
+        "global_per_claim_limit": 5000,
+        "category_sub_limit": 2000,
+        "limit_source": "coverage.per_claim_limit",
+        "interpretation": "PER_CLAIM_CEILING_RULE"
       }
     },
     {
@@ -2111,18 +2469,21 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "annual_limit": 50000,
         "ytd_claims_amount": 10000,
-        "ytd_source": "fixture_or_supplied_history",
+        "ytd_source": "claim_payload",
         "remaining": 40000
-      }
+      },
+      "details": null
     },
     {
       "stage": "policy",
-      "rule_id": "category_sub_limit",
-      "status": "LIMITED",
-      "policy_ref": "opd_categories.consultation.sub_limit",
+      "rule_id": "network_hospital",
+      "status": "NOT_EVALUATED",
+      "policy_ref": "network_hospitals",
       "evidence": {
-        "eligible_before_cap": 7500,
-        "sub_limit": 2000
+        "hospital_name": null,
+        "match": null,
+        "match_rule": "exact_or_branch_suffix",
+        "discount_percent": 0
       }
     },
     {
@@ -2140,15 +2501,33 @@ Explicit behavior checks: **Passed**.
       "rule_id": "payable_amount",
       "status": "CALCULATED",
       "evidence": {
-        "eligible_paise": 200000,
+        "eligible_paise": 750000,
         "network_hospital": false,
         "network_discount_paise": 0,
-        "copay_paise": 20000,
+        "copay_paise": 75000,
         "branded_basis_paise": 0,
         "branded_copay_paise": 0,
-        "payable_paise": 180000
+        "payable_paise": 675000
       },
       "details": "Network discount applied before co-pay."
+    },
+    {
+      "stage": "confidence",
+      "rule_id": "confidence_rubric",
+      "status": "PASS",
+      "evidence": {
+        "base": 0.96,
+        "factors": [
+          {
+            "reason": "patient_name_unavailable",
+            "points": 0.04,
+            "applies_to": "payable",
+            "applied": false
+          }
+        ],
+        "score": 0.96
+      },
+      "details": "Heuristic evidence-completeness rubric, not a calibrated probability: the base score is reduced only by unknowns and degradations that are material to the outcome that was reached."
     },
     {
       "stage": "decision",
@@ -2156,6 +2535,7 @@ Explicit behavior checks: **Passed**.
       "status": "REJECTED",
       "evidence": {
         "primary_reason": "PER_CLAIM_EXCEEDED",
+        "review_reasons": [],
         "approved_amount_paise": 0
       }
     }
@@ -2169,6 +2549,8 @@ Explicit behavior checks: **Passed**.
       "amount": 2000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "reason": "Covered.",
+      "exclusion_matches": null,
       "brand_status": null,
       "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
@@ -2181,16 +2563,11 @@ Explicit behavior checks: **Passed**.
       "amount": 5500,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "reason": "Covered.",
+      "exclusion_matches": null,
       "brand_status": null,
       "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
-    },
-    {
-      "kind": "adjustment",
-      "description": "Category sub-limit",
-      "amount_paise": -550000,
-      "amount": -5500,
-      "policy_ref": "opd_categories.consultation.sub_limit"
     },
     {
       "kind": "adjustment",
@@ -2198,16 +2575,16 @@ Explicit behavior checks: **Passed**.
       "amount_paise": 0,
       "amount": 0,
       "policy_ref": "opd_categories.consultation.network_discount_percent",
-      "basis_paise": 200000,
+      "basis_paise": 750000,
       "percent": 0
     },
     {
       "kind": "adjustment",
       "description": "Member co-pay",
-      "amount_paise": -20000,
-      "amount": -200,
+      "amount_paise": -75000,
+      "amount": -750,
       "policy_ref": "opd_categories.consultation.copay_percent",
-      "basis_paise": 200000,
+      "basis_paise": 750000,
       "percent": 10
     }
   ]
@@ -2229,15 +2606,35 @@ Explicit behavior checks: **Passed**.
     {
       "code": "SAME_DAY_CLAIMS",
       "message": "This is claim 4 on the same treatment date; policy review threshold is 2. Manual review is required."
-    },
-    {
-      "code": "ANNUAL_USAGE_UNKNOWN",
-      "message": "Annual OPD usage is unavailable. A reviewer must verify the remaining benefit before payment."
     }
   ],
   "correction_requests": [],
-  "confidence_score": 0.8,
+  "confidence_score": 0.96,
   "trace": [
+    {
+      "stage": "configuration",
+      "rule_id": "policy_source",
+      "status": "LOADED",
+      "policy_ref": "policy",
+      "evidence": {
+        "policy_id": "PLUM_GHI_2024",
+        "schema_version": "plum.canonical_policy.v1",
+        "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
+        "canonical_sha256": "1f1299e97fc82a28c0c02042b69e1daacf5e686fe81588975f81399f4c07bbf0",
+        "audit_entries": 72,
+        "interpretation_entries": 40,
+        "conflict_resolutions": [
+          "DENTAL_REPORT_CONFLICT.DENTAL",
+          "PER_CLAIM_CEILING_RULE",
+          "EXCLUSION_MERGED.DENTAL.teeth_whitening",
+          "EXCLUSION_MERGED.DENTAL.orthodontic_treatment",
+          "EXCLUSION_MERGED.VISION.lasik_surgery",
+          "EXCLUSION_MERGED.VISION.refractive_surgery",
+          "PRE_AUTH_THRESHOLD_CONFLICT.pet_scan"
+        ]
+      },
+      "details": "Canonical policy configuration; the complete normalizer audit trail is in policy['audit']."
+    },
     {
       "stage": "document_gate",
       "rule_id": "document_requirements",
@@ -2248,37 +2645,30 @@ Explicit behavior checks: **Passed**.
           "file_id": "F017",
           "type": "PRESCRIPTION",
           "quality": "GOOD",
-          "patient_name": null
+          "patient_name": null,
+          "provenance": "fixture_metadata"
         },
         {
           "file_id": "F018",
           "type": "HOSPITAL_BILL",
           "quality": "GOOD",
-          "patient_name": null
+          "patient_name": null,
+          "provenance": "fixture_metadata"
         }
       ],
       "details": []
     },
     {
-      "stage": "confidence",
-      "rule_id": "evidence_quality",
-      "status": "DEGRADED",
-      "evidence": {
-        "deductions": [
-          {
-            "reason": "patient_name_unavailable",
-            "points": 0.04
-          }
-        ],
-        "score": 0.92
-      },
-      "details": "Evidence-quality score; not a calibrated probability."
+      "stage": "identity",
+      "rule_id": "patient_identity",
+      "status": "NOT_EVALUATED",
+      "details": "No patient name was extracted from the documents; the claim is attributed to the submitting member."
     },
     {
       "stage": "eligibility",
       "rule_id": "membership",
       "status": "PASS",
-      "policy_ref": "members / policy_id / opd_categories",
+      "policy_ref": "members[7] / policy_id / opd_categories.consultation",
       "evidence": {
         "member_id": "EMP008",
         "category": "CONSULTATION"
@@ -2293,7 +2683,8 @@ Explicit behavior checks: **Passed**.
         "document_names": [],
         "allowed_names": [
           "ravi menon"
-        ]
+        ],
+        "unresolved_roster_dependents": []
       }
     },
     {
@@ -2353,7 +2744,7 @@ Explicit behavior checks: **Passed**.
         "used_paise": null,
         "remaining_paise": null
       },
-      "details": "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."
+      "details": "Aggregate limit; applied only when utilisation is supplied with the claim."
     },
     {
       "stage": "policy",
@@ -2366,7 +2757,7 @@ Explicit behavior checks: **Passed**.
         "used_paise": null,
         "remaining_paise": null
       },
-      "details": "A separate family utilisation feed is required; annual OPD usage is not substituted."
+      "details": "Aggregate limit; applied only when family utilisation is supplied with the claim."
     },
     {
       "stage": "policy",
@@ -2395,7 +2786,9 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "waiting_periods.initial_waiting_period_days",
       "evidence": {
         "condition": "initial",
+        "matched_terms": [],
         "join_date": "2024-04-01",
+        "join_date_source": "members[7].join_date",
         "treatment_date": "2024-10-30",
         "eligible_from": "2024-05-01"
       }
@@ -2432,7 +2825,7 @@ Explicit behavior checks: **Passed**.
       "stage": "policy",
       "rule_id": "pre_authorization",
       "status": "PASS",
-      "policy_ref": "opd_categories.consultation.requires_pre_auth",
+      "policy_ref": "opd_categories.consultation.requires_pre_auth / pre_authorization.required_for",
       "details": "Not required for this evidence and amount."
     },
     {
@@ -2443,7 +2836,27 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "same_day_claim_count_including_current": 4,
         "limit": 2,
-        "history_source": "fixture_or_supplied_history"
+        "prior_claims": [
+          {
+            "claim_id": "CLM_0081",
+            "date": "2024-10-30",
+            "amount": 1200,
+            "provider": "City Clinic A"
+          },
+          {
+            "claim_id": "CLM_0082",
+            "date": "2024-10-30",
+            "amount": 1800,
+            "provider": "City Clinic B"
+          },
+          {
+            "claim_id": "CLM_0083",
+            "date": "2024-10-30",
+            "amount": 2100,
+            "provider": "Wellness Center"
+          }
+        ],
+        "history_source": "claim_payload"
       }
     },
     {
@@ -2455,7 +2868,7 @@ Explicit behavior checks: **Passed**.
         "monthly_claim_count_including_current": 4,
         "limit": 6,
         "month": "2024-10",
-        "history_source": "fixture_or_supplied_history"
+        "history_source": "claim_payload"
       }
     },
     {
@@ -2501,7 +2914,12 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 4800,
-        "limit": 5000
+        "eligible_amount": 4800,
+        "limit": 5000,
+        "global_per_claim_limit": 5000,
+        "category_sub_limit": 2000,
+        "limit_source": "coverage.per_claim_limit",
+        "interpretation": "PER_CLAIM_CEILING_RULE"
       }
     },
     {
@@ -2512,18 +2930,21 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "annual_limit": 50000,
         "ytd_claims_amount": null,
-        "ytd_source": "fixture_or_supplied_history",
+        "ytd_source": null,
         "remaining": null
-      }
+      },
+      "details": "Year-to-date OPD usage was not supplied; the annual limit is applied at settlement against the utilisation ledger."
     },
     {
       "stage": "policy",
-      "rule_id": "category_sub_limit",
-      "status": "LIMITED",
-      "policy_ref": "opd_categories.consultation.sub_limit",
+      "rule_id": "network_hospital",
+      "status": "NOT_EVALUATED",
+      "policy_ref": "network_hospitals",
       "evidence": {
-        "eligible_before_cap": 4800,
-        "sub_limit": 2000
+        "hospital_name": null,
+        "match": null,
+        "match_rule": "exact_or_branch_suffix",
+        "discount_percent": 0
       }
     },
     {
@@ -2541,15 +2962,39 @@ Explicit behavior checks: **Passed**.
       "rule_id": "payable_amount",
       "status": "CALCULATED",
       "evidence": {
-        "eligible_paise": 200000,
+        "eligible_paise": 480000,
         "network_hospital": false,
         "network_discount_paise": 0,
-        "copay_paise": 20000,
+        "copay_paise": 48000,
         "branded_basis_paise": 0,
         "branded_copay_paise": 0,
-        "payable_paise": 180000
+        "payable_paise": 432000
       },
       "details": "Network discount applied before co-pay."
+    },
+    {
+      "stage": "confidence",
+      "rule_id": "confidence_rubric",
+      "status": "PASS",
+      "evidence": {
+        "base": 0.96,
+        "factors": [
+          {
+            "reason": "patient_name_unavailable",
+            "points": 0.04,
+            "applies_to": "payable",
+            "applied": false
+          },
+          {
+            "reason": "annual_opd_usage_not_evaluated",
+            "points": 0.04,
+            "applies_to": "payable",
+            "applied": false
+          }
+        ],
+        "score": 0.96
+      },
+      "details": "Heuristic evidence-completeness rubric, not a calibrated probability: the base score is reduced only by unknowns and degradations that are material to the outcome that was reached."
     },
     {
       "stage": "decision",
@@ -2557,6 +3002,9 @@ Explicit behavior checks: **Passed**.
       "status": "MANUAL_REVIEW",
       "evidence": {
         "primary_reason": "SAME_DAY_CLAIMS",
+        "review_reasons": [
+          "SAME_DAY_CLAIMS"
+        ],
         "approved_amount_paise": 0
       }
     }
@@ -2570,16 +3018,11 @@ Explicit behavior checks: **Passed**.
       "amount": 4800,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "reason": "Covered.",
+      "exclusion_matches": null,
       "brand_status": null,
       "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
-    },
-    {
-      "kind": "adjustment",
-      "description": "Category sub-limit",
-      "amount_paise": -280000,
-      "amount": -2800,
-      "policy_ref": "opd_categories.consultation.sub_limit"
     },
     {
       "kind": "adjustment",
@@ -2587,16 +3030,16 @@ Explicit behavior checks: **Passed**.
       "amount_paise": 0,
       "amount": 0,
       "policy_ref": "opd_categories.consultation.network_discount_percent",
-      "basis_paise": 200000,
+      "basis_paise": 480000,
       "percent": 0
     },
     {
       "kind": "adjustment",
       "description": "Member co-pay",
-      "amount_paise": -20000,
-      "amount": -200,
+      "amount_paise": -48000,
+      "amount": -480,
       "policy_ref": "opd_categories.consultation.copay_percent",
-      "basis_paise": 200000,
+      "basis_paise": 480000,
       "percent": 10
     }
   ]
@@ -2612,8 +3055,8 @@ Explicit behavior checks: **Passed**.
 {
   "state": "DECIDED",
   "decision": "APPROVED",
-  "approved_amount": 1440,
-  "approved_amount_paise": 144000,
+  "approved_amount": 3240,
+  "approved_amount_paise": 324000,
   "reasons": [
     {
       "code": "COVERED",
@@ -2624,6 +3067,30 @@ Explicit behavior checks: **Passed**.
   "confidence_score": 0.96,
   "trace": [
     {
+      "stage": "configuration",
+      "rule_id": "policy_source",
+      "status": "LOADED",
+      "policy_ref": "policy",
+      "evidence": {
+        "policy_id": "PLUM_GHI_2024",
+        "schema_version": "plum.canonical_policy.v1",
+        "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
+        "canonical_sha256": "1f1299e97fc82a28c0c02042b69e1daacf5e686fe81588975f81399f4c07bbf0",
+        "audit_entries": 72,
+        "interpretation_entries": 40,
+        "conflict_resolutions": [
+          "DENTAL_REPORT_CONFLICT.DENTAL",
+          "PER_CLAIM_CEILING_RULE",
+          "EXCLUSION_MERGED.DENTAL.teeth_whitening",
+          "EXCLUSION_MERGED.DENTAL.orthodontic_treatment",
+          "EXCLUSION_MERGED.VISION.lasik_surgery",
+          "EXCLUSION_MERGED.VISION.refractive_surgery",
+          "PRE_AUTH_THRESHOLD_CONFLICT.pet_scan"
+        ]
+      },
+      "details": "Canonical policy configuration; the complete normalizer audit trail is in policy['audit']."
+    },
+    {
       "stage": "document_gate",
       "rule_id": "document_requirements",
       "status": "PASS",
@@ -2633,32 +3100,24 @@ Explicit behavior checks: **Passed**.
           "file_id": "F019",
           "type": "PRESCRIPTION",
           "quality": "GOOD",
-          "patient_name": "Deepak Shah"
+          "patient_name": "Deepak Shah",
+          "provenance": "fixture_metadata"
         },
         {
           "file_id": "F020",
           "type": "HOSPITAL_BILL",
           "quality": "GOOD",
-          "patient_name": "Deepak Shah"
+          "patient_name": "Deepak Shah",
+          "provenance": "fixture_metadata"
         }
       ],
       "details": []
     },
     {
-      "stage": "confidence",
-      "rule_id": "evidence_quality",
-      "status": "PASS",
-      "evidence": {
-        "deductions": [],
-        "score": 0.96
-      },
-      "details": "Evidence-quality score; not a calibrated probability."
-    },
-    {
       "stage": "eligibility",
       "rule_id": "membership",
       "status": "PASS",
-      "policy_ref": "members / policy_id / opd_categories",
+      "policy_ref": "members[9] / policy_id / opd_categories.consultation",
       "evidence": {
         "member_id": "EMP010",
         "category": "CONSULTATION"
@@ -2676,6 +3135,9 @@ Explicit behavior checks: **Passed**.
         ],
         "allowed_names": [
           "deepak shah"
+        ],
+        "unresolved_roster_dependents": [
+          "DEP006"
         ]
       }
     },
@@ -2736,7 +3198,7 @@ Explicit behavior checks: **Passed**.
         "used_paise": null,
         "remaining_paise": null
       },
-      "details": "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."
+      "details": "Aggregate limit; applied only when utilisation is supplied with the claim."
     },
     {
       "stage": "policy",
@@ -2749,7 +3211,7 @@ Explicit behavior checks: **Passed**.
         "used_paise": null,
         "remaining_paise": null
       },
-      "details": "A separate family utilisation feed is required; annual OPD usage is not substituted."
+      "details": "Aggregate limit; applied only when family utilisation is supplied with the claim."
     },
     {
       "stage": "policy",
@@ -2778,7 +3240,9 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "waiting_periods.initial_waiting_period_days",
       "evidence": {
         "condition": "initial",
+        "matched_terms": [],
         "join_date": "2024-04-01",
+        "join_date_source": "members[9].join_date",
         "treatment_date": "2024-11-03",
         "eligible_from": "2024-05-01"
       }
@@ -2815,7 +3279,7 @@ Explicit behavior checks: **Passed**.
       "stage": "policy",
       "rule_id": "pre_authorization",
       "status": "PASS",
-      "policy_ref": "opd_categories.consultation.requires_pre_auth",
+      "policy_ref": "opd_categories.consultation.requires_pre_auth / pre_authorization.required_for",
       "details": "Not required for this evidence and amount."
     },
     {
@@ -2826,7 +3290,8 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "same_day_claim_count_including_current": 1,
         "limit": 2,
-        "history_source": "fixture_or_supplied_history"
+        "prior_claims": [],
+        "history_source": "claim_payload"
       }
     },
     {
@@ -2838,7 +3303,7 @@ Explicit behavior checks: **Passed**.
         "monthly_claim_count_including_current": 1,
         "limit": 6,
         "month": "2024-11",
-        "history_source": "fixture_or_supplied_history"
+        "history_source": "claim_payload"
       }
     },
     {
@@ -2884,7 +3349,12 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 4500,
-        "limit": 5000
+        "eligible_amount": 4500,
+        "limit": 5000,
+        "global_per_claim_limit": 5000,
+        "category_sub_limit": 2000,
+        "limit_source": "coverage.per_claim_limit",
+        "interpretation": "PER_CLAIM_CEILING_RULE"
       }
     },
     {
@@ -2895,18 +3365,26 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "annual_limit": 50000,
         "ytd_claims_amount": 8000,
-        "ytd_source": "fixture_or_supplied_history",
+        "ytd_source": "claim_payload",
         "remaining": 42000
-      }
+      },
+      "details": null
     },
     {
       "stage": "policy",
-      "rule_id": "category_sub_limit",
-      "status": "LIMITED",
-      "policy_ref": "opd_categories.consultation.sub_limit",
+      "rule_id": "network_hospital",
+      "status": "PASS",
+      "policy_ref": "network_hospitals",
       "evidence": {
-        "eligible_before_cap": 4500,
-        "sub_limit": 2000
+        "hospital_name": "Apollo Hospitals",
+        "match": {
+          "network_hospital": "Apollo Hospitals",
+          "matched_term": "apollo hospitals",
+          "provenance": "policy_text",
+          "policy_ref": "network_hospitals[0]"
+        },
+        "match_rule": "exact_or_branch_suffix",
+        "discount_percent": 20
       }
     },
     {
@@ -2924,15 +3402,26 @@ Explicit behavior checks: **Passed**.
       "rule_id": "payable_amount",
       "status": "CALCULATED",
       "evidence": {
-        "eligible_paise": 200000,
+        "eligible_paise": 450000,
         "network_hospital": true,
-        "network_discount_paise": 40000,
-        "copay_paise": 16000,
+        "network_discount_paise": 90000,
+        "copay_paise": 36000,
         "branded_basis_paise": 0,
         "branded_copay_paise": 0,
-        "payable_paise": 144000
+        "payable_paise": 324000
       },
       "details": "Network discount applied before co-pay."
+    },
+    {
+      "stage": "confidence",
+      "rule_id": "confidence_rubric",
+      "status": "PASS",
+      "evidence": {
+        "base": 0.96,
+        "factors": [],
+        "score": 0.96
+      },
+      "details": "Heuristic evidence-completeness rubric, not a calibrated probability: the base score is reduced only by unknowns and degradations that are material to the outcome that was reached."
     },
     {
       "stage": "decision",
@@ -2940,7 +3429,8 @@ Explicit behavior checks: **Passed**.
       "status": "APPROVED",
       "evidence": {
         "primary_reason": null,
-        "approved_amount_paise": 144000
+        "review_reasons": [],
+        "approved_amount_paise": 324000
       }
     }
   ],
@@ -2953,6 +3443,8 @@ Explicit behavior checks: **Passed**.
       "amount": 1500,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "reason": "Covered.",
+      "exclusion_matches": null,
       "brand_status": null,
       "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
@@ -2965,33 +3457,28 @@ Explicit behavior checks: **Passed**.
       "amount": 3000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "reason": "Covered.",
+      "exclusion_matches": null,
       "brand_status": null,
       "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
     },
     {
       "kind": "adjustment",
-      "description": "Category sub-limit",
-      "amount_paise": -250000,
-      "amount": -2500,
-      "policy_ref": "opd_categories.consultation.sub_limit"
-    },
-    {
-      "kind": "adjustment",
       "description": "Network discount",
-      "amount_paise": -40000,
-      "amount": -400,
+      "amount_paise": -90000,
+      "amount": -900,
       "policy_ref": "opd_categories.consultation.network_discount_percent",
-      "basis_paise": 200000,
+      "basis_paise": 450000,
       "percent": 20
     },
     {
       "kind": "adjustment",
       "description": "Member co-pay",
-      "amount_paise": -16000,
-      "amount": -160,
+      "amount_paise": -36000,
+      "amount": -360,
       "policy_ref": "opd_categories.consultation.copay_percent",
-      "basis_paise": 160000,
+      "basis_paise": 360000,
       "percent": 10
     }
   ]
@@ -3012,12 +3499,48 @@ Explicit behavior checks: **Passed**.
   "reasons": [
     {
       "code": "COMPONENT_DEGRADED",
-      "message": "Optional risk enrichment failed and was skipped; manual review is recommended."
+      "message": "Optional risk enrichment failed and was skipped; manual review is recommended because processing was incomplete."
+    },
+    {
+      "code": "PATIENT_IDENTITY_NOT_VERIFIED",
+      "message": "No patient name was readable on the documents; payment is attributed to the submitting member and should be verified at settlement."
+    },
+    {
+      "code": "ANNUAL_LIMIT_NOT_EVALUATED",
+      "message": "Year-to-date OPD usage was not supplied, so the ₹50000 annual OPD limit was not evaluated. Payment is subject to the member's remaining annual OPD balance."
+    },
+    {
+      "code": "SESSION_HISTORY_NOT_EVALUATED",
+      "message": "Prior sessions this year were not supplied; this claim's 5 sessions are within the 20-session annual cap on their own."
     }
   ],
   "correction_requests": [],
-  "confidence_score": 0.69,
+  "confidence_score": 0.62,
   "trace": [
+    {
+      "stage": "configuration",
+      "rule_id": "policy_source",
+      "status": "LOADED",
+      "policy_ref": "policy",
+      "evidence": {
+        "policy_id": "PLUM_GHI_2024",
+        "schema_version": "plum.canonical_policy.v1",
+        "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
+        "canonical_sha256": "1f1299e97fc82a28c0c02042b69e1daacf5e686fe81588975f81399f4c07bbf0",
+        "audit_entries": 72,
+        "interpretation_entries": 40,
+        "conflict_resolutions": [
+          "DENTAL_REPORT_CONFLICT.DENTAL",
+          "PER_CLAIM_CEILING_RULE",
+          "EXCLUSION_MERGED.DENTAL.teeth_whitening",
+          "EXCLUSION_MERGED.DENTAL.orthodontic_treatment",
+          "EXCLUSION_MERGED.VISION.lasik_surgery",
+          "EXCLUSION_MERGED.VISION.refractive_surgery",
+          "PRE_AUTH_THRESHOLD_CONFLICT.pet_scan"
+        ]
+      },
+      "details": "Canonical policy configuration; the complete normalizer audit trail is in policy['audit']."
+    },
     {
       "stage": "document_gate",
       "rule_id": "document_requirements",
@@ -3028,37 +3551,30 @@ Explicit behavior checks: **Passed**.
           "file_id": "F021",
           "type": "PRESCRIPTION",
           "quality": "GOOD",
-          "patient_name": null
+          "patient_name": null,
+          "provenance": "fixture_metadata"
         },
         {
           "file_id": "F022",
           "type": "HOSPITAL_BILL",
           "quality": "GOOD",
-          "patient_name": null
+          "patient_name": null,
+          "provenance": "fixture_metadata"
         }
       ],
       "details": []
     },
     {
-      "stage": "confidence",
-      "rule_id": "evidence_quality",
-      "status": "DEGRADED",
-      "evidence": {
-        "deductions": [
-          {
-            "reason": "patient_name_unavailable",
-            "points": 0.04
-          }
-        ],
-        "score": 0.92
-      },
-      "details": "Evidence-quality score; not a calibrated probability."
+      "stage": "identity",
+      "rule_id": "patient_identity",
+      "status": "NOT_EVALUATED",
+      "details": "No patient name was extracted from the documents; the claim is attributed to the submitting member."
     },
     {
       "stage": "eligibility",
       "rule_id": "membership",
       "status": "PASS",
-      "policy_ref": "members / policy_id / opd_categories",
+      "policy_ref": "members[5] / policy_id / opd_categories.alternative_medicine",
       "evidence": {
         "member_id": "EMP006",
         "category": "ALTERNATIVE_MEDICINE"
@@ -3073,7 +3589,8 @@ Explicit behavior checks: **Passed**.
         "document_names": [],
         "allowed_names": [
           "kavita nair"
-        ]
+        ],
+        "unresolved_roster_dependents": []
       }
     },
     {
@@ -3133,7 +3650,7 @@ Explicit behavior checks: **Passed**.
         "used_paise": null,
         "remaining_paise": null
       },
-      "details": "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."
+      "details": "Aggregate limit; applied only when utilisation is supplied with the claim."
     },
     {
       "stage": "policy",
@@ -3146,7 +3663,7 @@ Explicit behavior checks: **Passed**.
         "used_paise": null,
         "remaining_paise": null
       },
-      "details": "A separate family utilisation feed is required; annual OPD usage is not substituted."
+      "details": "Aggregate limit; applied only when family utilisation is supplied with the claim."
     },
     {
       "stage": "policy",
@@ -3175,7 +3692,9 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "waiting_periods.initial_waiting_period_days",
       "evidence": {
         "condition": "initial",
+        "matched_terms": [],
         "join_date": "2024-04-01",
+        "join_date_source": "members[5].join_date",
         "treatment_date": "2024-10-28",
         "eligible_from": "2024-05-01"
       }
@@ -3212,7 +3731,7 @@ Explicit behavior checks: **Passed**.
       "stage": "policy",
       "rule_id": "pre_authorization",
       "status": "PASS",
-      "policy_ref": "opd_categories.alternative_medicine.requires_pre_auth",
+      "policy_ref": "opd_categories.alternative_medicine.requires_pre_auth / pre_authorization.required_for",
       "details": "Not required for this evidence and amount."
     },
     {
@@ -3223,7 +3742,8 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "same_day_claim_count_including_current": 1,
         "limit": 2,
-        "history_source": "fixture_or_supplied_history"
+        "prior_claims": [],
+        "history_source": "claim_payload"
       }
     },
     {
@@ -3235,7 +3755,7 @@ Explicit behavior checks: **Passed**.
         "monthly_claim_count_including_current": 1,
         "limit": 6,
         "month": "2024-10",
-        "history_source": "fixture_or_supplied_history"
+        "history_source": "claim_payload"
       }
     },
     {
@@ -3280,62 +3800,88 @@ Explicit behavior checks: **Passed**.
       "stage": "policy",
       "rule_id": "per_claim_limit",
       "status": "PASS",
-      "policy_ref": "coverage.per_claim_limit",
+      "policy_ref": "opd_categories.alternative_medicine.sub_limit",
       "evidence": {
         "claimed_amount": 4000,
-        "limit": 5000
+        "eligible_amount": 4000,
+        "limit": 8000,
+        "global_per_claim_limit": 5000,
+        "category_sub_limit": 8000,
+        "limit_source": "opd_categories.alternative_medicine.sub_limit",
+        "interpretation": "PER_CLAIM_CEILING_RULE"
       }
     },
     {
       "stage": "policy",
       "rule_id": "annual_opd_limit",
-      "status": "PASS",
+      "status": "NOT_EVALUATED",
       "policy_ref": "coverage.annual_opd_limit",
       "evidence": {
         "annual_limit": 50000,
-        "ytd_claims_amount": 0,
-        "ytd_source": "fixture_or_supplied_history",
-        "remaining": 50000
-      }
+        "ytd_claims_amount": null,
+        "ytd_source": null,
+        "remaining": null
+      },
+      "details": "Year-to-date OPD usage was not supplied; the annual limit is applied at settlement against the utilisation ledger."
     },
     {
       "stage": "policy",
       "rule_id": "covered_system",
-      "status": "NOT_EVALUATED",
+      "status": "PASS",
       "policy_ref": "opd_categories.alternative_medicine.covered_systems",
       "evidence": {
-        "matched": []
-      },
-      "details": "No listed medical system was named in the documents."
+        "matched": [
+          {
+            "system": "Ayurveda",
+            "matched_terms": [
+              {
+                "text": "panchakarma",
+                "provenance": "interpretation"
+              },
+              {
+                "text": "vaidya",
+                "provenance": "interpretation"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "stage": "policy",
       "rule_id": "max_sessions",
-      "status": "PASS",
+      "status": "NOT_EVALUATED",
       "policy_ref": "opd_categories.alternative_medicine.max_sessions_per_year",
       "evidence": {
         "current_sessions": 5,
-        "prior_sessions": 0,
-        "total_sessions": 5,
+        "prior_sessions": null,
+        "total_sessions": null,
         "max_sessions_per_year": 20,
-        "history_source": "fixture_metadata"
-      }
+        "history_source": null
+      },
+      "details": "Prior session history was not supplied; only this claim's sessions were checked."
     },
     {
       "stage": "policy",
       "rule_id": "registered_practitioner",
       "status": "PASS",
       "policy_ref": "opd_categories.alternative_medicine.requires_registered_practitioner",
-      "evidence": {}
+      "evidence": {
+        "registrations": [
+          "AYUR/KL/2345/2019"
+        ]
+      }
     },
     {
       "stage": "policy",
-      "rule_id": "category_sub_limit",
-      "status": "PASS",
-      "policy_ref": "opd_categories.alternative_medicine.sub_limit",
+      "rule_id": "network_hospital",
+      "status": "NOT_APPLICABLE",
+      "policy_ref": "network_hospitals",
       "evidence": {
-        "eligible_before_cap": 4000,
-        "sub_limit": 8000
+        "hospital_name": "Ayur Wellness Centre",
+        "match": null,
+        "match_rule": "exact_or_branch_suffix",
+        "discount_percent": 0
       }
     },
     {
@@ -3364,11 +3910,49 @@ Explicit behavior checks: **Passed**.
       "details": "Network discount applied before co-pay."
     },
     {
+      "stage": "confidence",
+      "rule_id": "confidence_rubric",
+      "status": "DEGRADED",
+      "evidence": {
+        "base": 0.96,
+        "factors": [
+          {
+            "reason": "patient_name_unavailable",
+            "points": 0.04,
+            "applies_to": "payable",
+            "applied": true
+          },
+          {
+            "reason": "component_failure",
+            "points": 0.23,
+            "applies_to": "any",
+            "component": "risk_enrichment",
+            "applied": true
+          },
+          {
+            "reason": "annual_opd_usage_not_evaluated",
+            "points": 0.04,
+            "applies_to": "payable",
+            "applied": true
+          },
+          {
+            "reason": "session_history_not_evaluated",
+            "points": 0.03,
+            "applies_to": "payable",
+            "applied": true
+          }
+        ],
+        "score": 0.62
+      },
+      "details": "Heuristic evidence-completeness rubric, not a calibrated probability: the base score is reduced only by unknowns and degradations that are material to the outcome that was reached."
+    },
+    {
       "stage": "decision",
       "rule_id": "outcome",
       "status": "APPROVED",
       "evidence": {
         "primary_reason": null,
+        "review_reasons": [],
         "approved_amount_paise": 400000
       }
     }
@@ -3382,6 +3966,8 @@ Explicit behavior checks: **Passed**.
       "amount": 3000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "reason": "Covered.",
+      "exclusion_matches": null,
       "brand_status": null,
       "brand_evidence": null,
       "policy_ref": "opd_categories.alternative_medicine.covered"
@@ -3394,6 +3980,8 @@ Explicit behavior checks: **Passed**.
       "amount": 1000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "reason": "Covered.",
+      "exclusion_matches": null,
       "brand_status": null,
       "brand_evidence": null,
       "policy_ref": "opd_categories.alternative_medicine.covered"
@@ -3434,28 +4022,44 @@ Explicit behavior checks: **Passed**.
   "reasons": [
     {
       "code": "EXCLUDED_CONDITION",
-      "message": "Treatment is excluded under the policy: bariatric, morbid obesity."
+      "message": "Treatment is excluded under the policy: Obesity and weight loss programs."
     },
     {
       "code": "WAITING_PERIOD",
-      "message": "The obesity treatment waiting period ends on 2025-04-01; treatment was on 2024-10-18."
-    },
-    {
-      "code": "PER_CLAIM_EXCEEDED",
-      "message": "Claimed amount ₹8000 exceeds the per-claim limit of ₹5000."
-    },
-    {
-      "code": "ANNUAL_USAGE_UNKNOWN",
-      "message": "Annual OPD usage is unavailable. A reviewer must verify the remaining benefit before payment."
+      "message": "The obesity treatment waiting period ends on 2025-04-01; treatment was on 2024-10-18. Claims for this condition are eligible from 2025-04-01."
     },
     {
       "code": "EXCLUDED_PROCEDURE",
-      "message": "Bariatric Consultation is excluded; ₹3000 removed."
+      "message": "Bariatric Consultation is excluded (Obesity and weight loss programs); ₹3000 removed."
     }
   ],
   "correction_requests": [],
-  "confidence_score": 0.8,
+  "confidence_score": 0.96,
   "trace": [
+    {
+      "stage": "configuration",
+      "rule_id": "policy_source",
+      "status": "LOADED",
+      "policy_ref": "policy",
+      "evidence": {
+        "policy_id": "PLUM_GHI_2024",
+        "schema_version": "plum.canonical_policy.v1",
+        "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
+        "canonical_sha256": "1f1299e97fc82a28c0c02042b69e1daacf5e686fe81588975f81399f4c07bbf0",
+        "audit_entries": 72,
+        "interpretation_entries": 40,
+        "conflict_resolutions": [
+          "DENTAL_REPORT_CONFLICT.DENTAL",
+          "PER_CLAIM_CEILING_RULE",
+          "EXCLUSION_MERGED.DENTAL.teeth_whitening",
+          "EXCLUSION_MERGED.DENTAL.orthodontic_treatment",
+          "EXCLUSION_MERGED.VISION.lasik_surgery",
+          "EXCLUSION_MERGED.VISION.refractive_surgery",
+          "PRE_AUTH_THRESHOLD_CONFLICT.pet_scan"
+        ]
+      },
+      "details": "Canonical policy configuration; the complete normalizer audit trail is in policy['audit']."
+    },
     {
       "stage": "document_gate",
       "rule_id": "document_requirements",
@@ -3466,37 +4070,30 @@ Explicit behavior checks: **Passed**.
           "file_id": "F023",
           "type": "PRESCRIPTION",
           "quality": "GOOD",
-          "patient_name": null
+          "patient_name": null,
+          "provenance": "fixture_metadata"
         },
         {
           "file_id": "F024",
           "type": "HOSPITAL_BILL",
           "quality": "GOOD",
-          "patient_name": null
+          "patient_name": null,
+          "provenance": "fixture_metadata"
         }
       ],
       "details": []
     },
     {
-      "stage": "confidence",
-      "rule_id": "evidence_quality",
-      "status": "DEGRADED",
-      "evidence": {
-        "deductions": [
-          {
-            "reason": "patient_name_unavailable",
-            "points": 0.04
-          }
-        ],
-        "score": 0.92
-      },
-      "details": "Evidence-quality score; not a calibrated probability."
+      "stage": "identity",
+      "rule_id": "patient_identity",
+      "status": "NOT_EVALUATED",
+      "details": "No patient name was extracted from the documents; the claim is attributed to the submitting member."
     },
     {
       "stage": "eligibility",
       "rule_id": "membership",
       "status": "PASS",
-      "policy_ref": "members / policy_id / opd_categories",
+      "policy_ref": "members[8] / policy_id / opd_categories.consultation",
       "evidence": {
         "member_id": "EMP009",
         "category": "CONSULTATION"
@@ -3511,7 +4108,8 @@ Explicit behavior checks: **Passed**.
         "document_names": [],
         "allowed_names": [
           "anita desai"
-        ]
+        ],
+        "unresolved_roster_dependents": []
       }
     },
     {
@@ -3533,8 +4131,25 @@ Explicit behavior checks: **Passed**.
       "status": "FAIL",
       "policy_ref": "exclusions.conditions",
       "evidence": [
-        "bariatric",
-        "morbid obesity"
+        {
+          "exclusion_id": "ALL:obesity_and_weight_loss_programs",
+          "label": "Obesity and weight loss programs",
+          "matched_terms": [
+            {
+              "text": "obesity",
+              "provenance": "policy_text"
+            },
+            {
+              "text": "bariatric",
+              "provenance": "interpretation"
+            }
+          ],
+          "qualifier": null,
+          "policy_text_match": true,
+          "source_paths": [
+            "exclusions.conditions[5]"
+          ]
+        }
       ]
     },
     {
@@ -3574,7 +4189,7 @@ Explicit behavior checks: **Passed**.
         "used_paise": null,
         "remaining_paise": null
       },
-      "details": "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."
+      "details": "Aggregate limit; applied only when utilisation is supplied with the claim."
     },
     {
       "stage": "policy",
@@ -3587,7 +4202,7 @@ Explicit behavior checks: **Passed**.
         "used_paise": null,
         "remaining_paise": null
       },
-      "details": "A separate family utilisation feed is required; annual OPD usage is not substituted."
+      "details": "Aggregate limit; applied only when family utilisation is supplied with the claim."
     },
     {
       "stage": "policy",
@@ -3616,7 +4231,18 @@ Explicit behavior checks: **Passed**.
       "policy_ref": "waiting_periods.specific_conditions.obesity_treatment",
       "evidence": {
         "condition": "obesity_treatment",
+        "matched_terms": [
+          {
+            "text": "obesity",
+            "provenance": "policy_text"
+          },
+          {
+            "text": "bariatric",
+            "provenance": "interpretation"
+          }
+        ],
         "join_date": "2024-04-01",
+        "join_date_source": "members[8].join_date",
         "treatment_date": "2024-10-18",
         "eligible_from": "2025-04-01"
       }
@@ -3653,7 +4279,7 @@ Explicit behavior checks: **Passed**.
       "stage": "policy",
       "rule_id": "pre_authorization",
       "status": "PASS",
-      "policy_ref": "opd_categories.consultation.requires_pre_auth",
+      "policy_ref": "opd_categories.consultation.requires_pre_auth / pre_authorization.required_for",
       "details": "Not required for this evidence and amount."
     },
     {
@@ -3664,7 +4290,8 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "same_day_claim_count_including_current": 1,
         "limit": 2,
-        "history_source": "fixture_or_supplied_history"
+        "prior_claims": [],
+        "history_source": "claim_payload"
       }
     },
     {
@@ -3676,7 +4303,7 @@ Explicit behavior checks: **Passed**.
         "monthly_claim_count_including_current": 1,
         "limit": 6,
         "month": "2024-10",
-        "history_source": "fixture_or_supplied_history"
+        "history_source": "claim_payload"
       }
     },
     {
@@ -3718,11 +4345,16 @@ Explicit behavior checks: **Passed**.
     {
       "stage": "policy",
       "rule_id": "per_claim_limit",
-      "status": "FAIL",
+      "status": "PASS",
       "policy_ref": "coverage.per_claim_limit",
       "evidence": {
         "claimed_amount": 8000,
-        "limit": 5000
+        "eligible_amount": 5000,
+        "limit": 5000,
+        "global_per_claim_limit": 5000,
+        "category_sub_limit": 2000,
+        "limit_source": "coverage.per_claim_limit",
+        "interpretation": "PER_CLAIM_CEILING_RULE"
       }
     },
     {
@@ -3733,18 +4365,21 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "annual_limit": 50000,
         "ytd_claims_amount": null,
-        "ytd_source": "fixture_or_supplied_history",
+        "ytd_source": null,
         "remaining": null
-      }
+      },
+      "details": "Year-to-date OPD usage was not supplied; the annual limit is applied at settlement against the utilisation ledger."
     },
     {
       "stage": "policy",
-      "rule_id": "category_sub_limit",
-      "status": "LIMITED",
-      "policy_ref": "opd_categories.consultation.sub_limit",
+      "rule_id": "network_hospital",
+      "status": "NOT_EVALUATED",
+      "policy_ref": "network_hospitals",
       "evidence": {
-        "eligible_before_cap": 5000,
-        "sub_limit": 2000
+        "hospital_name": null,
+        "match": null,
+        "match_rule": "exact_or_branch_suffix",
+        "discount_percent": 0
       }
     },
     {
@@ -3762,15 +4397,48 @@ Explicit behavior checks: **Passed**.
       "rule_id": "payable_amount",
       "status": "CALCULATED",
       "evidence": {
-        "eligible_paise": 200000,
+        "eligible_paise": 500000,
         "network_hospital": false,
         "network_discount_paise": 0,
-        "copay_paise": 20000,
+        "copay_paise": 50000,
         "branded_basis_paise": 0,
         "branded_copay_paise": 0,
-        "payable_paise": 180000
+        "payable_paise": 450000
       },
       "details": "Network discount applied before co-pay."
+    },
+    {
+      "stage": "confidence",
+      "rule_id": "confidence_rubric",
+      "status": "PASS",
+      "evidence": {
+        "base": 0.96,
+        "factors": [
+          {
+            "reason": "patient_name_unavailable",
+            "points": 0.04,
+            "applies_to": "payable",
+            "applied": false
+          },
+          {
+            "reason": "line_exclusion_matched_by_interpretation_only",
+            "points": 0.06,
+            "applies_to": "payable",
+            "lines": [
+              "Bariatric Consultation"
+            ],
+            "applied": false
+          },
+          {
+            "reason": "annual_opd_usage_not_evaluated",
+            "points": 0.04,
+            "applies_to": "payable",
+            "applied": false
+          }
+        ],
+        "score": 0.96
+      },
+      "details": "Heuristic evidence-completeness rubric, not a calibrated probability: the base score is reduced only by unknowns and degradations that are material to the outcome that was reached."
     },
     {
       "stage": "decision",
@@ -3778,6 +4446,7 @@ Explicit behavior checks: **Passed**.
       "status": "REJECTED",
       "evidence": {
         "primary_reason": "EXCLUDED_CONDITION",
+        "review_reasons": [],
         "approved_amount_paise": 0
       }
     }
@@ -3791,9 +4460,27 @@ Explicit behavior checks: **Passed**.
       "amount": 3000,
       "status": "EXCLUDED",
       "reason_code": "EXCLUDED_PROCEDURE",
+      "reason": "Excluded under the policy: Obesity and weight loss programs.",
+      "exclusion_matches": [
+        {
+          "exclusion_id": "ALL:obesity_and_weight_loss_programs",
+          "label": "Obesity and weight loss programs",
+          "matched_terms": [
+            {
+              "text": "bariatric",
+              "provenance": "interpretation"
+            }
+          ],
+          "qualifier": null,
+          "policy_text_match": false,
+          "source_paths": [
+            "exclusions.conditions[5]"
+          ]
+        }
+      ],
       "brand_status": null,
       "brand_evidence": null,
-      "policy_ref": "opd_categories.consultation.excluded_procedures"
+      "policy_ref": "exclusions.conditions[5]"
     },
     {
       "kind": "line_item",
@@ -3803,16 +4490,11 @@ Explicit behavior checks: **Passed**.
       "amount": 5000,
       "status": "ELIGIBLE",
       "reason_code": null,
+      "reason": "Covered.",
+      "exclusion_matches": null,
       "brand_status": null,
       "brand_evidence": null,
       "policy_ref": "opd_categories.consultation.covered"
-    },
-    {
-      "kind": "adjustment",
-      "description": "Category sub-limit",
-      "amount_paise": -300000,
-      "amount": -3000,
-      "policy_ref": "opd_categories.consultation.sub_limit"
     },
     {
       "kind": "adjustment",
@@ -3820,16 +4502,16 @@ Explicit behavior checks: **Passed**.
       "amount_paise": 0,
       "amount": 0,
       "policy_ref": "opd_categories.consultation.network_discount_percent",
-      "basis_paise": 200000,
+      "basis_paise": 500000,
       "percent": 0
     },
     {
       "kind": "adjustment",
       "description": "Member co-pay",
-      "amount_paise": -20000,
-      "amount": -200,
+      "amount_paise": -50000,
+      "amount": -500,
       "policy_ref": "opd_categories.consultation.copay_percent",
-      "basis_paise": 200000,
+      "basis_paise": 500000,
       "percent": 10
     }
   ]

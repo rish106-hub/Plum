@@ -1,0 +1,269 @@
+{
+  "schema": "plum.verification_summary.v1",
+  "started_at": "2026-09-26T13:59:33+00:00",
+  "finished_at": "2026-09-26T13:59:37+00:00",
+  "git": {
+    "head": "7c088a8d46c95741a4cbc6703981f96473ac5261",
+    "branch": "fix/source-of-truth-remediation",
+    "worktree_dirty": true,
+    "changed_paths": 29
+  },
+  "python": "3.14.7",
+  "platform": "Darwin arm64",
+  "source_artifacts": [
+    {
+      "path": "data/policy_terms.json",
+      "expected_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
+      "actual_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
+      "ok": true,
+      "matches_initial_commit": true
+    },
+    {
+      "path": "tests/fixtures/test_cases.json",
+      "expected_sha256": "4b9b9a047ec6a6479a81f6b2767f00f931920ad7bedb3f547abb54b771034e63",
+      "actual_sha256": "4b9b9a047ec6a6479a81f6b2767f00f931920ad7bedb3f547abb54b771034e63",
+      "ok": true,
+      "matches_initial_commit": true
+    },
+    {
+      "path": "docs/reference/assignment.md",
+      "expected_sha256": "538eb43b6b6ecd983904cbda0c8f2efcca8ea1703e8e18e6c981f85c7db0e2bc",
+      "actual_sha256": "538eb43b6b6ecd983904cbda0c8f2efcca8ea1703e8e18e6c981f85c7db0e2bc",
+      "ok": true,
+      "matches_initial_commit": true
+    },
+    {
+      "path": "docs/reference/sample_documents_guide.md",
+      "expected_sha256": "b28f17041652a5d553abf1521088e282c38d25965d15567054bbcc0d556b939d",
+      "actual_sha256": "b28f17041652a5d553abf1521088e282c38d25965d15567054bbcc0d556b939d",
+      "ok": true,
+      "matches_initial_commit": true
+    }
+  ],
+  "steps": [
+    {
+      "name": "ruff",
+      "command": "python -m ruff check .",
+      "exit_code": 0,
+      "ok": true,
+      "seconds": 0.09
+    },
+    {
+      "name": "mypy",
+      "command": "python -m mypy claims scripts tools",
+      "exit_code": 0,
+      "ok": true,
+      "seconds": 0.47
+    },
+    {
+      "name": "compileall",
+      "command": "python -m compileall -q claims scripts tools",
+      "exit_code": 0,
+      "ok": true,
+      "seconds": 0.04
+    },
+    {
+      "name": "pytest",
+      "command": "python -m pytest -q -p no:cacheprovider",
+      "exit_code": 0,
+      "ok": true,
+      "seconds": 3.04
+    },
+    {
+      "name": "supplied-case evaluation",
+      "command": "python -m scripts.evaluate",
+      "exit_code": 0,
+      "ok": true,
+      "seconds": 0.14
+    },
+    {
+      "name": "offline document suites",
+      "command": "python -m scripts.evaluate_documents",
+      "exit_code": 0,
+      "ok": true,
+      "seconds": 0.34
+    },
+    {
+      "name": "live OCR status (keys stripped)",
+      "command": "python -m scripts.evaluate_documents --providers live",
+      "exit_code": 2,
+      "ok": true,
+      "seconds": 0.17
+    }
+  ],
+  "lint_ok": true,
+  "typecheck_ok": true,
+  "compile_ok": true,
+  "tests": {
+    "passed": 189,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "subtests_passed": 77,
+    "subtests_failed": 0,
+    "warnings": 7
+  },
+  "fixture_evaluation": {
+    "report": "docs/reports/evaluation.md",
+    "fixture": "tests/fixtures/test_cases.json (unmodified)",
+    "passed": 12,
+    "total": 12,
+    "fingerprints": {
+      "policy_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
+      "policy_canonical_sha256": "1f1299e97fc82a28c0c02042b69e1daacf5e686fe81588975f81399f4c07bbf0",
+      "fixture_sha256": "4b9b9a047ec6a6479a81f6b2767f00f931920ad7bedb3f547abb54b771034e63"
+    },
+    "cases": [
+      {
+        "case_id": "TC001",
+        "expected_decision": null,
+        "decision": null,
+        "expected_amount": null,
+        "approved_amount": null,
+        "confidence": 0.9,
+        "matched": true
+      },
+      {
+        "case_id": "TC002",
+        "expected_decision": null,
+        "decision": null,
+        "expected_amount": null,
+        "approved_amount": null,
+        "confidence": 0.9,
+        "matched": true
+      },
+      {
+        "case_id": "TC003",
+        "expected_decision": null,
+        "decision": null,
+        "expected_amount": null,
+        "approved_amount": null,
+        "confidence": 0.9,
+        "matched": true
+      },
+      {
+        "case_id": "TC004",
+        "expected_decision": "APPROVED",
+        "decision": "APPROVED",
+        "expected_amount": 1350,
+        "approved_amount": 1350,
+        "confidence": 0.96,
+        "matched": true
+      },
+      {
+        "case_id": "TC005",
+        "expected_decision": "REJECTED",
+        "decision": "REJECTED",
+        "expected_amount": null,
+        "approved_amount": 0,
+        "confidence": 0.96,
+        "matched": true
+      },
+      {
+        "case_id": "TC006",
+        "expected_decision": "PARTIAL",
+        "decision": "PARTIAL",
+        "expected_amount": 8000,
+        "approved_amount": 8000,
+        "confidence": 0.89,
+        "matched": true
+      },
+      {
+        "case_id": "TC007",
+        "expected_decision": "REJECTED",
+        "decision": "REJECTED",
+        "expected_amount": null,
+        "approved_amount": 0,
+        "confidence": 0.96,
+        "matched": true
+      },
+      {
+        "case_id": "TC008",
+        "expected_decision": "REJECTED",
+        "decision": "REJECTED",
+        "expected_amount": null,
+        "approved_amount": 0,
+        "confidence": 0.96,
+        "matched": true
+      },
+      {
+        "case_id": "TC009",
+        "expected_decision": "MANUAL_REVIEW",
+        "decision": "MANUAL_REVIEW",
+        "expected_amount": null,
+        "approved_amount": 0,
+        "confidence": 0.96,
+        "matched": true
+      },
+      {
+        "case_id": "TC010",
+        "expected_decision": "APPROVED",
+        "decision": "APPROVED",
+        "expected_amount": 3240,
+        "approved_amount": 3240,
+        "confidence": 0.96,
+        "matched": true
+      },
+      {
+        "case_id": "TC011",
+        "expected_decision": "APPROVED",
+        "decision": "APPROVED",
+        "expected_amount": null,
+        "approved_amount": 4000,
+        "confidence": 0.62,
+        "matched": true
+      },
+      {
+        "case_id": "TC012",
+        "expected_decision": "REJECTED",
+        "decision": "REJECTED",
+        "expected_amount": null,
+        "approved_amount": 0,
+        "confidence": 0.96,
+        "matched": true
+      }
+    ]
+  },
+  "document_evaluation": {
+    "report": "docs/reports/document-evaluation.md",
+    "ocr_evaluated": false,
+    "passed": 28,
+    "total": 28,
+    "suites": {
+      "intake_routing": {
+        "passed": 6,
+        "total": 6
+      },
+      "image_fail_closed": {
+        "passed": 14,
+        "total": 14
+      },
+      "provider_failure_injection": {
+        "passed": 8,
+        "total": 8
+      }
+    }
+  },
+  "live_ocr": {
+    "status": "NOT_RUN",
+    "reason": "verification is offline by design (provider keys are stripped); SARVAM_API_KEY is not configured",
+    "metrics": null,
+    "report": "docs/reports/document-ocr-evaluation.md",
+    "command": "PYTHONPATH=. .venv/bin/python -m scripts.evaluate_documents --providers live [--gemini]"
+  },
+  "policy_audit": {
+    "report": "docs/reports/policy-audit.md",
+    "entries": 72,
+    "by_kind": {
+      "interpretation": 40,
+      "derived": 13,
+      "absent_optional_field": 8,
+      "conflict_resolution": 7,
+      "reference_repair": 4
+    },
+    "canonical_sha256": "1f1299e97fc82a28c0c02042b69e1daacf5e686fe81588975f81399f4c07bbf0"
+  },
+  "readme_block_updated": true,
+  "docs_drift": [],
+  "ok": true
+}
