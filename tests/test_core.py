@@ -676,13 +676,11 @@ class ClaimCoreTests(unittest.TestCase):
 
     def test_pre_authorization_does_not_bypass_benefit_limits(self) -> None:
         claim = normalize_fixture(self.cases["TC007"])
-        policy = deepcopy(self.policy)
-        policy["coverage"]["per_claim_limit"] = 20000
         claim["ytd_claims_amount"] = 49900
         claim["documents"].append({"file_id": "PREAUTH-LIMIT", "actual_type": "PRE_AUTHORIZATION", "quality": "GOOD", "fields": {"date": "2024-10-20", "approval_reference": "AUTH-LIMIT"}, "source": "fixture_metadata"})
         claim["pre_authorization"] = {"obtained": True, "issued_date": "2024-10-20", "approval_reference": "AUTH-LIMIT"}
 
-        result = evaluate_claim(claim, policy)
+        result = evaluate_claim(claim, self.policy)
 
         self.assertTrue(any(item["description"] == "Annual OPD remaining limit" for item in result["ledger"]))
 
@@ -972,7 +970,7 @@ class AuditRoundTwoTests(unittest.TestCase):
         claim = self.claim("TC007")
         claim["documents"].append({"file_id": "PA", "doc_type": "PRE_AUTHORIZATION", "quality": "GOOD", "fields": {"approval_reference": "PA-1", "date": "2024-10-25", "approved_amount": 15000}})
         result = evaluate_claim(claim, self.policy)
-        self.assertEqual(result["decision"], "APPROVED")
+        self.assertEqual(result["decision"], "PARTIAL")
         step = self.step(result, "pre_authorization")
         self.assertEqual(step["evidence"]["status_source"], "member_supplied_record_unverified_with_insurer")
         self.assertIn("PRE_AUTH_NOT_VERIFIED_WITH_INSURER", self.codes(result))

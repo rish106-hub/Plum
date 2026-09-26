@@ -54,6 +54,8 @@ REVIEW_CODES = {
     "COVERED_SYSTEM_UNKNOWN", "MEMBER_START_DATE_UNKNOWN", "TREATMENT_DATE_REQUIRED", "DOCUMENT_DATE_CONFLICT",
     "PRACTITIONER_REGISTRATION_UNKNOWN", "EXCLUSION_QUALIFIER_REVIEW", "BILL_AMOUNT_UNVERIFIED",
     "DOCUMENT_QUALITY_INSUFFICIENT", "PATIENT_IDENTITY_UNVERIFIED", "CATEGORY_SUB_LIMIT_UNVERIFIED",
+    "AMBIGUOUS_CLINICAL_TERM", "MIXED_SERVICE_LINE", "SESSION_COUNT_MALFORMED", "MALFORMED_SUBMISSION_DATE",
+    "MALFORMED_PRE_EXISTING_CONDITIONS",
 }
 SUB_LIMIT_USAGE_KEYS = (
     ("category_sub_limit_used", "exact: prior service benefit counted against this sub_limit"),
@@ -137,14 +139,50 @@ def _contains_phrase(text: str, phrase: Any) -> bool:
 
 
 def _affirmative(text: str, phrase: str) -> bool:
-    """Find a phrase while ignoring an explicit nearby clinical negation."""
-    normalized = _normal_words(text)
+    """Find a phrase affirmed in its own clinical clause."""
     needle = _normal_words(phrase)
-    for match in re.finditer(rf"(?<!\w){re.escape(needle)}(?!\w)", normalized) if needle else ():
-        context = normalized[max(0, match.start() - 45):match.start()]
-        if not re.search(r"\b(?:no|not|without|denies|denied|negative for)\b(?:\s+\w+){0,4}\s*$", context):
-            return True
+    if not needle:
+        return False
+    for clause in re.split(r"[;,.\n]+", _text(text)):
+        normalized = _normal_words(clause)
+        for match in re.finditer(rf"(?<!\w){re.escape(needle)}(?!\w)", normalized):
+            before = normalized[:match.start()].strip()
+            negated = bool(re.search(
+                r"\b(?:no|without|denies|denied|negative for)(?:\s+(?:history of|evidence of))?\s*$"
+                r"|\bnot\s+(?:have|has|diagnosed with|suffering from)\s*$",
+                before,
+            ))
+            if not negated:
+                return True
     return False
+
+
+def _session_count(text: str) -> tuple[int | None, bool]:
+    """Recognize common session-count forms; never silently skip ambiguous evidence."""
+    normalized = _text(text)
+    for pattern in (r"\b(\d+)\s*[- ]?sessions?\b", r"\bsessions?\s*[:=-]?\s*(\d+)\b"):
+        match = re.search(pattern, normalized)
+        if match:
+            return int(match.group(1)), False
+    return None, bool(re.search(r"\bsessions?\b", normalized))
+
+
+def _ambiguous_clinical_term(text: str, term: str) -> bool:
+    """Terms like ST depression are not insurance-condition diagnoses."""
+    normalized = _normal_words(text)
+    phrase = _normal_words(term)
+    return (phrase == "depression" and bool(re.search(r"\bst depression\b", normalized))) or (
+        phrase == "tonic" and bool(re.search(r"\btonic clonic\b", normalized))
+    )
+
+
+def _mixed_consultation_line(description: str) -> bool:
+    """A single amount containing both a visit and diagnostic/pharmacy service is unallocatable."""
+    words = _normal_words(description)
+    return bool(re.search(r"\b(?:consultation|consult|physician|doctor)\b", words)) and bool(re.search(
+        r"\b(?:blood|lab|laboratory|test|report|scan|x ray|xray|mri|ct|medicine|drug|pharmacy)\b",
+        words,
+    ))
 
 
 def _term_hits(text: str, terms: list[dict[str, Any]], *, affirmative: bool = False) -> list[dict[str, Any]]:
@@ -508,7 +546,7 @@ def _stage_eligibility(claim: _Claim) -> dict[str, Any] | None:
 
 
 def _stage_identity(claim: _Claim) -> dict[str, Any] | None:
-    """Patient names on the documents against the member's covered roster and the document layer's verdict."""
+    """Document patient identity must equal the benefit-account member."""
     documents = claim.documents
     claim.document_names = [str(_patient_name(doc)) for doc in documents if _patient_name(doc)]
     if not claim.document_names:
@@ -517,14 +555,11 @@ def _stage_identity(claim: _Claim) -> dict[str, Any] | None:
         claim.trace.append({"stage": "identity", "rule_id": "patient_identity", "status": "NOT_EVALUATED", "details": "No patient name was extracted from the documents; the claim is attributed to the submitting member."})
         claim.factor("patient_name_unavailable", 0.04, (*PAYABLE_OR_REVIEW, "identity_dependent_rejection"))
         claim.advise("PATIENT_IDENTITY_NOT_VERIFIED", "No patient name was readable on the documents; payment is attributed to the submitting member and should be verified at settlement.")
-    members = {member["member_id"]: member for member in claim.policy["members"]}
-    owner = members.get(claim.member.get("primary_member_id") or "", claim.member)
-    allowed_ids = {owner["member_id"], *owner["dependents"]}
-    allowed_names = {_normal_name(members[member_id]["name"]) for member_id in allowed_ids if member_id in members}
-    unexpected = [name for name in claim.document_names if _normal_name(name) not in allowed_names]
-    claim.trace.append({"stage": "identity", "rule_id": "roster_patient_match", "status": "FAIL" if unexpected else "PASS" if claim.document_names else "NOT_EVALUATED", "policy_ref": "members", "evidence": {"document_names": claim.document_names, "allowed_names": sorted(allowed_names), "unresolved_roster_dependents": owner["unresolved_dependents"]}})
-    if unexpected:
-        return claim.correction({"code": "PATIENT_NOT_COVERED", "message": f"The uploaded documents name {', '.join(unexpected)}, who is not listed as this member or a covered dependent. Please upload documents for a covered patient or correct the member ID."})
+    expected_name = _normal_name(claim.member["name"])
+    mismatched = [name for name in claim.document_names if _normal_name(name) != expected_name]
+    claim.trace.append({"stage": "identity", "rule_id": "roster_patient_match", "status": "FAIL" if mismatched else "PASS" if claim.document_names else "NOT_EVALUATED", "policy_ref": "members", "evidence": {"document_names": claim.document_names, "benefit_member_id": claim.member["member_id"], "benefit_member_name": claim.member["name"]}})
+    if mismatched:
+        return claim.correction({"code": "PATIENT_MEMBER_MISMATCH", "message": f"The uploaded documents name {', '.join(mismatched)}, but this claim uses member ID {claim.member['member_id']} for {claim.member['name']}. Submit the claim under the documented patient's covered member ID."})
     status = claim.inputs["identity_verification"]
     claim.trace.append({"stage": "identity", "rule_id": "identity_verification", "status": "NOT_EVALUATED" if status in (None, "NOT_AVAILABLE") else "PASS" if status == "VERIFIED" else "FAIL", "evidence": {"document_layer_status": status}, "details": "Identity verdict supplied by the document layer; an explicit failed or unverified verdict blocks payment."})
     if status in BLOCKING_IDENTITY_STATUSES:
@@ -690,7 +725,8 @@ def _stage_coverage(claim: _Claim) -> None:
         try:
             age = (date.fromisoformat(str(submission_date)) - treatment_date).days
         except ValueError:
-            claim.trace.append({"stage": "policy", "rule_id": "submission_deadline", "status": "NOT_EVALUATED", "details": "Submission date invalid."})
+            claim.trace.append({"stage": "policy", "rule_id": "submission_deadline", "status": "FAIL", "policy_ref": "submission_rules.deadline_days_from_treatment", "details": "Submission date invalid."})
+            claim.reason("MALFORMED_SUBMISSION_DATE", "Submission date is invalid and must be corrected before payment.")
             return
         late, early = age > deadline, age < 0
         claim.trace.append({"stage": "policy", "rule_id": "submission_deadline", "status": "FAIL" if late or early else "PASS", "policy_ref": "submission_rules.deadline_days_from_treatment", "evidence": {"days_elapsed": age, "deadline_days": deadline}})
@@ -708,6 +744,9 @@ def _stage_waiting_periods(claim: _Claim) -> None:
     treatment_date, join_date = claim.treatment_date, claim.join_date
     pre_existing_days = config["pre_existing_days"]
     evidence = claim.payload.get("pre_existing_conditions")
+    if evidence is not None and not isinstance(evidence, list):
+        claim.trace.append(_rule_trace("pre_existing_conditions", "FAIL", "claim.pre_existing_conditions", {}, "Pre-existing conditions must be a list of condition values."))
+        claim.reason("MALFORMED_PRE_EXISTING_CONDITIONS", "Pre-existing conditions must be submitted as a list; an operator must correct the malformed evidence.")
     names = [
         str(item.get("condition") if isinstance(item, dict) else item)
         for item in (evidence or [])
@@ -729,10 +768,17 @@ def _stage_waiting_periods(claim: _Claim) -> None:
             claim.reason("MEMBER_START_DATE_UNKNOWN", "The covered member's enrollment date is unavailable; waiting-period eligibility needs review.")
         return
     relevant = []
+    ambiguous_terms: list[str] = []
     for condition in config["specific_conditions"]:
-        terms = _term_hits(claim.content, condition["terms"], affirmative=True)
+        for term in condition["terms"]:
+            if _ambiguous_clinical_term(claim.clinical_content, term["text"]):
+                ambiguous_terms.append(term["text"])
+        terms = [term for term in _term_hits(claim.clinical_content, condition["terms"], affirmative=True) if not _ambiguous_clinical_term(claim.clinical_content, term["text"])]
         if terms:
             relevant.append((condition, terms))
+    if ambiguous_terms:
+        claim.trace.append(_rule_trace("ambiguous_clinical_term", "FAIL", "waiting_periods.condition_aliases", {"terms": sorted(set(ambiguous_terms))}, "Medical terminology matched a broad policy alias without establishing a diagnosis."))
+        claim.reason("AMBIGUOUS_CLINICAL_TERM", "A broad policy term appears in ambiguous clinical terminology. Manual review is required before applying an exclusion or waiting period.")
     if relevant:
         condition, matched_terms = max(relevant, key=lambda item: item[0]["days"])
         name, days, ref = condition["condition"], condition["days"], condition["policy_ref"]
@@ -1053,9 +1099,8 @@ def _stage_category_rules(claim: _Claim) -> None:
             claim.reason("COVERED_SYSTEM_UNKNOWN", "The documents do not establish a medical system covered by this policy. An operator must verify it before payment.")
     cap = category_policy["max_sessions_per_year"]
     if cap is not None:
-        match = re.search(r"(\d+)\s+sessions?", claim.content, flags=re.IGNORECASE)
-        if match:
-            sessions = int(match.group(1))
+        sessions, session_language_unparsed = _session_count(claim.content)
+        if sessions is not None:
             prior = claim.inputs["prior_sessions"]
             total = None if prior is None else sessions + prior
             over = sessions > cap or (total is not None and total > cap)
@@ -1066,8 +1111,11 @@ def _stage_category_rules(claim: _Claim) -> None:
             elif prior is None:
                 claim.factor("session_history_not_evaluated", 0.03, ("payable",))
                 claim.advise("SESSION_HISTORY_NOT_EVALUATED", f"Prior sessions this year were not supplied; this claim's {sessions} sessions are within the {cap}-session annual cap on their own.")
+        elif session_language_unparsed:
+            claim.trace.append(_rule_trace("max_sessions", "FAIL", f"{category_ref}.max_sessions_per_year", {"max_sessions_per_year": cap}, "Session language was present but no count could be parsed."))
+            claim.reason("SESSION_COUNT_MALFORMED", "Session-related evidence was present but its count could not be verified. Manual review is required.")
         else:
-            claim.trace.append(_rule_trace("max_sessions", "NOT_EVALUATED", f"{category_ref}.max_sessions_per_year", {"max_sessions_per_year": cap}, "Session count was not extracted."))
+            claim.trace.append(_rule_trace("max_sessions", "NOT_EVALUATED", f"{category_ref}.max_sessions_per_year", {"max_sessions_per_year": cap}, "No session evidence was extracted."))
     if category_policy["requires_registered_practitioner"]:
         registered = [value for value in (str(_fields(doc).get("doctor_registration") or "").strip() for doc in documents) if value]
         claim.trace.append(_rule_trace("registered_practitioner", "PASS" if registered else "NOT_EVALUATED", f"{category_ref}.requires_registered_practitioner", {"registrations": registered}, None if registered else "Practitioner registration was not extracted."))
@@ -1158,6 +1206,15 @@ def _category_service_net(claim: _Claim) -> int | None:
     lines = [line for line in claim.ledger if line["kind"] == "line_item" and line["status"] == "ELIGIBLE"]
     if any(not line["itemized"] for line in lines):
         return None
+    # A single billed amount that matches both scopes cannot be apportioned
+    # deterministically. Do not let a keyword order alter the consultation cap.
+    mixed_lines = [line for line in lines if _mixed_consultation_line(str(line["description"]))]
+    if mixed_lines or any(
+        _term_hits(line["description"], category_policy["service_terms"])
+        and _term_hits(line["description"], category_policy["non_service_terms"])
+        for line in lines
+    ):
+        return None
     # Fail safe: only lines recognised as tests or medicines fall outside the service.
     gross = sum(
         line["amount_paise"] for line in lines
@@ -1173,7 +1230,7 @@ def _category_sub_limit(claim: _Claim) -> None:
 
     This claim's own service benefit is a certain lower bound on the year's
     usage, so the cap is always applied to it; prior usage, when supplied,
-    reduces what remains. A governing pre-authorization supersedes the cap.
+    reduces what remains. Pre-authorization does not erase a benefit cap.
     """
     category_policy = claim.category_policy
     category_ref = category_policy["policy_ref"]
@@ -1184,14 +1241,14 @@ def _category_sub_limit(claim: _Claim) -> None:
             used, usage_key, usage_basis = claim.inputs[key], key, basis
             break
     remaining = sub_limit if used is None else max(0, sub_limit - used)
-    # A matched pre-authorization rule governs the amount instead (as for the per-claim ceiling).
-    authorized = bool(claim.pre_auth["required"] and claim.pre_auth["status"] != "NOT_REQUIRED")
-    service_net = None if authorized else _category_service_net(claim)
+    service_net = _category_service_net(claim)
+    mixed_service_lines = [
+        line["description"] for line in claim.ledger
+        if line["kind"] == "line_item" and line["status"] == "ELIGIBLE" and _mixed_consultation_line(str(line["description"]))
+    ]
     counted = None
-    if authorized:
-        status = "AUTHORIZED_BY_PRE_AUTH" if claim.pre_auth["status"] == "PASS" else "DEFERRED_TO_PRE_AUTH"
-    elif service_net is None:
-        status = "NOT_EVALUATED" if claim.payable > remaining else "PASS"
+    if service_net is None:
+        status = "NOT_EVALUATED" if mixed_service_lines or claim.payable > remaining else "PASS"
     else:
         status = "LIMITED" if service_net > remaining else "PASS"
         counted = min(service_net, remaining)
@@ -1205,8 +1262,11 @@ def _category_sub_limit(claim: _Claim) -> None:
         claim.ledger.append({"kind": "adjustment", "description": f"{claim.category.title().replace('_', ' ')} sub-limit", "amount_paise": -reduction, "amount": _rupees(-reduction), "policy_ref": f"{category_ref}.sub_limit", "rule_id": "category_sub_limit"})
     elif status == "NOT_EVALUATED" and all(item["code"] in REVIEW_CODES for item in claim.reasons):
         # Nothing is paid on a rejection, so the unverified share only matters when the claim could pay.
-        claim.reason("CATEGORY_SUB_LIMIT_UNVERIFIED", f"The {claim.category.lower()} sub-limit (₹{_rupees(sub_limit)} a year, ₹{_rupees(remaining)} remaining) applies to the {claim.category.lower()} service itself, and the bill is not itemized enough to establish that share. An operator must verify it before payment.")
-    if used is None and not authorized:
+        if mixed_service_lines:
+            claim.reason("MIXED_SERVICE_LINE", f"{', '.join(mixed_service_lines)} combines consultation and non-consultation services in one amount. The allocation must be reviewed before applying the consultation limit.")
+        else:
+            claim.reason("CATEGORY_SUB_LIMIT_UNVERIFIED", f"The {claim.category.lower()} sub-limit (₹{_rupees(sub_limit)} a year, ₹{_rupees(remaining)} remaining) applies to the {claim.category.lower()} service itself, and the bill is not itemized enough to establish that share. An operator must verify it before payment.")
+    if used is None:
         claim.factor("category_usage_not_evaluated", 0.03, ("payable",))
         claim.advise("CATEGORY_SUB_LIMIT_HISTORY_NOT_EVALUATED", f"Earlier {claim.category.lower()} benefit this policy year was not supplied; this claim was checked against the full ₹{_rupees(sub_limit)} {claim.category.lower()} sub-limit on its own.")
     claim.trace.append(_rule_trace(
@@ -1219,7 +1279,7 @@ def _category_sub_limit(claim: _Claim) -> None:
             "interpretation": "CATEGORY_SUB_LIMIT_RULE",
         },
         "The bill is not itemized, so the category's own service share cannot be established." if status == "NOT_EVALUATED"
-        else "Prior category usage not supplied; this claim was checked against the full sub_limit on its own." if used is None and not authorized else None,
+        else "Prior category usage not supplied; this claim was checked against the full sub_limit on its own." if used is None else None,
     ))
 
 
