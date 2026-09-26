@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -10,6 +11,13 @@ from claims.core import evaluate_claim
 from claims.fixtures import load_cases, load_policy, normalize_fixture
 
 ROOT = Path(__file__).resolve().parents[1]
+POLICY_PATH = ROOT / "data" / "policy_terms.json"
+FIXTURE_PATH = ROOT / "tests" / "fixtures" / "test_cases.json"
+REPORT_DIR = ROOT / "docs" / "reports"
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _raise_optional_enrichment_failure(_: dict) -> None:
@@ -36,8 +44,12 @@ def _matches(expected: dict, result: dict) -> tuple[bool, list[str]]:
     return not issues, issues
 
 
-def _behavior_checks(case: dict, policy: dict, result: dict, normal_confidence: float) -> list[str]:
-    """Check the concrete behaviors behind each case's prose requirements."""
+def _behavior_checks(case: dict, raw_policy: dict, result: dict, normal_confidence: float) -> list[str]:
+    """Check the concrete behaviors behind each case's prose requirements.
+
+    ``raw_policy`` is the supplied policy JSON as written, so stated limits are
+    checked against the source document rather than the engine's own config.
+    """
     case_id = case["case_id"]
     failures: list[str] = []
     corrections = result.get("correction_requests") or []
@@ -63,13 +75,16 @@ def _behavior_checks(case: dict, policy: dict, result: dict, normal_confidence: 
         waiting: dict = next((step for step in trace if step.get("rule_id") == "waiting_period"), {})
         require(waiting.get("status") == "FAIL" and str(waiting.get("evidence", {}).get("eligible_from", "")) in reason_text, "eligibility date missing from waiting-period reason")
     elif case_id == "TC006":
-        statuses = {item.get("status") for item in ledger if item.get("kind") == "line_item"}
+        lines = [item for item in ledger if item.get("kind") == "line_item"]
+        statuses = {item.get("status") for item in lines}
         require({"ELIGIBLE", "EXCLUDED"} <= statuses and "EXCLUDED_PROCEDURE" in reason_codes, "line-level dental inclusion or exclusion missing")
+        require(all(item.get("reason") for item in lines if item.get("status") != "ELIGIBLE"), "a rejected line item has no line-level reason")
     elif case_id == "TC007":
         require("PRE_AUTH_MISSING" in reason_codes and "approval record" in reason_text, "pre-authorization reason or resubmission action missing")
+        require("resubmit" in reason_text, "resubmission instruction missing")
     elif case_id == "TC008":
         claimed = str(case["input"]["claimed_amount"])
-        limit = str(policy["coverage"]["per_claim_limit"])
+        limit = str(raw_policy["coverage"]["per_claim_limit"])
         require(claimed in reason_text and limit in reason_text, "claimed amount and per-claim limit are not both stated")
     elif case_id == "TC009":
         signal: dict = next((step for step in trace if step.get("rule_id") == "same_day_claims"), {})
@@ -78,6 +93,15 @@ def _behavior_checks(case: dict, policy: dict, result: dict, normal_confidence: 
         pricing: dict = next((step for step in trace if step.get("rule_id") == "payable_amount"), {})
         adjustments = {item.get("description") for item in ledger if item.get("kind") == "adjustment"}
         require(pricing.get("evidence", {}).get("network_discount_paise", 0) > 0 and {"Network discount", "Member co-pay"} <= adjustments, "network discount and co-pay breakdown missing")
+        order = [item.get("description") for item in ledger if item.get("kind") == "adjustment"]
+        discount: dict = next((item for item in ledger if item.get("description") == "Network discount"), {})
+        copay: dict = next((item for item in ledger if item.get("description") == "Member co-pay"), {})
+        require(
+            "Network discount" in order and "Member co-pay" in order
+            and order.index("Network discount") < order.index("Member co-pay")
+            and copay.get("basis_paise") == discount.get("basis_paise", 0) + discount.get("amount_paise", 0),
+            "co-pay was not computed on the post-discount amount",
+        )
     elif case_id == "TC011":
         degraded = any(step.get("status") == "SKIPPED_COMPONENT_FAILURE" for step in trace)
         require(degraded and result.get("confidence_score", 1) < normal_confidence and "manual review" in reason_text, "graceful degradation is not fully visible")
@@ -85,8 +109,16 @@ def _behavior_checks(case: dict, policy: dict, result: dict, normal_confidence: 
 
 
 def main() -> int:
-    policy = load_policy(ROOT / "data" / "policy_terms.json")
-    cases = load_cases(ROOT / "tests" / "fixtures" / "test_cases.json")
+    policy = load_policy(POLICY_PATH)
+    raw_policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+    cases = load_cases(FIXTURE_PATH)
+    fingerprints = {
+        "policy_sha256": _sha256(POLICY_PATH),
+        "policy_canonical_sha256": policy["canonical_sha256"],
+        "fixture_sha256": _sha256(FIXTURE_PATH),
+    }
+    if fingerprints["policy_sha256"] != policy["source"]["sha256"]:
+        raise RuntimeError("policy file changed while it was being evaluated")
     records = []
     for case in cases:
         options = {}
@@ -113,20 +145,24 @@ def main() -> int:
     )
     cases_by_id = {case["case_id"]: case for case in cases}
     for record in records:
-        behavior_failures = _behavior_checks(cases_by_id[record["case_id"]], policy, record["output"], normal_confidence)
+        behavior_failures = _behavior_checks(cases_by_id[record["case_id"]], raw_policy, record["output"], normal_confidence)
         record["behavior_checks"] = {"matched": not behavior_failures, "mismatches": behavior_failures}
         record["mismatches"].extend(behavior_failures)
         record["matched"] = not record["mismatches"]
 
-    output_path = ROOT / "docs" / "reports" / "evaluation-data.json"
+    output_path = REPORT_DIR / "evaluation-data.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(records, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    output_path.write_text(json.dumps({"fingerprints": fingerprints, "records": records}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     passed = sum(record["matched"] for record in records)
     lines = [
         "# Evaluation report",
         "",
         f"Policy: `{policy['policy_id']}`. Cases: {len(records)}. Expected decision, amount, reason, confidence, and explicitly checked behavior matched: **{passed}/{len(records)}**.",
+        "",
+        f"- Policy file sha256: `{fingerprints['policy_sha256']}`",
+        f"- Canonical policy sha256: `{fingerprints['policy_canonical_sha256']}`",
+        f"- Fixture file sha256: `{fingerprints['fixture_sha256']}`",
         "",
         "These are structured fixtures with no actual image or PDF bytes. A pass establishes policy-pipeline behavior, not OCR accuracy. The complete machine-readable outputs are also in [evaluation-data.json](evaluation-data.json).",
         "",
@@ -144,10 +180,11 @@ def main() -> int:
         "",
         "## Interpretation and limits",
         "",
-        "- Policy limits apply uniformly to fixture and upload payloads. TC006 is rejected because its claimed amount exceeds the configured global per-claim limit; the dental report remains optional in the document matrix.",
-        "- TC010 applies the consultation category sub-limit to all eligible lines, then applies the network discount before co-pay.",
+        "- The engine reads only the canonical policy produced by `claims.policy` from the unmodified policy file; every interpretation, merge, and conflict resolution is listed in the canonical config's `audit` array and referenced from the trace.",
+        "- Per-claim ceiling: max(global `per_claim_limit`, category `sub_limit`), tested on the eligible amount after excluded lines are removed. A matched pre-authorization rule governs amounts above the ceiling instead.",
+        "- Aggregate limits (annual OPD, sum insured, family floater, annual sessions) apply when utilisation accompanies the claim; otherwise they are `NOT_EVALUATED`, disclosed as advisory reasons on payable outcomes, and lower confidence.",
         "- Fixture payloads without a submission timestamp retain `NOT_EVALUATED`; uploaded claims use their persisted creation date for the 30-day deadline check.",
-        "- The confidence values are evidence-quality scores, not calibrated probabilities. TC011's simulated optional failure lowers confidence and is recorded in the trace.",
+        "- The confidence values are a heuristic evidence-completeness rubric, not calibrated probabilities. Deductions apply only for unknowns material to the outcome reached. TC011's simulated optional failure lowers confidence and is recorded in the trace.",
         "- Provider accuracy, handwriting, multilingual extraction, and image quality require a separately labelled image/PDF set. The fixture results make no claim about those capabilities.",
         "",
         "## Complete outputs and traces",
@@ -167,7 +204,10 @@ def main() -> int:
             "```",
             "",
         ]
-    (ROOT / "docs" / "reports" / "evaluation.md").write_text("\n".join(lines), encoding="utf-8")
+    (REPORT_DIR / "evaluation.md").write_text("\n".join(lines), encoding="utf-8")
+    print(f"policy sha256 {fingerprints['policy_sha256']}")
+    print(f"canonical policy sha256 {fingerprints['policy_canonical_sha256']}")
+    print(f"fixture sha256 {fingerprints['fixture_sha256']}")
     print(f"{passed}/{len(records)} fixture expectations matched")
     return 0 if passed == len(records) else 1
 

@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 from copy import deepcopy
 from pathlib import Path
 
 from claims.core import evaluate_claim
 from claims.fixtures import load_cases, load_policy, normalize_fixture
+from claims.policy import normalize_policy
 
 ROOT = Path(__file__).resolve().parents[1]
+POLICY_PATH = ROOT / "data" / "policy_terms.json"
+FIXTURE_PATH = ROOT / "tests" / "fixtures" / "test_cases.json"
 
 
 def _raise_optional_enrichment_failure(_: dict) -> None:
@@ -22,11 +26,8 @@ class ClaimCoreTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.policy = load_policy(ROOT / "data" / "policy_terms.json")
-        cls.cases = {
-            case["case_id"]: case
-            for case in load_cases(ROOT / "tests" / "fixtures" / "test_cases.json")
-        }
+        cls.policy = load_policy(POLICY_PATH)
+        cls.cases = {case["case_id"]: case for case in load_cases(FIXTURE_PATH)}
 
     def evaluate(self, case_id: str) -> dict:
         case = self.cases[case_id]
@@ -44,6 +45,9 @@ class ClaimCoreTests(unittest.TestCase):
                     self.assertEqual(result["approved_amount"], case["expected"]["approved_amount"])
                 if "rejection_reasons" in case["expected"]:
                     self.assertTrue(set(case["expected"]["rejection_reasons"]) <= {reason["code"] for reason in result["reasons"]})
+                confidence_rule = case["expected"].get("confidence_score")
+                if isinstance(confidence_rule, str) and confidence_rule.startswith("above "):
+                    self.assertGreater(result["confidence_score"], float(confidence_rule.removeprefix("above ")))
                 self.assertTrue(result["trace"])
 
     def test_wrong_document_names_uploaded_and_missing_types(self) -> None:
@@ -59,7 +63,7 @@ class ClaimCoreTests(unittest.TestCase):
             with self.subTest(case_id=case_id):
                 result = self.evaluate(case_id)
                 self.assertIn(code, {entry["code"] for entry in result["correction_requests"]})
-                self.assertEqual([step["stage"] for step in result["trace"]], ["document_gate"])
+                self.assertEqual([step["stage"] for step in result["trace"]], ["configuration", "document_gate"])
         self.assertIn("Rajesh Kumar", self.evaluate("TC003")["correction_requests"][0]["message"])
         self.assertIn("Arjun Mehta", self.evaluate("TC003")["correction_requests"][0]["message"])
 
@@ -72,19 +76,25 @@ class ClaimCoreTests(unittest.TestCase):
         self.assertEqual(next(step for step in mri["trace"] if step["rule_id"] == "waiting_period")["status"], "PASS")
         self.assertEqual(mri["trace"][-1]["evidence"]["primary_reason"], "PRE_AUTH_MISSING")
 
-    def test_dental_item_exclusion_and_global_cap_are_visible(self) -> None:
+    def test_dental_item_exclusion_and_category_ceiling_are_visible(self) -> None:
         result = self.evaluate("TC006")
-        self.assertEqual(result["approved_amount_paise"], 0)
-        self.assertEqual([entry["status"] for entry in result["ledger"] if entry["kind"] == "line_item"], ["ELIGIBLE", "EXCLUDED"])
-        self.assertEqual(next(step for step in result["trace"] if step["rule_id"] == "per_claim_limit")["status"], "FAIL")
+        self.assertEqual(result["approved_amount_paise"], 800000)
+        lines = [entry for entry in result["ledger"] if entry["kind"] == "line_item"]
+        self.assertEqual([entry["status"] for entry in lines], ["ELIGIBLE", "EXCLUDED"])
+        self.assertEqual(lines[1]["policy_ref"], "exclusions.dental_exclusions[0]")
+        self.assertTrue(lines[1]["reason"])
+        ceiling = next(step for step in result["trace"] if step["rule_id"] == "per_claim_limit")
+        self.assertEqual(ceiling["status"], "PASS")
+        self.assertEqual(ceiling["policy_ref"], "opd_categories.dental.sub_limit")
+        self.assertEqual((ceiling["evidence"]["eligible_amount"], ceiling["evidence"]["limit"]), (8000, 10000))
 
     def test_discount_precedes_copay_and_uses_integer_paise(self) -> None:
         result = self.evaluate("TC010")
         pricing = next(step for step in result["trace"] if step["rule_id"] == "payable_amount")["evidence"]
-        self.assertEqual(pricing["eligible_paise"], 200000)
-        self.assertEqual(pricing["network_discount_paise"], 40000)
-        self.assertEqual(pricing["copay_paise"], 16000)
-        self.assertEqual(pricing["payable_paise"], 144000)
+        self.assertEqual(pricing["eligible_paise"], 450000)
+        self.assertEqual(pricing["network_discount_paise"], 90000)
+        self.assertEqual(pricing["copay_paise"], 36000)
+        self.assertEqual(pricing["payable_paise"], 324000)
 
     def test_all_matching_bill_lines_are_used_for_pricing(self) -> None:
         claim = normalize_fixture(self.cases["TC004"])
@@ -133,18 +143,31 @@ class ClaimCoreTests(unittest.TestCase):
         self.assertEqual(monthly["decision"], "MANUAL_REVIEW")
         self.assertIn("MONTHLY_CLAIMS", {reason["code"] for reason in monthly["reasons"]})
 
-    def test_real_upload_with_no_identity_requires_review(self) -> None:
-        claim = normalize_fixture(self.cases["TC009"])
-        claim["documents"] = [{**document, "source": "uploaded_file"} for document in claim["documents"]]
-        result = evaluate_claim(claim, self.policy)
-        self.assertEqual(result["decision"], "MANUAL_REVIEW")
-        self.assertIn("PATIENT_IDENTITY_UNKNOWN", {reason["code"] for reason in result["reasons"]})
+    def test_missing_patient_name_is_disclosed_and_lowers_payable_confidence(self) -> None:
+        # Formerly: an upload with no readable patient name went to review while
+        # a fixture did not. The rule is now provenance-independent: the claim is
+        # attributed to the submitting member, the identity step is NOT_EVALUATED,
+        # and a payable outcome carries an advisory and a confidence deduction.
+        for source in ("fixture_metadata", "uploaded_file"):
+            with self.subTest(source=source):
+                claim = normalize_fixture(self.cases["TC004"])
+                for document in claim["documents"]:
+                    document["source"] = source
+                    document["patient_name"] = None
+                    document["fields"].pop("patient_name", None)
+                result = evaluate_claim(claim, self.policy)
+                self.assertEqual(result["decision"], "APPROVED")
+                self.assertIn("PATIENT_IDENTITY_NOT_VERIFIED", {reason["code"] for reason in result["reasons"]})
+                identity = next(step for step in result["trace"] if step["rule_id"] == "patient_identity")
+                self.assertEqual(identity["status"], "NOT_EVALUATED")
+                self.assertLess(result["confidence_score"], self.evaluate("TC004")["confidence_score"])
 
     def test_policy_values_are_read_from_input(self) -> None:
-        policy = deepcopy(self.policy)
-        policy["opd_categories"]["consultation"]["copay_percent"] = 0
-        result = evaluate_claim(normalize_fixture(self.cases["TC004"]), policy)
+        raw = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+        raw["opd_categories"]["consultation"]["copay_percent"] = 0
+        result = evaluate_claim(normalize_fixture(self.cases["TC004"]), normalize_policy(raw))
         self.assertEqual(result["approved_amount"], 1500)
+        self.assertEqual(evaluate_claim(normalize_fixture(self.cases["TC004"]), raw)["approved_amount"], 1500)
 
     def test_patient_name_is_checked_against_member_roster(self) -> None:
         claim = normalize_fixture(self.cases["TC004"])
@@ -186,13 +209,31 @@ class ClaimCoreTests(unittest.TestCase):
         self.assertEqual(result["correction_requests"][0]["code"], "AMOUNT_MISMATCH")
         self.assertEqual(next(step for step in result["trace"] if step["rule_id"] == "bill_amount")["status"], "FAIL")
 
-    def test_real_upload_unknown_annual_usage_needs_review(self) -> None:
+    def test_unknown_annual_usage_is_not_evaluated_disclosed_and_provenance_independent(self) -> None:
+        # Formerly: uploads without YTD usage went to review. Aggregate limits now
+        # apply only when utilisation is supplied (the web intake always supplies
+        # it); otherwise the rule is NOT_EVALUATED, disclosed, and lowers confidence.
+        outcomes = []
+        for source in ("fixture_metadata", "uploaded_file"):
+            claim = normalize_fixture(self.cases["TC004"])
+            claim.pop("ytd_claims_amount")
+            claim["documents"] = [{**document, "source": source} for document in claim["documents"]]
+            result = evaluate_claim(claim, self.policy)
+            annual = next(step for step in result["trace"] if step["rule_id"] == "annual_opd_limit")
+            self.assertEqual(annual["status"], "NOT_EVALUATED")
+            self.assertIn("ANNUAL_LIMIT_NOT_EVALUATED", {reason["code"] for reason in result["reasons"]})
+            outcomes.append((result["decision"], result["approved_amount"], result["confidence_score"]))
+        self.assertEqual(outcomes[0], outcomes[1])
+        self.assertEqual(outcomes[0][:2], ("APPROVED", 1350))
+        self.assertLess(outcomes[0][2], self.evaluate("TC004")["confidence_score"])
+
+    def test_supplied_annual_usage_limits_payment(self) -> None:
         claim = normalize_fixture(self.cases["TC004"])
-        claim.pop("ytd_claims_amount")
-        claim["documents"] = [{**document, "source": "uploaded_file"} for document in claim["documents"]]
+        claim["ytd_claims_amount"] = 49000
         result = evaluate_claim(claim, self.policy)
-        self.assertEqual(result["decision"], "MANUAL_REVIEW")
-        self.assertIn("ANNUAL_USAGE_UNKNOWN", {reason["code"] for reason in result["reasons"]})
+        self.assertEqual(result["decision"], "PARTIAL")
+        self.assertEqual(result["approved_amount"], 900)
+        self.assertIn("ANNUAL_LIMIT_LIMITED", {reason["code"] for reason in result["reasons"]})
 
     def test_malformed_line_amount_produces_review_trace(self) -> None:
         claim = normalize_fixture(self.cases["TC004"])
@@ -224,6 +265,7 @@ class ClaimCoreTests(unittest.TestCase):
         self.assertIn("EXCLUDED_CONDITION", {reason["code"] for reason in result["reasons"]})
 
     def test_condition_aliases_apply_waiting_period(self) -> None:
+        # The aliases now live in the normalizer's interpretation table, not the policy file.
         for alias in ("T2DM", "HTN", "Hypothyroidism"):
             with self.subTest(alias=alias):
                 claim = normalize_fixture(self.cases["TC005"])
@@ -231,6 +273,8 @@ class ClaimCoreTests(unittest.TestCase):
                 result = evaluate_claim(claim, self.policy)
                 self.assertEqual(result["decision"], "REJECTED")
                 self.assertIn("WAITING_PERIOD", {reason["code"] for reason in result["reasons"]})
+                waiting = next(step for step in result["trace"] if step["rule_id"] == "waiting_period")
+                self.assertEqual([term["provenance"] for term in waiting["evidence"]["matched_terms"]], ["interpretation"])
 
     def test_dependent_inherits_primary_member_waiting_period_start(self) -> None:
         claim = self._consultation_claim()
@@ -299,34 +343,56 @@ class ClaimCoreTests(unittest.TestCase):
         result = evaluate_claim(claim, self.policy)
         self.assertIn("PRE_AUTH_MISSING", {reason["code"] for reason in result["reasons"]})
 
-    def test_live_required_pre_auth_without_status_routes_to_review(self) -> None:
-        claim = normalize_fixture(self.cases["TC007"])
-        policy = deepcopy(self.policy)
-        policy["coverage"]["per_claim_limit"] = 20000
-        claim["documents"] = [
-            {**document, "source": "uploaded_file", "patient_name": "Suresh Patil"}
-            for document in claim["documents"]
-        ]
-        claim.pop("pre_authorization", None)
-        result = evaluate_claim(claim, policy)
+    def test_required_pre_auth_without_any_approval_record_is_missing_for_every_source(self) -> None:
+        # Formerly: an upload with no pre-auth status went to review while the
+        # edited fixture carried an explicit false. With no approval record,
+        # reference, or claimed approval, pre-authorization was not obtained.
+        for source in ("fixture_metadata", "uploaded_file", "sarvam_extract", "gemini_candidate"):
+            with self.subTest(source=source):
+                claim = normalize_fixture(self.cases["TC007"])
+                claim["documents"] = [
+                    {**document, "source": source, "patient_name": "Suresh Patil"}
+                    for document in claim["documents"]
+                ]
+                claim.pop("pre_authorization", None)
+                result = evaluate_claim(claim, self.policy)
+                self.assertEqual(result["decision"], "REJECTED")
+                self.assertIn("PRE_AUTH_MISSING", {reason["code"] for reason in result["reasons"]})
+                self.assertIn("approval record", " ".join(reason["message"] for reason in result["reasons"]).lower())
+                step = next(item for item in result["trace"] if item["rule_id"] == "pre_authorization")
+                self.assertEqual(step["status"], "FAIL")
+                self.assertEqual(step["evidence"]["status_source"], "no_approval_record_supplied")
+                self.assertEqual(step["evidence"]["matched_rules"][0]["rule_id"], "mri_scan")
+                ceiling = next(item for item in result["trace"] if item["rule_id"] == "per_claim_limit")
+                self.assertEqual(ceiling["status"], "DEFERRED_TO_PRE_AUTH")
 
+    def test_claimed_pre_auth_without_dated_record_routes_to_review(self) -> None:
+        claim = normalize_fixture(self.cases["TC007"])
+        claim["pre_authorization"] = {"obtained": True}
+        result = evaluate_claim(claim, self.policy)
         self.assertEqual(result["decision"], "MANUAL_REVIEW")
         self.assertIn("PRE_AUTH_STATUS_UNKNOWN", {reason["code"] for reason in result["reasons"]})
-        self.assertIn("approval record", " ".join(reason["message"] for reason in result["reasons"]).lower())
         step = next(item for item in result["trace"] if item["rule_id"] == "pre_authorization")
         self.assertEqual(step["status"], "NOT_EVALUATED")
-        self.assertEqual(step["evidence"]["status_source"], "missing_or_unconfirmed")
+
+    def test_mri_at_or_below_threshold_needs_no_pre_auth(self) -> None:
+        claim = normalize_fixture(self.cases["TC007"])
+        claim["claimed_amount"] = 9000
+        bill = next(doc for doc in claim["documents"] if doc["doc_type"] == "HOSPITAL_BILL")
+        bill["fields"].update(total=9000, line_items=[{"description": "MRI Lumbar Spine", "amount": 9000}])
+        result = evaluate_claim(claim, self.policy)
+        step = next(item for item in result["trace"] if item["rule_id"] == "pre_authorization")
+        self.assertEqual(step["status"], "PASS")
+        self.assertNotIn("PRE_AUTH_MISSING", {reason["code"] for reason in result["reasons"]})
 
     def test_live_required_pre_auth_explicit_false_is_policy_denial(self) -> None:
         claim = normalize_fixture(self.cases["TC007"])
-        policy = deepcopy(self.policy)
-        policy["coverage"]["per_claim_limit"] = 20000
         claim["documents"] = [
             {**document, "source": "uploaded_file", "patient_name": "Suresh Patil"}
             for document in claim["documents"]
         ]
         claim["pre_authorization"] = False
-        result = evaluate_claim(claim, policy)
+        result = evaluate_claim(claim, self.policy)
 
         self.assertEqual(result["decision"], "REJECTED")
         self.assertIn("PRE_AUTH_MISSING", {reason["code"] for reason in result["reasons"]})
@@ -377,8 +443,6 @@ class ClaimCoreTests(unittest.TestCase):
 
     def test_conflicting_pre_auth_form_and_document_routes_to_review(self) -> None:
         claim = normalize_fixture(self.cases["TC007"])
-        policy = deepcopy(self.policy)
-        policy["coverage"]["per_claim_limit"] = 20000
         claim["documents"] = [
             {**document, "source": "uploaded_file", "patient_name": "Suresh Patil"}
             for document in claim["documents"]
@@ -389,7 +453,7 @@ class ClaimCoreTests(unittest.TestCase):
         })
         claim["pre_authorization"] = {"obtained": False}
 
-        result = evaluate_claim(claim, policy)
+        result = evaluate_claim(claim, self.policy)
 
         self.assertEqual(result["decision"], "MANUAL_REVIEW")
         self.assertIn("PRE_AUTH_CONFLICT", {reason["code"] for reason in result["reasons"]})
@@ -442,12 +506,23 @@ class ClaimCoreTests(unittest.TestCase):
         self.assertNotIn("EXCLUDED_PROCEDURE", {reason["code"] for reason in result["reasons"]})
 
     def test_configured_network_provider_branch_alias_matches(self) -> None:
+        # Name variants and the branch-suffix rule now live in the normalizer.
+        for name, provenance in (("Apollo Hospitals, Bengaluru", "policy_text"), ("Apollo Hospital - Jayanagar", "policy_text"), ("Narayana Hrudayalaya, Bengaluru", "interpretation")):
+            with self.subTest(name=name):
+                claim = normalize_fixture(self.cases["TC010"])
+                claim["hospital_name"] = name
+                result = evaluate_claim(claim, self.policy)
+                pricing = next(step for step in result["trace"] if step["rule_id"] == "payable_amount")["evidence"]
+                self.assertTrue(pricing["network_hospital"])
+                self.assertEqual(result["approved_amount"], 3240)
+                network = next(step for step in result["trace"] if step["rule_id"] == "network_hospital")
+                self.assertEqual(network["evidence"]["match"]["provenance"], provenance)
         claim = normalize_fixture(self.cases["TC010"])
-        claim["hospital_name"] = "Apollo Hospitals, Bengaluru"
+        claim["hospital_name"] = "Apollo Clinic Annexe"
+        for document in claim["documents"]:
+            document["fields"].pop("hospital_name", None)
         result = evaluate_claim(claim, self.policy)
-        pricing = next(step for step in result["trace"] if step["rule_id"] == "payable_amount")["evidence"]
-        self.assertTrue(pricing["network_hospital"])
-        self.assertEqual(result["approved_amount"], 1440)
+        self.assertEqual(result["approved_amount"], 4050)
 
     def test_document_date_conflict_routes_to_review(self) -> None:
         claim = normalize_fixture(self.cases["TC004"])
@@ -511,16 +586,46 @@ class ClaimCoreTests(unittest.TestCase):
         waiting = next(step for step in result["trace"] if step["rule_id"] == "pre_existing_condition_wait")
         self.assertEqual(waiting["status"], "FAIL")
 
-    def test_policy_limits_apply_without_fixture_overrides(self) -> None:
-        dental = normalize_fixture(self.cases["TC006"])
-        result = evaluate_claim(dental, self.policy)
+    def test_per_claim_ceiling_is_the_larger_of_global_and_category_limit(self) -> None:
+        # Formerly the global limit rejected TC006 and the consultation sub-limit
+        # capped TC010, contradicting the supplied expectations.
+        consultation = self.evaluate("TC008")
+        ceiling = next(step for step in consultation["trace"] if step["rule_id"] == "per_claim_limit")
+        self.assertEqual((ceiling["status"], ceiling["policy_ref"], ceiling["evidence"]["limit"]), ("FAIL", "coverage.per_claim_limit", 5000))
+        network = self.evaluate("TC010")
+        self.assertNotIn("category_sub_limit", {step["rule_id"] for step in network["trace"]})
+        self.assertEqual(next(step for step in network["trace"] if step["rule_id"] == "per_claim_limit")["status"], "PASS")
+
+        claim = normalize_fixture(self.cases["TC006"])
+        bill = claim["documents"][0]["fields"]
+        bill["line_items"] = [{"description": "Root Canal Treatment", "amount": 10500}]
+        bill["total"] = 10500
+        claim["claimed_amount"] = 10500
+        result = evaluate_claim(claim, self.policy)
         self.assertEqual(result["decision"], "REJECTED")
         self.assertIn("PER_CLAIM_EXCEEDED", {reason["code"] for reason in result["reasons"]})
+        self.assertIn("10000", " ".join(reason["message"] for reason in result["reasons"]))
 
-        consultation = normalize_fixture(self.cases["TC010"])
-        result = evaluate_claim(consultation, self.policy)
-        cap = next(step for step in result["trace"] if step["rule_id"] == "category_sub_limit")
-        self.assertEqual(cap["status"], "LIMITED")
+    def test_decisions_do_not_depend_on_evidence_provenance(self) -> None:
+        for case_id, case in self.cases.items():
+            baseline = self.evaluate(case_id)
+            for source in ("uploaded_file", "pdf_text", "sarvam_extract", "gemini_candidate"):
+                with self.subTest(case_id=case_id, source=source):
+                    claim = normalize_fixture(case)
+                    for document in claim["documents"]:
+                        document["source"] = source
+                    options = {"optional_risk_enricher": _raise_optional_enrichment_failure} if case["input"].get("simulate_component_failure") else {}
+                    result = evaluate_claim(claim, self.policy, **options)
+                    for field in ("decision", "approved_amount", "confidence_score", "correction_requests", "ledger"):
+                        self.assertEqual(result[field], baseline[field])
+                    self.assertEqual(result["reasons"], baseline["reasons"])
+
+    def test_trace_carries_policy_fingerprint(self) -> None:
+        result = self.evaluate("TC004")
+        source = result["trace"][0]
+        self.assertEqual(source["rule_id"], "policy_source")
+        self.assertEqual(source["evidence"]["source_sha256"], self.policy["source"]["sha256"])
+        self.assertIn("PER_CLAIM_CEILING_RULE", source["evidence"]["conflict_resolutions"])
 
 
 if __name__ == "__main__":

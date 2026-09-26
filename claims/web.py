@@ -294,8 +294,10 @@ def _load_claim(claim_id: str) -> dict[str, Any] | None:
 
 
 def _read_policy() -> dict[str, Any]:
-    with (PROJECT_ROOT / "data" / "policy_terms.json").open(encoding="utf-8") as file:
-        return json.load(file)
+    """Validate and normalize the supplied policy; raises PolicyConfigurationError."""
+    from claims.policy import load_policy
+
+    return load_policy(PROJECT_ROOT / "data" / "policy_terms.json")
 
 
 def _member_name(policy: dict[str, Any], member_id: str) -> str:
