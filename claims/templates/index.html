@@ -77,6 +77,10 @@
             <input id="claim-files" name="files" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" multiple required>
           </label>
           <ul id="selected-files" class="selected-files" aria-live="polite"></ul>
+          <div class="document-read-actions">
+            <button id="read-documents" class="button button--secondary" type="button" disabled>Read details from documents</button>
+            <p id="document-read-status" class="field-note" aria-live="polite">Choose documents to suggest available details. You will confirm every value before submission.</p>
+          </div>
 
           <div id="form-error" class="form-error" role="alert" hidden></div>
           <div class="form-actions">

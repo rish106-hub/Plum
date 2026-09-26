@@ -127,6 +127,13 @@
     }).catch(() => "The request could not be completed. Try again.");
   }
 
+  function friendlyRequestError(cause) {
+    if (cause instanceof TypeError && /fetch|network/i.test(String(cause.message))) {
+      return "Cannot reach the local claim server. Start it from the repository with the command in the local runbook, then refresh this page.";
+    }
+    return cause.message || "The request could not be completed. Try again.";
+  }
+
   async function loadRecent() {
     const list = byId("recent-claims");
     if (!list) return;
@@ -159,6 +166,8 @@
     const selected = byId("selected-files");
     const error = byId("form-error");
     const button = byId("submit-button");
+    const readButton = byId("read-documents");
+    const readStatus = byId("document-read-status");
     loadRecent();
 
     fileInput.addEventListener("change", () => {
@@ -169,6 +178,39 @@
         row.append(make("span", "", `${(file.size / 1024 / 1024).toFixed(1)} MB`));
         selected.append(row);
       });
+      readButton.disabled = !fileInput.files.length;
+      readStatus.textContent = fileInput.files.length
+        ? "Read detected details before submitting. You will confirm every value."
+        : "Choose documents to suggest available details. You will confirm every value before submission.";
+    });
+
+    readButton.addEventListener("click", async () => {
+      if (!fileInput.files.length) return;
+      error.hidden = true;
+      readButton.disabled = true;
+      readButton.textContent = "Reading documents…";
+      try {
+        const data = new FormData();
+        Array.from(fileInput.files).forEach((file) => data.append("files", file));
+        const response = await fetch("/api/claims/prefill", { method: "POST", body: data });
+        if (!response.ok) throw new Error(await messageFromError(response));
+        const result = await response.json();
+        const suggestions = result.suggestions || {};
+        ["member_id", "claim_category", "treatment_date", "claimed_amount", "pre_authorization_obtained", "pre_authorization_issued_date", "pre_authorization_reference"].forEach((name) => {
+          const input = form.elements.namedItem(name);
+          if (input && suggestions[name] && !input.value) input.value = suggestions[name];
+        });
+        const fields = Object.keys(suggestions).filter((name) => name !== "member_name");
+        readStatus.textContent = fields.length
+          ? `Suggested ${fields.map((field) => friendlyLabel(field)).join(", ")}. Please review before submitting.`
+          : "No unambiguous form details were found. Select the claim details and submit when ready.";
+      } catch (cause) {
+        error.textContent = friendlyRequestError(cause);
+        error.hidden = false;
+      } finally {
+        readButton.disabled = !fileInput.files.length;
+        readButton.textContent = "Read details from documents";
+      }
     });
 
     form.addEventListener("submit", async (event) => {
@@ -188,7 +230,7 @@
         const claim = await response.json();
         window.location.assign(claim.url);
       } catch (cause) {
-        error.textContent = cause.message || "Submission failed. Try again.";
+        error.textContent = friendlyRequestError(cause);
         error.hidden = false;
         button.disabled = false;
         button.textContent = "Check claim →";

@@ -681,6 +681,37 @@ def test_invalid_file_is_rejected_before_storage(tmp_path, monkeypatch):
         assert client.get("/api/claims").json()["claims"] == []
 
 
+def test_document_prefill_suggests_only_document_backed_values_without_persisting(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        web,
+        "process_uploads",
+        lambda *_args, **_kwargs: {
+            "documents": [
+                {
+                    "actual_type": "HOSPITAL_BILL",
+                    "patient_name_on_doc": "Rajesh Kumar",
+                    "content": {"patient_name": "Rajesh Kumar", "date": "01-Nov-2024", "total": 1500},
+                }
+            ],
+            "issues": [],
+            "metrics": {"provider_calls": 0},
+            "ocr_text_by_file_id": {"UPLOAD-1": "private source text"},
+        },
+    )
+    with _client(tmp_path, monkeypatch) as client:
+        response = client.post("/api/claims/prefill", files=[("files", ("bill.pdf", PDF, "application/pdf"))])
+        assert response.status_code == 200
+        assert client.get("/api/claims").json()["claims"] == []
+    result = response.json()
+    assert result["suggestions"] == {
+        "member_id": "EMP001",
+        "member_name": "Rajesh Kumar",
+        "treatment_date": "2024-11-01",
+        "claimed_amount": "1500.00",
+    }
+    assert "private source text" not in json.dumps(result)
+
+
 def test_review_pages_render(tmp_path, monkeypatch):
     monkeypatch.setattr(
         web,
