@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -49,14 +50,101 @@ CATEGORIES = (
 )
 
 
+DEMO_CLOCK_ENVIRONMENTS = frozenset({"development", "test"})
+logger = logging.getLogger("claims.web")
+
+
 def _now() -> str:
-    test_now = os.getenv("PLUM_TEST_NOW")
-    if test_now:
-        try:
-            return datetime.fromisoformat(test_now.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat()
-        except ValueError as exc:
-            raise RuntimeError("PLUM_TEST_NOW must be an ISO-8601 timestamp") from exc
+    """Wall-clock UTC time for record keeping. Never backdated."""
     return datetime.now(timezone.utc).isoformat()
+
+
+def _environment() -> str:
+    # Anything not explicitly marked as development/test is treated as production.
+    return os.getenv("PLUM_ENV", "production").strip().casefold() or "production"
+
+
+def _parse_demo_clock(raw: str) -> datetime:
+    value = raw.strip()
+    try:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            return datetime.combine(date.fromisoformat(value), datetime.min.time(), tzinfo=timezone.utc)
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise RuntimeError("PLUM_DEMO_CLOCK must be an ISO-8601 date (YYYY-MM-DD) or datetime") from exc
+    return (parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
+
+
+def _demo_clock() -> dict[str, Any] | None:
+    """Return the explicit development/test submission clock, if one is in effect.
+
+    PLUM_DEMO_CLOCK lets reviewers replay the supplied 2024 policy period. It is
+    honored only when PLUM_ENV is development or test; anywhere else it is
+    ignored with an error log (and startup refuses to run, see ``lifespan``).
+    """
+    raw = os.getenv("PLUM_DEMO_CLOCK", "").strip()
+    if not raw:
+        return None
+    environment = _environment()
+    if environment not in DEMO_CLOCK_ENVIRONMENTS:
+        logger.error(
+            "PLUM_DEMO_CLOCK is set but PLUM_ENV=%s; ignoring it and using the real clock. "
+            "The demo clock is only honored when PLUM_ENV is development or test.",
+            environment,
+        )
+        return None
+    return {"source": "PLUM_DEMO_CLOCK", "value": raw, "applied_at": _parse_demo_clock(raw).isoformat(), "environment": environment}
+
+
+def _check_clock_configuration() -> None:
+    """Refuse to start when a demo clock would reach a non-development environment."""
+    raw = os.getenv("PLUM_DEMO_CLOCK", "").strip()
+    if not raw:
+        return
+    environment = _environment()
+    if environment not in DEMO_CLOCK_ENVIRONMENTS:
+        raise RuntimeError(
+            f"PLUM_DEMO_CLOCK is set while PLUM_ENV={environment}. Unset PLUM_DEMO_CLOCK, or set "
+            "PLUM_ENV=development (or test) for a local demo. Claims are never backdated in production."
+        )
+    _parse_demo_clock(raw)
+    logger.warning(
+        "DEMO CLOCK ACTIVE: claims are stamped with submission time %s from PLUM_DEMO_CLOCK (PLUM_ENV=%s). "
+        "Every affected claim records this in its decision trace.",
+        _parse_demo_clock(raw).isoformat(),
+        environment,
+    )
+
+
+def _submission_clock() -> tuple[str, dict[str, Any] | None]:
+    """The adjudication-relevant submission time and, when overridden, its provenance."""
+    clock = _demo_clock()
+    if clock is None:
+        return _now(), None
+    return clock["applied_at"], clock
+
+
+def _clock_trace(clock: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "stage": "clock",
+        "rule_id": "demo_clock",
+        "status": "OVERRIDDEN",
+        "evidence": {"source": clock["source"], "value": clock["value"], "submission_date": str(clock["applied_at"])[:10], "environment": clock["environment"]},
+        "details": "Submission date came from the development/test demo clock, not the real clock. This decision is not a production adjudication.",
+    }
+
+
+def _with_clock_trace(request_data: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    """Make every result for a demo-clock claim visibly record the override."""
+    clock = request_data.get("submission_clock")
+    if not clock:
+        return result
+    trace = list(result.get("trace") or [])
+    if not any(step.get("stage") == "clock" and step.get("rule_id") == "demo_clock" for step in trace):
+        trace.insert(0, _clock_trace(clock))
+    result = dict(result)
+    result["trace"] = trace
+    return result
 
 
 def _paths() -> tuple[Path, Path]:
@@ -157,6 +245,10 @@ def _set_state(
     detail: dict[str, Any] | None = None,
 ) -> None:
     with _connect() as connection:
+        if result is not None:
+            row = connection.execute("SELECT request_json FROM claims WHERE id=?", (claim_id,)).fetchone()
+            if row is not None:
+                result = _with_clock_trace(json.loads(row["request_json"]), result)
         connection.execute(
             "UPDATE claims SET state=?, updated_at=?, result_json=?, error_message=?, decision=?, approved_amount_paise=? WHERE id=?",
             (
@@ -618,6 +710,7 @@ def process_claim(claim_id: str) -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    _check_clock_configuration()
     init_db()
     with _connect() as connection:
         pending = [row["id"] for row in connection.execute("SELECT id FROM claims WHERE state IN ('QUEUED', 'PROCESSING')")]
@@ -637,7 +730,9 @@ templates = Jinja2Templates(directory=PACKAGE_ROOT / "templates")
 def home(request: Request) -> HTMLResponse:
     policy = _read_policy()
     members = [{"id": member["member_id"], "name": member["name"]} for member in policy.get("members", [])]
-    return templates.TemplateResponse(request, "index.html", {"members": members, "categories": CATEGORIES})
+    return templates.TemplateResponse(
+        request, "index.html", {"members": members, "categories": CATEGORIES, "demo_clock": _demo_clock()}
+    )
 
 
 @app.get("/claims/{claim_id}", response_class=HTMLResponse)
@@ -696,6 +791,7 @@ async def submit_claim(
 
     claim_id = uuid.uuid4().hex
     now = _now()
+    submitted_at, clock = _submission_clock()
     _, upload_root = _paths()
     claim_root = upload_root / claim_id
     claim_root.mkdir(mode=0o700, parents=True, exist_ok=False)
@@ -713,8 +809,11 @@ async def submit_claim(
         "claim_category": claim_category,
         "treatment_date": treatment_date,
         "claimed_amount": float(Decimal(amount_paise) / 100),
-        "submission_date": now[:10],
+        "submission_date": submitted_at[:10],
     }
+    if clock is not None:
+        # Provenance travels with the claim so the trace and UI can show the override.
+        request_data["submission_clock"] = clock
     if pre_authorization_obtained in {"true", "false"}:
         request_data["pre_authorization"] = {
             "obtained": pre_authorization_obtained == "true",
@@ -731,6 +830,8 @@ async def submit_claim(
             [(file_id, claim_id, name, media_type, size, digest, path) for file_id, name, media_type, size, digest, path in stored],
         )
         _record_event(connection, claim_id, "QUEUED", {"file_count": len(stored)})
+        if clock is not None:
+            _record_event(connection, claim_id, "DEMO_CLOCK", {"source": clock["source"], "value": clock["value"], "submission_date": request_data["submission_date"]})
     background_tasks.add_task(process_claim, claim_id)
     return JSONResponse({"id": claim_id, "state": "QUEUED", "url": f"/claims/{claim_id}"}, status_code=202)
 

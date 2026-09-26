@@ -1,4 +1,12 @@
-"""Exercise the real submission and correction screens with synthetic PDFs."""
+"""Exercise the real submission and correction screens with synthetic PDFs.
+
+The supplied policy period is 2024-04-01 to 2025-03-31, so start the server with
+the explicit development clock before running this check:
+
+    PLUM_ENV=development PLUM_DEMO_CLOCK=2024-11-05 .venv/bin/python -m uvicorn claims.web:app
+
+The check asserts that the demo clock is visible in the UI and decision trace.
+"""
 
 from __future__ import annotations
 
@@ -42,8 +50,14 @@ def main() -> None:
         page = browser.new_page(viewport={"width": 1440, "height": 1000}, device_scale_factor=1)
         page.on("pageerror", lambda error: errors.append(str(error)))
 
+        page.goto(BASE_URL, wait_until="networkidle")
+        assert page.locator("#demo-clock-banner").is_visible(), "Start the server with PLUM_ENV=development PLUM_DEMO_CLOCK=2024-11-05"
         approval = _fill(page, [rx, bill])
         assert approval["result"]["decision"] == "APPROVED", approval["result"]
+        clock_step = approval["result"]["trace"][0]
+        assert clock_step["stage"] == "clock" and clock_step["evidence"]["source"] == "PLUM_DEMO_CLOCK", clock_step
+        assert page.locator("#demo-clock-banner").is_visible()
+        assert "PLUM_DEMO_CLOCK" in page.locator("#demo-clock-message").inner_text()
         assert approval["result"]["approved_amount"] == 1350
         assert page.locator("#trace-list .trace-entry").count() >= 10
         assert page.locator("#ledger-total").is_visible()
@@ -113,7 +127,7 @@ def main() -> None:
     print(
         json.dumps(
             {
-                "approval": {"id": approval["id"], "decision": approval["result"]["decision"], "approved_amount": approval["result"]["approved_amount"]},
+                "approval": {"id": approval["id"], "decision": approval["result"]["decision"], "approved_amount": approval["result"]["approved_amount"], "submission_date": approval["request"]["submission_date"], "clock": approval["result"]["trace"][0]["evidence"]},
                 "correction": {"id": correction["id"], "decision": correction["result"]["decision"], "state": correction["state"]},
                 "duplicate_bill": {"id": duplicate["id"], "decision": duplicate["result"]["decision"], "reason": duplicate["result"]["reasons"][0]["code"]},
                 "reviewer_disposition": {"id": reviewed["id"], "decision": reviewed["result"]["decision"]},

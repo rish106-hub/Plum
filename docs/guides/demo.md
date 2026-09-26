@@ -1,6 +1,6 @@
 # Demo recording guide (target: 9–10 minutes)
 
-Record the local app after generating the synthetic PDFs with `.venv/bin/python -m tools.generate_samples`. The demo uses two connected views: claim submission at `/` and the local operations worklist at `/ops`. The worklist has no production authentication, so use only synthetic files. The latest [approval](../screenshots/approval.png), [correction](../screenshots/correction.png), and [duplicate review](../screenshots/duplicate-review.png) screenshots show the expected states.
+Record the local app after generating the synthetic PDFs with `.venv/bin/python -m tools.generate_samples`. From the repository root, start it with the explicit development clock so the 2024 sample policy period applies: `PLUM_ENV=development PLUM_DEMO_CLOCK=2024-11-05 .venv/bin/python -m uvicorn claims.web:app`. Without it, claims are stamped with today's date and a 2024 treatment is rejected for the submission deadline. The demo clock is shown as a banner on the intake and claim pages and as the first `clock` entry in each decision trace; mention it on camera. Start from an empty `.data/` (or a fresh `PLUM_DATA_DIR`) so the first approval is not flagged as a duplicate of an earlier run. See the [local runbook](local-runbook.md). The demo uses two connected views: claim submission at `/` and the local operations worklist at `/ops`. The worklist has no production authentication, so use only synthetic files. The latest [approval](../screenshots/approval.png), [correction](../screenshots/correction.png), and [duplicate review](../screenshots/duplicate-review.png) screenshots show the expected states.
 
 ## 0:00–1:00 — The two views
 
@@ -12,7 +12,7 @@ Select EMP001, Consultation, 2024-11-01, and ₹1,500. Upload `synthetic_prescri
 
 ## 2:30–4:30 — Complete approval and trace
 
-Submit the same details with `synthetic_prescription.pdf` and `synthetic_hospital_bill.pdf`. Show APPROVED ₹1,350. Walk through extracted facts, patient and amount reconciliation, waiting periods, exclusions, limits, and the ledger. ₹1,500 less the 10% consultation co-pay is ₹1,350. Point out `NOT_EVALUATED` on submission deadline: the current live intake does not pass a submission timestamp.
+Submit the same details with `synthetic_prescription.pdf` and `synthetic_hospital_bill.pdf`. Show APPROVED ₹1,350. Walk through extracted facts, patient and amount reconciliation, waiting periods, exclusions, limits, and the ledger. ₹1,500 less the 10% consultation co-pay is ₹1,350. Point out the `demo_clock` trace entry and the submission-deadline check that passes against the demo submission date 2024-11-05.
 
 ## 4:30–6:30 — Internal review portal
 
@@ -24,7 +24,7 @@ Open `claims/agent_pipeline.py`, `claims/core.py`, and [component contracts](../
 
 ## 7:30–8:30 — Technical choice to change
 
-The local prototype uses in-process jobs and SQLite. At larger load, use a durable queue, leased workers, Postgres, object storage, and a single finalizer per claim revision. Also add production access control to `/ops`, collect submission dates and pre-authorization evidence, resolve insurer policy conflicts, and benchmark labelled Indian document images before any accuracy claim.
+The local prototype uses in-process jobs and SQLite. At larger load, use a durable queue, leased workers, Postgres, object storage, and a single finalizer per claim revision. Also add production access control to `/ops`, collect independent submission evidence and pre-authorization documents, resolve insurer policy conflicts, and benchmark labelled Indian document images before any accuracy claim.
 
 ## 8:30–9:30 — Evaluation and close
 

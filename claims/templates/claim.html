@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Claim review · Plum</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260925">
-  <script src="/static/app.js?v=20260925" defer></script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260926">
+  <script src="/static/app.js?v=20260926" defer></script>
 </head>
 <body data-page="claim" data-claim-id="{{ claim_id }}">
   <header class="site-header">
@@ -23,6 +23,10 @@
     <div class="page-heading page-heading--review">
       <div><p class="eyebrow">Decision record</p><h1 id="claim-title">Reviewing claim</h1><p class="intro" id="claim-subtitle">Checking documents and policy terms.</p></div>
       <span id="state-badge" class="state-badge state-badge--processing" role="status">Processing</span>
+    </div>
+
+    <div id="demo-clock-banner" class="notice notice--demo" role="status" hidden>
+      <div><strong>Demo clock submission</strong><p id="demo-clock-message"></p></div>
     </div>
 
     <div id="loading-state" class="loading-state surface" role="status" aria-live="polite">

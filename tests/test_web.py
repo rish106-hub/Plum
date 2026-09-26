@@ -5,9 +5,11 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 import fitz
+import pytest
 from fastapi.testclient import TestClient
 
 from claims import web
@@ -15,6 +17,13 @@ from claims.ai_review import _DOC_REQUIRED
 from claims.ai_review import resolve_evidence as real_resolve_evidence
 
 PDF = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n"
+
+
+@pytest.fixture(autouse=True)
+def _real_clock_by_default(monkeypatch) -> None:
+    # A developer's shell or .env must not leak a demo clock into these tests.
+    monkeypatch.delenv("PLUM_DEMO_CLOCK", raising=False)
+    monkeypatch.delenv("PLUM_ENV", raising=False)
 
 
 def _client(tmp_path: Path, monkeypatch) -> TestClient:
@@ -27,6 +36,80 @@ def test_operations_worklist_page_is_available(tmp_path, monkeypatch) -> None:
         response = client.get("/ops")
     assert response.status_code == 200
     assert "Review" in response.text
+
+
+def test_submission_uses_real_clock_by_default(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(web, "evaluate_claim", lambda *_: _mock_decision())
+    _wire_inspection(monkeypatch, complete=True)
+    today = datetime.now(timezone.utc).date().isoformat()
+    with _client(tmp_path, monkeypatch) as client:
+        assert "demo-clock-banner" not in client.get("/").text
+        saved = client.get(f"/api/claims/{_submit(client, _text_pdf('bill')).json()['id']}").json()
+    assert saved["request"]["submission_date"] == today
+    assert "submission_clock" not in saved["request"]
+    assert not any(step.get("stage") == "clock" for step in saved["result"]["trace"])
+    assert all(event["stage"] != "DEMO_CLOCK" for event in saved["events"])
+
+
+@pytest.mark.parametrize("value", ["2024-11-05", "2024-11-05T10:30:00+05:30"])
+def test_demo_clock_is_applied_and_traced_in_development(tmp_path, monkeypatch, value) -> None:
+    monkeypatch.setenv("PLUM_ENV", "development")
+    monkeypatch.setenv("PLUM_DEMO_CLOCK", value)
+    monkeypatch.setattr(web, "evaluate_claim", lambda *_: _mock_decision())
+    _wire_inspection(monkeypatch, complete=True)
+    with _client(tmp_path, monkeypatch) as client:
+        home = client.get("/").text
+        saved = client.get(f"/api/claims/{_submit(client, _text_pdf('bill')).json()['id']}").json()
+    assert 'id="demo-clock-banner"' in home and "PLUM_DEMO_CLOCK" in home
+    assert saved["request"]["submission_date"] == "2024-11-05"
+    assert saved["request"]["submission_clock"]["source"] == "PLUM_DEMO_CLOCK"
+    clock_step = saved["result"]["trace"][0]
+    assert clock_step["stage"] == "clock" and clock_step["rule_id"] == "demo_clock"
+    assert clock_step["evidence"] == {"source": "PLUM_DEMO_CLOCK", "value": value, "submission_date": "2024-11-05", "environment": "development"}
+    assert any(event["stage"] == "DEMO_CLOCK" for event in saved["events"])
+    # Record-keeping timestamps stay on the real clock; only the submission date is overridden.
+    assert saved["created_at"][:4] != "2024"
+
+
+def test_demo_clock_is_traced_on_correction_results(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PLUM_ENV", "test")
+    monkeypatch.setenv("PLUM_DEMO_CLOCK", "2024-11-05")
+    with _client(tmp_path, monkeypatch) as client:
+        saved = client.get(f"/api/claims/{_submit(client).json()['id']}").json()
+    assert saved["state"] == "DOCUMENT_CORRECTION_REQUIRED"
+    assert [step for step in saved["result"]["trace"] if step["stage"] == "clock"][0]["evidence"]["source"] == "PLUM_DEMO_CLOCK"
+
+
+@pytest.mark.parametrize("environment", [None, "production", "staging"])
+def test_demo_clock_refuses_to_start_outside_development(tmp_path, monkeypatch, environment) -> None:
+    if environment:
+        monkeypatch.setenv("PLUM_ENV", environment)
+    monkeypatch.setenv("PLUM_DEMO_CLOCK", "2024-11-05")
+    with pytest.raises(RuntimeError, match="PLUM_DEMO_CLOCK"):
+        with _client(tmp_path, monkeypatch):
+            pass
+
+
+def test_demo_clock_is_ignored_in_production_even_after_startup(tmp_path, monkeypatch, caplog) -> None:
+    monkeypatch.setattr(web, "evaluate_claim", lambda *_: _mock_decision())
+    _wire_inspection(monkeypatch, complete=True)
+    today = datetime.now(timezone.utc).date().isoformat()
+    with _client(tmp_path, monkeypatch) as client:
+        monkeypatch.setenv("PLUM_ENV", "production")
+        monkeypatch.setenv("PLUM_DEMO_CLOCK", "2024-11-05")
+        saved = client.get(f"/api/claims/{_submit(client, _text_pdf('bill')).json()['id']}").json()
+    assert saved["request"]["submission_date"] == today
+    assert "submission_clock" not in saved["request"]
+    assert not any(step.get("stage") == "clock" for step in saved["result"]["trace"])
+    assert "ignoring it" in caplog.text
+
+
+def test_invalid_demo_clock_refuses_to_start(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PLUM_ENV", "development")
+    monkeypatch.setenv("PLUM_DEMO_CLOCK", "next tuesday")
+    with pytest.raises(RuntimeError, match="ISO-8601"):
+        with _client(tmp_path, monkeypatch):
+            pass
 
 
 def _submit(client: TestClient, data: bytes = PDF, content_type: str = "application/pdf", member_id: str = "EMP001"):
@@ -218,7 +301,8 @@ def test_valid_candidate_recomputes_deterministic_decision(tmp_path, monkeypatch
     transport = FakeGeminiTransport(_successful_bill_response())
     _wire_fake_gemini(monkeypatch, transport)
     _wire_inspection(monkeypatch)
-    monkeypatch.setattr(web, "_now", lambda: "2024-11-02T00:00:00+00:00")
+    monkeypatch.setenv("PLUM_ENV", "test")
+    monkeypatch.setenv("PLUM_DEMO_CLOCK", "2024-11-02")
     source_text = "HOSPITAL BILL Patient: Rajesh Kumar Date: 01-Nov-2024 Consultation Fee 1500.00 Grand Total: 1500.00"
     with _client(tmp_path, monkeypatch) as client:
         response = _submit(client, _text_pdf(source_text))
@@ -230,9 +314,10 @@ def test_valid_candidate_recomputes_deterministic_decision(tmp_path, monkeypatch
     assert saved["request"]["claimed_amount"] == 1500.0
     assert saved["request"]["submission_date"] == "2024-11-02"
     assert saved["request"]["member_id"] == "EMP001"
-    assert saved["result"]["trace"][0]["stage"] == "document_evidence"
-    assert saved["result"]["trace"][1]["status"] == "CANDIDATES_APPLIED"
-    assert saved["result"]["trace"][1]["candidate_evidence"][0]["fields"] == ["line_items", "total_paise"]
+    assert saved["result"]["trace"][0]["stage"] == "clock"
+    assert saved["result"]["trace"][1]["stage"] == "document_evidence"
+    assert saved["result"]["trace"][2]["status"] == "CANDIDATES_APPLIED"
+    assert saved["result"]["trace"][2]["candidate_evidence"][0]["fields"] == ["line_items", "total_paise"]
 
 
 def test_invalid_quote_keeps_arithmetic_conflict_fail_closed_and_redacts_data(tmp_path, monkeypatch):

@@ -337,6 +337,9 @@
     byId("breadcrumb-id").textContent = shortId(claim.id);
     byId("claim-title").textContent = `Claim ${shortId(claim.id)}`;
     byId("claim-subtitle").textContent = `${titleCase(claim.request.claim_category)} / ${claim.request.member_id} / ${formatMoney(claim.request.claimed_amount)} claimed`;
+    const clock = claim.request.submission_clock;
+    byId("demo-clock-banner").hidden = !clock;
+    if (clock) byId("demo-clock-message").textContent = `Submission date ${claim.request.submission_date} came from ${clock.source}=${clock.value} (${clock.environment} environment), not the real clock. This is not a production adjudication.`;
     const active = ["QUEUED", "PROCESSING"].includes(claim.state);
     byId("loading-state").hidden = !active;
     byId("failure-state").hidden = claim.state !== "PROCESSING_FAILED";
@@ -372,6 +375,7 @@
     appendFact(facts, "Member", claim.request.member_id);
     appendFact(facts, "Category", titleCase(claim.request.claim_category));
     appendFact(facts, "Treatment date", claim.request.treatment_date);
+    if (claim.request.submission_date) appendFact(facts, "Submission date", clock ? `${claim.request.submission_date} (demo clock)` : claim.request.submission_date);
     appendFact(facts, "Claimed", formatMoney(claim.request.claimed_amount));
     const annualLimit = (claim.result?.trace || []).find((entry) => entry.rule_id === "annual_opd_limit")?.evidence;
     appendFact(facts, "YTD approved", annualLimit?.ytd_claims_amount === undefined ? "Unknown" : formatMoney(annualLimit.ytd_claims_amount));

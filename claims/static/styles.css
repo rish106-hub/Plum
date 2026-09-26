@@ -125,6 +125,7 @@ a { color: inherit; }
 .notice p { margin: 4px 0 0; font-size: 13px; }
 .notice--error { color: #7b3037; border-color: #e9c4c9; background: var(--bad-wash); }
 .notice--correction { color: #70481e; border-color: #ebd6b6; background: var(--warn-wash); }
+.notice--demo { color: #2f3f73; border-color: #c3cdee; background: #eef1fb; border-style: dashed; }
 .escalation-panel { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(240px, .8fr); gap: 22px; align-items: start; padding: 20px 23px; margin-bottom: 22px; border: 1px solid #e7cfaa; border-left: 4px solid var(--warn); border-radius: 9px; background: #fffaf2; }
 .escalation-panel h2 { margin: 3px 0 6px; font-size: 17px; letter-spacing: -.02em; }
 .escalation-panel p:not(.eyebrow) { margin: 0; color: #654c2e; font-size: 13px; }
