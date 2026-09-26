@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import hashlib
 import json
 import logging
 import os
 import re
+import secrets
 import sqlite3
 import uuid
 from collections.abc import AsyncIterator
@@ -157,6 +160,32 @@ def _check_clock_configuration() -> None:
     )
 
 
+def _check_reviewer_configuration() -> None:
+    """Production reviewer mutations require a configured shared gateway token."""
+    token = os.getenv("PLUM_REVIEW_TOKEN", "")
+    if _environment() not in DEMO_CLOCK_ENVIRONMENTS and len(token) < 16:
+        raise RuntimeError("PLUM_REVIEW_TOKEN must contain at least 16 characters outside development/test")
+
+
+def _require_reviewer(request: Request) -> str:
+    reviewer_id = request.headers.get("X-Reviewer-ID", "").strip()
+    supplied = request.headers.get("X-Reviewer-Token", "")
+    authorization = request.headers.get("Authorization", "")
+    if authorization.startswith("Basic "):
+        try:
+            decoded = base64.b64decode(authorization[6:], validate=True).decode("utf-8")
+            reviewer_id, supplied = decoded.split(":", 1)
+            reviewer_id = reviewer_id.strip()
+        except (binascii.Error, UnicodeDecodeError, ValueError):
+            reviewer_id, supplied = "", ""
+    expected = os.getenv("PLUM_REVIEW_TOKEN", "")
+    if not reviewer_id or not expected or not secrets.compare_digest(supplied, expected):
+        raise HTTPException(status_code=401, detail="Reviewer authentication is required.", headers={"WWW-Authenticate": 'Basic realm="Plum reviewer"'})
+    if not re.fullmatch(r"[A-Za-z0-9._@-]{3,80}", reviewer_id):
+        raise HTTPException(status_code=401, detail="Reviewer identity is invalid.")
+    return reviewer_id
+
+
 def _submission_clock() -> tuple[str, dict[str, Any] | None]:
     """The adjudication-relevant submission time (UTC ISO) and, when overridden, its provenance."""
     clock = _demo_clock()
@@ -244,7 +273,45 @@ def init_db() -> None:
                 stage TEXT NOT NULL,
                 detail_json TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS benefit_reservations (
+                claim_id TEXT PRIMARY KEY REFERENCES claims(id),
+                family_account_id TEXT NOT NULL,
+                member_id TEXT NOT NULL,
+                category TEXT NOT NULL,
+                policy_start TEXT NOT NULL,
+                policy_end TEXT NOT NULL,
+                amount_paise INTEGER NOT NULL CHECK(amount_paise >= 0),
+                category_amount_paise INTEGER NOT NULL CHECK(category_amount_paise >= 0),
+                status TEXT NOT NULL CHECK(status IN ('RESERVED', 'PAID', 'RELEASED')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS settlement_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                claim_id TEXT NOT NULL REFERENCES claims(id),
+                occurred_at TEXT NOT NULL,
+                actor_id TEXT NOT NULL,
+                from_status TEXT NOT NULL,
+                to_status TEXT NOT NULL,
+                reason_code TEXT NOT NULL,
+                reason_text TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS reviewer_actions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                claim_id TEXT NOT NULL REFERENCES claims(id),
+                occurred_at TEXT NOT NULL,
+                reviewer_id TEXT NOT NULL,
+                reason_code TEXT NOT NULL,
+                reason_text TEXT NOT NULL,
+                evidence_summary TEXT NOT NULL,
+                before_json TEXT NOT NULL,
+                after_json TEXT NOT NULL
+            );
             CREATE INDEX IF NOT EXISTS idx_claim_events_claim ON claim_events(claim_id, id);
+            CREATE INDEX IF NOT EXISTS idx_benefit_reservations_family ON benefit_reservations(family_account_id, policy_start, policy_end, status);
+            CREATE INDEX IF NOT EXISTS idx_benefit_reservations_member_category ON benefit_reservations(member_id, category, policy_start, policy_end, status);
+            CREATE INDEX IF NOT EXISTS idx_settlement_events_claim ON settlement_events(claim_id, id);
+            CREATE INDEX IF NOT EXISTS idx_reviewer_actions_claim ON reviewer_actions(claim_id, id);
             """
         )
         columns = {row[1] for row in connection.execute("PRAGMA table_info(claims)")}
@@ -302,11 +369,27 @@ def _set_state(
 ) -> None:
     """Persist a state change. ``adjudicated`` marks a result produced by the policy engine."""
     with _connect() as connection:
-        if result is not None:
-            row = connection.execute("SELECT request_json FROM claims WHERE id=?", (claim_id,)).fetchone()
-            if row is not None:
-                result = _with_clock_trace(json.loads(row["request_json"]), result)
-        connection.execute(
+        _set_state_in_connection(
+            connection, claim_id, state, result=result, error=error, detail=detail, adjudicated=adjudicated
+        )
+
+
+def _set_state_in_connection(
+    connection: sqlite3.Connection,
+    claim_id: str,
+    state: str,
+    *,
+    result: dict[str, Any] | None = None,
+    error: str | None = None,
+    detail: dict[str, Any] | None = None,
+    adjudicated: bool | None = None,
+) -> None:
+    """Persist a state transition on the caller's transaction boundary."""
+    if result is not None:
+        row = connection.execute("SELECT request_json FROM claims WHERE id=?", (claim_id,)).fetchone()
+        if row is not None:
+            result = _with_clock_trace(json.loads(row["request_json"]), result)
+    connection.execute(
             "UPDATE claims SET state=?, updated_at=?, result_json=?, error_message=?, decision=?, approved_amount_paise=?, "
             "adjudicated=COALESCE(?, adjudicated) WHERE id=?",
             (
@@ -319,8 +402,8 @@ def _set_state(
                 None if adjudicated is None else int(adjudicated),
                 claim_id,
             ),
-        )
-        _record_event(connection, claim_id, state, detail or {})
+    )
+    _record_event(connection, claim_id, state, detail or {})
 
 
 def _load_claim(claim_id: str) -> dict[str, Any] | None:
@@ -336,6 +419,18 @@ def _load_claim(claim_id: str) -> dict[str, Any] | None:
             "SELECT occurred_at, stage, detail_json FROM claim_events WHERE claim_id = ? ORDER BY id",
             (claim_id,),
         ).fetchall()
+        reservation = connection.execute(
+            "SELECT amount_paise, category_amount_paise, status, created_at, updated_at FROM benefit_reservations WHERE claim_id=?",
+            (claim_id,),
+        ).fetchone()
+        reviewer_actions = connection.execute(
+            "SELECT occurred_at, reviewer_id, reason_code, reason_text, evidence_summary, before_json, after_json FROM reviewer_actions WHERE claim_id=? ORDER BY id",
+            (claim_id,),
+        ).fetchall()
+        settlement_events = connection.execute(
+            "SELECT occurred_at, actor_id, from_status, to_status, reason_code, reason_text FROM settlement_events WHERE claim_id=? ORDER BY id",
+            (claim_id,),
+        ).fetchall()
     return {
         "id": row["id"],
         "created_at": row["created_at"],
@@ -349,6 +444,15 @@ def _load_claim(claim_id: str) -> dict[str, Any] | None:
             {"occurred_at": event["occurred_at"], "stage": event["stage"], "detail": json.loads(event["detail_json"])}
             for event in events
         ],
+        "benefit_reservation": dict(reservation) if reservation else None,
+        "reviewer_actions": [
+            {
+                **{key: action[key] for key in ("occurred_at", "reviewer_id", "reason_code", "reason_text", "evidence_summary")},
+                "before": json.loads(action["before_json"]), "after": json.loads(action["after_json"]),
+            }
+            for action in reviewer_actions
+        ],
+        "settlement_events": [dict(event) for event in settlement_events],
     }
 
 
@@ -597,6 +701,38 @@ def _provider_review_result(issues: list[dict[str, Any]], metrics: dict[str, Any
     }
 
 
+def _document_risk_review_result(issues: list[dict[str, Any]], metrics: dict[str, Any]) -> dict[str, Any]:
+    """Route possible alteration or duplicate stamps to an operator, never to automatic fraud rejection."""
+    signals = [issue for issue in issues if issue.get("code") in {"DOCUMENT_ALTERATION", "DUPLICATE_STAMP"}]
+    return {
+        "state": "MANUAL_REVIEW",
+        "decision": "MANUAL_REVIEW",
+        "approved_amount": 0,
+        "approved_amount_paise": 0,
+        "reasons": [
+            {
+                "code": str(issue["code"]),
+                "message": str(issue["message"]),
+            }
+            for issue in signals
+        ],
+        "correction_requests": [],
+        "confidence_score": 0.2,
+        "ledger": [],
+        "trace": [
+            {
+                "stage": "document_risk",
+                "rule_id": str(issue["code"]).lower(),
+                "status": "FLAG",
+                "evidence": {"file_name": issue.get("file_name"), "signals": issue.get("signals", {})},
+                "details": "A document signal requests human inspection; it does not assert fraud.",
+            }
+            for issue in signals
+        ],
+        "document_metrics": metrics,
+    }
+
+
 # A claim counts toward the member's claim history (same-day and monthly
 # frequency limits) only once it has been submitted as a valid claim: either the
 # policy engine adjudicated it (DECIDED, or MANUAL_REVIEW with adjudicated=1), or a
@@ -605,13 +741,18 @@ def _provider_review_result(issues: list[dict[str, Any]], metrics: dict[str, Any
 # review, queued/processing jobs, and failed jobs never count: they are attempts to
 # submit, not claims. Rejected claims do count; they were real submissions.
 COUNTED_CLAIM_SQL = "(state='DECIDED' OR (state='MANUAL_REVIEW' AND adjudicated=1))"
-# Benefit usage is the sum of approved amounts on decided payable claims. The
-# prototype has no insurer remittance feed, so adjudicated approvals stand in for
-# paid reimbursements, and the trace labels the figure's source accordingly.
+# Legacy payable rows remain readable for databases created before the separate
+# reservation ledger. New decisions consume benefit through RESERVED/PAID rows;
+# RELEASED rows return it to availability.
 PAYABLE_CLAIM_SQL = "(state='DECIDED' AND decision IN ('APPROVED', 'PARTIAL') AND approved_amount_paise>0)"
 
 
-def _member_claim_history(claim_id: str, request_data: dict[str, Any], policy: dict[str, Any]) -> dict[str, Any]:
+def _member_claim_history(
+    claim_id: str,
+    request_data: dict[str, Any],
+    policy: dict[str, Any],
+    connection: sqlite3.Connection | None = None,
+) -> dict[str, Any]:
     """Family claim frequency, benefit usage, and session history for the policy year."""
     member_id = str(request_data["member_id"])
     category = str(request_data.get("claim_category") or "")
@@ -627,15 +768,24 @@ def _member_claim_history(claim_id: str, request_data: dict[str, Any], policy: d
     start = str(policy.get("policy_holder", {}).get("policy_start_date", "0001-01-01"))
     end = str(policy.get("policy_holder", {}).get("policy_end_date", "9999-12-31"))
     marks = ",".join("?" for _ in family_ids)
-    with _connect() as connection:
-        rows = connection.execute(
-            f"""SELECT id, member_id, treatment_date, request_json, result_json, approved_amount_paise,
-                       {PAYABLE_CLAIM_SQL} AS payable
-                FROM claims WHERE id<>? AND member_id IN ({marks}) AND treatment_date BETWEEN ? AND ?
+    owns_connection = connection is None
+    active = connection or _connect()
+    try:
+        rows = active.execute(
+            f"""SELECT claims.id, claims.member_id, claims.treatment_date, claims.request_json, claims.result_json, claims.approved_amount_paise,
+                       {PAYABLE_CLAIM_SQL} AS payable,
+                       benefit_reservations.amount_paise AS reserved_amount_paise,
+                       benefit_reservations.category_amount_paise AS reserved_category_paise,
+                       benefit_reservations.status AS reservation_status
+                FROM claims LEFT JOIN benefit_reservations ON benefit_reservations.claim_id=claims.id
+                WHERE claims.id<>? AND claims.member_id IN ({marks}) AND claims.treatment_date BETWEEN ? AND ?
                   AND {COUNTED_CLAIM_SQL}
-                ORDER BY created_at""",
+                ORDER BY claims.created_at""",
             (claim_id, *family_ids, start, end),
         ).fetchall()
+    finally:
+        if owns_connection:
+            active.close()
     for row in rows:
         try:
             prior_request = json.loads(row["request_json"])
@@ -647,15 +797,17 @@ def _member_claim_history(claim_id: str, request_data: dict[str, Any], policy: d
             "claim_id": row["id"], "date": row["treatment_date"],
             "amount": prior_request.get("claimed_amount"), "provider": prior_result.get("provider") or None,
         })
-        if not row["payable"]:
+        active_reservation = row["reservation_status"] in {"RESERVED", "PAID"}
+        legacy_payable = bool(row["payable"]) and row["reservation_status"] is None
+        if not active_reservation and not legacy_payable:
             continue
-        approved = int(row["approved_amount_paise"] or 0)
+        approved = int(row["reserved_amount_paise"] if active_reservation else row["approved_amount_paise"] or 0)
         usage["family_approved_paise"] += approved
         if row["member_id"] != member_id or prior_request.get("claim_category") != category:
             continue
         usage["member_category_approved_paise"] += approved
         sub_limit_step = next((step for step in prior_result.get("trace", []) if step.get("rule_id") == "category_sub_limit"), None)
-        counted = (sub_limit_step or {}).get("evidence", {}).get("counted_against_sub_limit_paise")
+        counted = row["reserved_category_paise"] if active_reservation else (sub_limit_step or {}).get("evidence", {}).get("counted_against_sub_limit_paise")
         if usage["member_category_sub_limit_paise"] is not None:
             usage["member_category_sub_limit_paise"] = None if counted is None else usage["member_category_sub_limit_paise"] + int(counted)
         if category == "ALTERNATIVE_MEDICINE":
@@ -862,6 +1014,89 @@ def _demo_clock_quarantine_result(clock: dict[str, Any], environment: str) -> di
     }
 
 
+def _category_reserved_paise(result: dict[str, Any]) -> int:
+    step = next((item for item in result.get("trace", []) if item.get("rule_id") == "category_sub_limit"), None)
+    value = (step or {}).get("evidence", {}).get("counted_against_sub_limit_paise")
+    return max(0, int(value or 0))
+
+
+def _adjudicate_with_reservation(
+    claim_id: str,
+    request_data: dict[str, Any],
+    policy: dict[str, Any],
+    documents: list[dict[str, Any]],
+    metrics: dict[str, Any],
+    gemini_trace: list[dict[str, Any]],
+) -> None:
+    """Serialize balance reads, decision, reservation, and persistence in one transaction.
+
+    ``BEGIN IMMEDIATE`` is the SQLite equivalent of taking the benefit-account
+    write lock. A second worker cannot read the same available balance and reserve
+    it until this transaction commits.
+    """
+    with _connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        current = connection.execute("SELECT state FROM claims WHERE id=?", (claim_id,)).fetchone()
+        if current is None or current["state"] != "PROCESSING":
+            return
+        payload = dict(request_data)
+        payload["documents"] = documents
+        usage = _member_claim_history(claim_id, request_data, policy, connection)
+        family_used = to_rupees(usage["family_approved_paise"])
+        payload["claims_history"] = usage["claims_history"]
+        payload["claims_history_source"] = "atomic_benefit_reservation_ledger"
+        payload["ytd_claims_amount"] = family_used
+        payload["ytd_claims_source"] = "reserved_or_paid_benefit_ledger"
+        payload["sum_insured_used"] = family_used
+        payload["sum_insured_used_source"] = "reserved_or_paid_benefit_ledger"
+        payload["family_floater_used"] = family_used
+        payload["family_floater_used_source"] = "reserved_or_paid_benefit_ledger"
+        payload["category_ytd_claims_amount"] = to_rupees(usage["member_category_approved_paise"])
+        payload["category_ytd_claims_source"] = "reserved_or_paid_benefit_ledger"
+        if usage["member_category_sub_limit_paise"] is not None:
+            payload["category_sub_limit_used"] = to_rupees(usage["member_category_sub_limit_paise"])
+            payload["category_sub_limit_used_source"] = "atomic_benefit_reservation_ledger"
+        payload["prior_sessions"] = usage["prior_sessions"]
+        payload["prior_sessions_source"] = "reserved_or_paid_benefit_ledger"
+        result = adjudicate_handoff(payload, policy, evaluate_claim)
+        result.setdefault("provider", claim_provider(payload) or None)
+        result.setdefault("document_metrics", metrics)
+        result["trace"] = [document_evidence_trace(documents)] + gemini_trace + result.get("trace", [])
+        approved = max(0, int(result.get("approved_amount_paise") or 0))
+        decision = str(result.get("decision") or "")
+        if decision in {"APPROVED", "PARTIAL"} and approved:
+            member = _member(policy, str(request_data["member_id"])) or {}
+            family_account_id = str(member.get("primary_member_id") or request_data["member_id"])
+            policy_holder = policy.get("policy_holder", {})
+            now = _now()
+            category_reserved = min(approved, _category_reserved_paise(result))
+            connection.execute(
+                """INSERT INTO benefit_reservations
+                   (claim_id, family_account_id, member_id, category, policy_start, policy_end,
+                    amount_paise, category_amount_paise, status, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'RESERVED', ?, ?)""",
+                (
+                    claim_id, family_account_id, request_data["member_id"], request_data["claim_category"],
+                    policy_holder.get("policy_start_date", "0001-01-01"),
+                    policy_holder.get("policy_end_date", "9999-12-31"), approved, category_reserved, now, now,
+                ),
+            )
+            result.setdefault("trace", []).append({
+                "stage": "benefit_ledger", "rule_id": "atomic_benefit_reservation", "status": "RESERVED",
+                "evidence": {
+                    "family_account_id": family_account_id, "amount_paise": approved,
+                    "category_amount_paise": category_reserved, "settlement_status": "RESERVED",
+                },
+                "details": "Benefit availability was read and reserved under the same database write transaction.",
+            })
+        final_state = str(result.get("state") or result.get("decision") or "MANUAL_REVIEW")
+        _set_state_in_connection(
+            connection, claim_id, final_state, result=result,
+            detail={"decision": result.get("decision"), "benefit_reservation": "RESERVED" if approved and decision in {"APPROVED", "PARTIAL"} else "NONE"},
+            adjudicated=True,
+        )
+
+
 def process_claim(claim_id: str) -> None:
     """Run one persisted claim; safe to retry after process restart."""
     claim = _load_claim(claim_id)
@@ -984,6 +1219,11 @@ def process_claim(claim_id: str) -> None:
                 detail={"issue_count": len(issues), "gemini_status": ai_result.get("status")},
             )
             return
+        if any(issue.get("code") in {"DOCUMENT_ALTERATION", "DUPLICATE_STAMP"} for issue in issues):
+            result = _document_risk_review_result(issues, inspection.get("metrics", {}))
+            result["trace"].extend(gemini_trace)
+            _set_state(claim_id, "MANUAL_REVIEW", result=result, detail={"document_risk_signal_count": len(result["reasons"])})
+            return
         if issues:
             metrics = inspection.get("metrics", {})
             if any(issue.get("code") == "EXTRACTION_UNAVAILABLE" for issue in issues):
@@ -999,33 +1239,9 @@ def process_claim(claim_id: str) -> None:
                 result = _correction_result(issues, metrics, gemini_trace)
                 _set_state(claim_id, "DOCUMENT_CORRECTION_REQUIRED", result=result, detail={"issue_count": len(issues)})
             return
-        payload = dict(request_data)
-        payload["documents"] = documents
-        usage = _member_claim_history(claim_id, request_data, policy)
-        family_used = to_rupees(usage["family_approved_paise"])
-        payload["claims_history"] = usage["claims_history"]
-        payload["claims_history_source"] = "local_family_submission_database"
-        # Family pool (primary member + dependents), policy year, approved OPD decisions.
-        payload["ytd_claims_amount"] = family_used
-        payload["ytd_claims_source"] = "database_approved_decisions"
-        payload["sum_insured_used"] = family_used
-        payload["sum_insured_used_source"] = "database_approved_decisions"
-        payload["family_floater_used"] = family_used
-        payload["family_floater_used_source"] = "database_approved_decisions"
-        # This member, this category, policy year, approved decisions.
-        payload["category_ytd_claims_amount"] = to_rupees(usage["member_category_approved_paise"])
-        payload["category_ytd_claims_source"] = "database_approved_decisions"
-        if usage["member_category_sub_limit_paise"] is not None:
-            payload["category_sub_limit_used"] = to_rupees(usage["member_category_sub_limit_paise"])
-            payload["category_sub_limit_used_source"] = "database_decision_traces"
-        payload["prior_sessions"] = usage["prior_sessions"]
-        payload["prior_sessions_source"] = "database_approved_alternative_medicine_decisions"
-        result = adjudicate_handoff(payload, policy, evaluate_claim)
-        result.setdefault("provider", claim_provider(payload) or None)
-        result.setdefault("document_metrics", inspection.get("metrics", {}))
-        result["trace"] = [document_evidence_trace(documents)] + gemini_trace + result.get("trace", [])
-        final_state = str(result.get("state") or result.get("decision") or "MANUAL_REVIEW")
-        _set_state(claim_id, final_state, result=result, detail={"decision": result.get("decision")}, adjudicated=True)
+        _adjudicate_with_reservation(
+            claim_id, request_data, policy, documents, inspection.get("metrics", {}), gemini_trace
+        )
     except Exception as exc:  # noqa: BLE001 - isolate all provider and parser failures at the job boundary
         # Provider exceptions can contain document text, so retain the type only.
         _set_state(
@@ -1039,6 +1255,7 @@ def process_claim(claim_id: str) -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     _check_clock_configuration()
+    _check_reviewer_configuration()
     _check_policy_configuration()
     init_db()
     with _connect() as connection:
@@ -1084,7 +1301,8 @@ def claim_page(request: Request, claim_id: str) -> HTMLResponse:
 
 @app.get("/ops", response_class=HTMLResponse)
 def operations_page(request: Request) -> HTMLResponse:
-    """Local reviewer worklist; production access control is not in this demo."""
+    """Authenticated reviewer worklist."""
+    _require_reviewer(request)
     return templates.TemplateResponse(request, "ops.html")
 
 
@@ -1208,13 +1426,9 @@ def get_claim(claim_id: str) -> dict[str, Any]:
 
 
 @app.post("/api/claims/{claim_id}/review-decision")
-def resolve_manual_review(claim_id: str, disposition: dict[str, Any] = Body(...)) -> dict[str, Any]:
-    """Record a local reviewer disposition for a claim that was safely escalated."""
-    claim = _load_claim(claim_id)
-    if claim is None:
-        raise HTTPException(status_code=404, detail="Claim not found")
-    if claim["state"] != "MANUAL_REVIEW":
-        raise HTTPException(status_code=409, detail="Only a manual-review claim can receive a reviewer disposition.")
+def resolve_manual_review(request: Request, claim_id: str, disposition: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Record an authenticated, attributable reviewer disposition and benefit reservation."""
+    reviewer_id = _require_reviewer(request)
     decision = str(disposition.get("decision") or "").upper()
     if decision not in {"APPROVED", "PARTIAL", "REJECTED"}:
         raise _input_error("Reviewer decision must be APPROVED, PARTIAL, or REJECTED.")
@@ -1225,19 +1439,100 @@ def resolve_manual_review(claim_id: str, disposition: dict[str, Any] = Body(...)
         amount_paise = to_paise(raw_amount, allow_negative=True)
     except ValueError as exc:
         raise _input_error("Reviewer approved amount must be a valid amount.") from exc
-    claimed_paise = to_paise(claim["request"]["claimed_amount"])
-    if amount_paise < 0 or amount_paise > claimed_paise or (decision == "REJECTED" and amount_paise != 0) or (decision != "REJECTED" and amount_paise <= 0):
-        raise _input_error("Reviewer amount is inconsistent with the requested decision or claim amount.")
-    result = dict(claim["result"] or {})
-    result.update({"state": "DECIDED", "decision": decision, "approved_amount_paise": amount_paise, "approved_amount": to_rupees(amount_paise)})
-    result.setdefault("reasons", []).append({"code": "REVIEWER_DISPOSITION", "message": "A reviewer recorded the final decision after inspecting the escalated claim."})
-    result.setdefault("trace", []).append({"stage": "manual_review", "rule_id": "reviewer_disposition", "status": decision, "evidence": {"approved_amount_paise": amount_paise}})
-    _set_state(claim_id, "DECIDED", result=result, detail={"decision": decision, "source": "reviewer_disposition"})
+    reason_code = str(disposition.get("reason_code") or "").strip().upper()
+    reason_text = str(disposition.get("reason_text") or "").strip()
+    evidence_summary = str(disposition.get("evidence_summary") or "").strip()
+    if not re.fullmatch(r"[A-Z0-9_]{3,60}", reason_code) or not reason_text or not evidence_summary:
+        raise _input_error("Reviewer reason_code, reason_text, and evidence_summary are required.")
+    with _connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute("SELECT state, request_json, result_json FROM claims WHERE id=?", (claim_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Claim not found")
+        if row["state"] != "MANUAL_REVIEW":
+            raise HTTPException(status_code=409, detail="Only a manual-review claim can receive a reviewer disposition.")
+        request_data = json.loads(row["request_json"])
+        before = json.loads(row["result_json"] or "{}")
+        claimed_paise = to_paise(request_data["claimed_amount"])
+        if amount_paise < 0 or amount_paise > claimed_paise or (decision == "REJECTED" and amount_paise != 0) or (decision != "REJECTED" and amount_paise <= 0):
+            raise _input_error("Reviewer amount is inconsistent with the requested decision or claim amount.")
+        policy = _read_policy()
+        if decision in {"APPROVED", "PARTIAL"}:
+            usage = _member_claim_history(claim_id, request_data, policy, connection)
+            limits = policy["limits"]
+            available = min(
+                max(0, limits["annual_opd_limit_paise"] - usage["family_approved_paise"]),
+                max(0, limits["sum_insured_per_employee_paise"] - usage["family_approved_paise"]),
+                max(0, limits["family_floater"]["combined_limit_paise"] - usage["family_approved_paise"]),
+            )
+            category_limit = policy["categories"][request_data["claim_category"]]["sub_limit_paise"]
+            category_used = int(usage["member_category_sub_limit_paise"] or 0)
+            category_available = max(0, category_limit - category_used)
+            available = min(available, category_available)
+            if amount_paise > available:
+                raise HTTPException(status_code=409, detail=f"Only {to_rupees(available)} remains available for this member and category.")
+            member = _member(policy, request_data["member_id"]) or {}
+            family_account_id = str(member.get("primary_member_id") or request_data["member_id"])
+            holder = policy.get("policy_holder", {})
+            now = _now()
+            connection.execute(
+                """INSERT INTO benefit_reservations
+                   (claim_id, family_account_id, member_id, category, policy_start, policy_end,
+                    amount_paise, category_amount_paise, status, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'RESERVED', ?, ?)""",
+                (claim_id, family_account_id, request_data["member_id"], request_data["claim_category"],
+                 holder.get("policy_start_date", "0001-01-01"), holder.get("policy_end_date", "9999-12-31"),
+                 amount_paise, amount_paise, now, now),
+            )
+        result = dict(before)
+        result.update({"state": "DECIDED", "decision": decision, "approved_amount_paise": amount_paise, "approved_amount": to_rupees(amount_paise)})
+        result.setdefault("reasons", []).append({"code": "REVIEWER_DISPOSITION", "message": reason_text})
+        result.setdefault("trace", []).append({
+            "stage": "manual_review", "rule_id": "reviewer_disposition", "status": decision,
+            "evidence": {"approved_amount_paise": amount_paise, "reviewer_id": reviewer_id, "reason_code": reason_code, "evidence_summary": evidence_summary},
+        })
+        connection.execute(
+            "INSERT INTO reviewer_actions (claim_id, occurred_at, reviewer_id, reason_code, reason_text, evidence_summary, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (claim_id, _now(), reviewer_id, reason_code, reason_text, evidence_summary, json.dumps(before, default=str), json.dumps(result, default=str)),
+        )
+        _set_state_in_connection(connection, claim_id, "DECIDED", result=result, detail={"decision": decision, "source": "reviewer_disposition", "reviewer_id": reviewer_id})
     return _load_claim(claim_id) or result
 
 
+@app.post("/api/claims/{claim_id}/settlement")
+def update_settlement(request: Request, claim_id: str, update: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Move a reserved benefit to PAID or RELEASED with an immutable event."""
+    actor_id = _require_reviewer(request)
+    target = str(update.get("status") or "").upper()
+    reason_code = str(update.get("reason_code") or "").strip().upper()
+    reason_text = str(update.get("reason_text") or "").strip()
+    if target not in {"PAID", "RELEASED"} or not re.fullmatch(r"[A-Z0-9_]{3,60}", reason_code) or not reason_text:
+        raise _input_error("Settlement status, reason_code, and reason_text are required.")
+    with _connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute("SELECT status FROM benefit_reservations WHERE claim_id=?", (claim_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=409, detail="This claim has no reserved benefit.")
+        current = str(row["status"])
+        allowed = (current == "RESERVED" and target in {"PAID", "RELEASED"}) or (current == "PAID" and target == "RELEASED")
+        if not allowed:
+            raise HTTPException(status_code=409, detail=f"Settlement cannot move from {current} to {target}.")
+        now = _now()
+        connection.execute("UPDATE benefit_reservations SET status=?, updated_at=? WHERE claim_id=?", (target, now, claim_id))
+        connection.execute(
+            "INSERT INTO settlement_events (claim_id, occurred_at, actor_id, from_status, to_status, reason_code, reason_text) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (claim_id, now, actor_id, current, target, reason_code, reason_text),
+        )
+        _record_event(connection, claim_id, "SETTLEMENT", {"from": current, "to": target, "actor_id": actor_id, "reason_code": reason_code})
+    saved = _load_claim(claim_id)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    return saved
+
+
 @app.get("/api/claims")
-def list_claims(limit: int = 20) -> dict[str, Any]:
+def list_claims(request: Request, limit: int = 20) -> dict[str, Any]:
+    _require_reviewer(request)
     if not 1 <= limit <= 100:
         raise _input_error("Limit must be between 1 and 100.")
     with _connect() as connection:

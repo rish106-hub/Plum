@@ -218,6 +218,7 @@ def _text_content(text: str, kind: str) -> tuple[dict[str, Any], list[dict[str, 
     field("doctor_registration", r"\b((?:AYUR/)?(?:KA|MH|DL|TN|GJ|AP|UP|WB|KL)/\d{4,6}/\d{4})\b")
     field("doctor_specialization", r"\b(?:MBBS|MD|MS)\s*\(?([A-Za-z][A-Za-z ]{2,50})\)?")
     field("approval_reference", r"\b(?:approval|authorization|pre[- ]?auth)\s*(?:ref(?:erence)?|no\.?|number|#)\s*[:\-]?\s*([\w/-]{3,60})")
+    field("approved_amount", r"\b(?:approved|authorized)\s+amount\s*[:₹Rs. ]+([\d,]+(?:\.\d{1,2})?)", _amount)
     field("date", r"\b(?:date|bill\s+date|report\s+date)\s*[:\-]\s*(\d{1,2}[-/]\w{2,9}[-/]\d{2,4}|\d{4}-\d{2}-\d{2})")
     field("sample_date", r"\bsample\s+date\s*[:\-]\s*(\d{1,2}[-/]\w{2,9}[-/]\d{2,4}|\d{4}-\d{2}-\d{2})")
     field("report_date", r"\breport\s+date\s*[:\-]\s*(\d{1,2}[-/]\w{2,9}[-/]\d{2,4}|\d{4}-\d{2}-\d{2})")
@@ -332,6 +333,7 @@ class SarvamDocumentProvider:
                 "hospital_name": {"type": "string", "description": "Hospital, clinic, or provider name exactly as printed; empty if absent"},
                 "provider_address": {"type": "string", "description": "Clinic, hospital, lab, or pharmacy address exactly as printed; empty if absent"},
                 "bill_number": {"type": "string", "description": "Bill or receipt number exactly as printed; empty if absent"},
+                "approved_amount": {"type": "number", "description": "Pre-authorization approved amount in Indian rupees; 0 if absent or unreadable"},
                 "gstin": {"type": "string", "description": "GSTIN exactly as printed; empty if absent"},
                 "nabl_status": {"type": "string", "description": "NABL accreditation status exactly as printed; empty if absent"},
                 "pathologist_name": {"type": "string", "description": "Pathologist name exactly as printed; empty if absent"},
@@ -339,6 +341,12 @@ class SarvamDocumentProvider:
                 "drug_license_number": {"type": "string", "description": "Pharmacy drug licence number exactly as printed; empty if absent"},
                 "discount": {"type": "number", "description": "Bill discount in Indian rupees; 0 if absent"},
                 "gst_amount": {"type": "number", "description": "GST amount in Indian rupees; 0 if absent"},
+                "alteration_detected": {"type": "boolean", "description": "True only when a crossed-out, overwritten, erased, or handwritten-corrected financial amount is visibly present"},
+                "crossed_out_amount": {"type": "boolean", "description": "True only when a financial amount is visibly crossed out"},
+                "handwritten_amount_correction": {"type": "boolean", "description": "True only when a financial amount has a visible handwritten correction"},
+                "duplicate_stamp_detected": {"type": "boolean", "description": "True only when a DUPLICATE or COPY stamp is visibly present"},
+                "original_stamp_detected": {"type": "boolean", "description": "True only when an ORIGINAL stamp is visibly present"},
+                "alteration_confidence": {"type": "number", "description": "Confidence from 0 to 1 for the visible alteration signals; 0 when none"},
                 "test_results": {"type": "array", "description": "Visible lab results only; empty if absent", "items": {"type": "object", "properties": {"test_name": {"type": "string"}, "result": {"type": "string"}, "unit": {"type": "string"}, "reference_range": {"type": "string"}}}},
                 "total": {"type": "number", "description": "Final bill total in Indian rupees; 0 if absent or unreadable"},
                 "line_items": {
@@ -382,14 +390,28 @@ def _provider_result(value: Any) -> tuple[str, str, dict[str, Any], list[str]]:
     if quality not in {"GOOD", "PARTIAL", "UNREADABLE"}:
         quality = "PARTIAL"
     fields: dict[str, Any] = value["fields"] if isinstance(value.get("fields"), dict) else value
-    allowed = {"patient_name", "doctor_name", "doctor_registration", "doctor_specialization", "diagnosis", "treatment", "date", "sample_date", "report_date", "hospital_name", "provider_address", "total", "line_items", "test_name", "test_results", "medicines", "tests_ordered", "bill_number", "approval_reference", "gstin", "gst_amount", "nabl_status", "pathologist_name", "pathologist_registration", "drug_license_number", "discount"}
+    allowed = {"patient_name", "doctor_name", "doctor_registration", "doctor_specialization", "diagnosis", "treatment", "date", "sample_date", "report_date", "hospital_name", "provider_address", "total", "approved_amount", "line_items", "test_name", "test_results", "medicines", "tests_ordered", "bill_number", "approval_reference", "gstin", "gst_amount", "nabl_status", "pathologist_name", "pathologist_registration", "drug_license_number", "discount", "alteration_detected", "crossed_out_amount", "handwritten_amount_correction", "duplicate_stamp_detected", "original_stamp_detected", "alteration_confidence"}
     content = {key: fields[key] for key in allowed if key in fields and fields[key] not in (None, "")}
+    for flag in ("alteration_detected", "crossed_out_amount", "handwritten_amount_correction", "duplicate_stamp_detected", "original_stamp_detected"):
+        if flag in content:
+            content[flag] = content[flag] is True
+    if "alteration_confidence" in content:
+        try:
+            content["alteration_confidence"] = min(1.0, max(0.0, float(content["alteration_confidence"])))
+        except (TypeError, ValueError):
+            content.pop("alteration_confidence")
     if "total" in content:
         total = _amount(str(content["total"]))
         if total is None or total <= 0:
             content.pop("total")
         else:
             content["total"] = total
+    if "approved_amount" in content:
+        approved = _amount(str(content["approved_amount"]))
+        if approved is None or approved <= 0:
+            content.pop("approved_amount")
+        else:
+            content["approved_amount"] = approved
     if "line_items" in content:
         clean_items = []
         if isinstance(content["line_items"], list):
@@ -423,7 +445,8 @@ def _needs_extract(kind: str, content: dict[str, Any]) -> bool:
 _DERIVED_ISSUE_CODES = {
     "UNIDENTIFIED_DOCUMENT", "PARTIAL_DOCUMENT", "DETAILS_UNVERIFIED", "AMOUNT_UNVERIFIED",
     "MISSING_DOCUMENT", "PATIENT_MISMATCH", "MEMBER_MISMATCH", "PATIENT_UNVERIFIED",
-    "MATERIAL_FIELD_UNVERIFIED", "BILL_ARITHMETIC_CONFLICT",
+    "MATERIAL_FIELD_UNVERIFIED", "BILL_ARITHMETIC_CONFLICT", "OTHER_COVERED_MEMBER",
+    "DOCUMENT_ALTERATION", "DUPLICATE_STAMP",
 }
 
 
@@ -503,6 +526,37 @@ def revalidate_documents(
         patient_name = doc.get("patient_name_on_doc") or fields.get("patient_name")
         if patient_name:
             named.append((name, str(patient_name)))
+        selected = normal_name(member_name)
+        roster = {normal_name(value) for value in (allowed_patient_names or [member_name]) if normal_name(value)}
+        observed = normal_name(patient_name)
+        doc["identity_match"] = (
+            "MATCH_SELECTED_MEMBER" if observed and observed == selected
+            else "MATCH_OTHER_COVERED_MEMBER" if observed and observed in roster
+            else "UNKNOWN_PATIENT" if observed
+            else "NOT_AVAILABLE"
+        )
+        if kind in BILL_TYPES:
+            signals = {
+                key: fields.get(key)
+                for key in (
+                    "alteration_detected", "crossed_out_amount", "handwritten_amount_correction",
+                    "duplicate_stamp_detected", "original_stamp_detected", "alteration_confidence",
+                )
+                if fields.get(key) not in (None, False, "")
+            }
+            doc["document_signals"] = signals
+            if any(fields.get(key) is True for key in ("alteration_detected", "crossed_out_amount", "handwritten_amount_correction")):
+                issues.append(_issue(
+                    "DOCUMENT_ALTERATION", name,
+                    f"{name} shows a material financial alteration. An operator must inspect the original document before payment.",
+                    signals=signals,
+                ))
+            if fields.get("duplicate_stamp_detected") is True:
+                issues.append(_issue(
+                    "DUPLICATE_STAMP", name,
+                    f"{name} is marked DUPLICATE or COPY. An operator must confirm that it has not already been reimbursed.",
+                    signals=signals,
+                ))
 
     for required_type in requirements.get("required", []):
         kind = str(required_type).upper()
@@ -520,10 +574,16 @@ def revalidate_documents(
     if len({normal_name(name) for _, name in named}) > 1:
         detail = "; ".join(f"{filename}: {name}" for filename, name in named)
         issues.append(_issue("PATIENT_MISMATCH", "", f"The uploaded documents name different patients ({detail}). Re-upload documents for {member_name}."))
-    elif named and member_name and normal_name(named[0][1]) not in {
-        normal_name(name) for name in (allowed_patient_names or [member_name])
-    }:
-        issues.append(_issue("MEMBER_MISMATCH", named[0][0], f"{named[0][0]} names {named[0][1]}, but this claim is not for the member or a covered dependent. Upload the correct patient's document."))
+    elif named and member_name and normal_name(named[0][1]) != normal_name(member_name):
+        covered = normal_name(named[0][1]) in {normal_name(name) for name in (allowed_patient_names or [member_name])}
+        if covered:
+            issues.append(_issue(
+                "OTHER_COVERED_MEMBER", named[0][0],
+                f"{named[0][0]} names {named[0][1]}, another covered family member. Submit this claim under that patient's member ID.",
+                identity_match="MATCH_OTHER_COVERED_MEMBER",
+            ))
+        else:
+            issues.append(_issue("MEMBER_MISMATCH", named[0][0], f"{named[0][0]} names {named[0][1]}, but this claim is not for the selected member or a covered dependent. Upload the correct patient's document."))
     elif not named:
         issues.append(_issue("PATIENT_UNVERIFIED", "", "No readable patient name was found on the uploaded documents. Upload a document showing the patient's name or request manual review."))
     return issues
@@ -675,6 +735,10 @@ def process_uploads(
         if len(text.strip()) >= 80:
             kind = _classify_text(text)
             content, evidence = _text_content(text, kind)
+            if kind in BILL_TYPES:
+                normalized_text = _normalized_words(text)
+                content["duplicate_stamp_detected"] = bool(re.search(r"\b(?:duplicate|copy)\b", normalized_text))
+                content["original_stamp_detected"] = bool(re.search(r"\boriginal\b", normalized_text))
             quality = "GOOD" if kind != "UNKNOWN" else "PARTIAL"
             source = "pdf_text"
         if source == "unavailable" and provider:
@@ -690,6 +754,10 @@ def process_uploads(
                 else:
                     kind = _classify_text(recognized)
                     content, evidence = _text_content(recognized, kind)
+                    if kind in BILL_TYPES:
+                        normalized_text = _normalized_words(recognized)
+                        content["duplicate_stamp_detected"] = bool(re.search(r"\b(?:duplicate|copy)\b", normalized_text))
+                        content["original_stamp_detected"] = bool(re.search(r"\boriginal\b", normalized_text))
                     quality = "GOOD" if kind != "UNKNOWN" else "PARTIAL"
                     evidence = [{**entry, "source": "sarvam_digitise", "confidence": min(entry["confidence"], 0.75)} for entry in evidence]
                     source = "sarvam_digitise"
@@ -716,6 +784,16 @@ def process_uploads(
                 parsed = provider.extract_fields(data, mime, kind)
                 _, _, additional, provider_warnings = _provider_result(parsed)
                 merged_content = {**additional, **content}
+                for signal in (
+                    "alteration_detected", "crossed_out_amount", "handwritten_amount_correction",
+                    "duplicate_stamp_detected", "original_stamp_detected",
+                ):
+                    if additional.get(signal) is True:
+                        merged_content[signal] = True
+                if "alteration_confidence" in additional:
+                    merged_content["alteration_confidence"] = max(
+                        float(content.get("alteration_confidence") or 0), float(additional["alteration_confidence"])
+                    )
                 if kind == "PHARMACY_BILL" and additional.get("line_items") and content.get("line_items"):
                     extracted_by_key = {
                         (_normalized_words(str(item.get("description", ""))), item.get("amount")): item

@@ -3,12 +3,14 @@
 The supplied policy period is 2024-04-01 to 2025-03-31, so start the server with
 the explicit development clock before running this check:
 
-    PLUM_ENV=development PLUM_DEMO_CLOCK=2024-11-05 .venv/bin/python -m uvicorn claims.web:app
+    PLUM_ENV=development PLUM_DEMO_CLOCK=2024-11-05 PLUM_REVIEW_TOKEN=local-review-token \
+      .venv/bin/python -m uvicorn claims.web:app
 
 The check asserts that the demo clock is visible in the UI and decision trace.
 Start the server with a new ``PLUM_DATA_DIR`` for this deterministic scenario:
 
     PLUM_DATA_DIR="$(mktemp -d)" PLUM_ENV=development PLUM_DEMO_CLOCK=2024-11-05 \
+      PLUM_REVIEW_TOKEN=local-review-token \
       .venv/bin/python -m uvicorn claims.web:app
 
 The workflow deliberately creates repeat submissions to exercise duplicate and
@@ -28,6 +30,8 @@ ROOT = Path(__file__).resolve().parents[1]
 BASE_URL = os.getenv("PLUM_BASE_URL", "http://127.0.0.1:8000")
 SAMPLES = ROOT / ".data" / "samples"
 SCREENSHOTS = Path(os.getenv("PLUM_SCREENSHOT_DIR", ROOT / "docs" / "screenshots"))
+REVIEWER_ID = os.getenv("PLUM_REVIEWER_ID", "browser-check")
+REVIEW_TOKEN = os.getenv("PLUM_REVIEW_TOKEN", "")
 
 
 def _fill(page: Page, documents: list[Path]) -> dict:
@@ -55,7 +59,11 @@ def main() -> None:
     errors: list[str] = []
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
-        page = browser.new_page(viewport={"width": 1440, "height": 1000}, device_scale_factor=1)
+        assert REVIEW_TOKEN, "Set PLUM_REVIEW_TOKEN to the same value used by the server"
+        page = browser.new_page(
+            viewport={"width": 1440, "height": 1000}, device_scale_factor=1,
+            extra_http_headers={"X-Reviewer-ID": REVIEWER_ID, "X-Reviewer-Token": REVIEW_TOKEN},
+        )
         page.on("pageerror", lambda error: errors.append(str(error)))
 
         page.goto(BASE_URL, wait_until="networkidle")
@@ -123,6 +131,9 @@ def main() -> None:
         page.locator("#ops-review-form").wait_for(state="visible")
         page.locator("#ops-review-decision").select_option("REJECTED")
         page.locator("#ops-review-amount").fill("0")
+        page.locator("#ops-review-reason-code").fill("DUPLICATE_CONFIRMED")
+        page.locator("#ops-review-reason-text").fill("The submitted bill duplicates an earlier paid claim.")
+        page.locator("#ops-review-evidence").fill("Compared the bill hash, bill number, amount, date, and prior claim trace.")
         page.locator("#ops-review-form button[type='submit']").click()
         page.locator("#ops-review-action").wait_for(state="hidden")
         reviewed = page.request.get(f"{BASE_URL}/api/claims/{duplicate['id']}").json()

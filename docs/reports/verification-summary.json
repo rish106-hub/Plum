@@ -1,12 +1,12 @@
 {
   "schema": "plum.verification_summary.v1",
-  "started_at": "2026-09-26T18:17:03+00:00",
-  "finished_at": "2026-09-26T18:17:09+00:00",
+  "started_at": "2026-09-26T19:04:13+00:00",
+  "finished_at": "2026-09-26T19:04:20+00:00",
   "git": {
-    "head": "0d2ce6971031bc8ccae11dc2c1dc75c0ffccfd84",
-    "branch": "fix/audit-remediation",
-    "worktree_dirty": false,
-    "changed_paths": 0
+    "head": "f6ef45874af43ff9847b87cdcd7c15f03abb620a",
+    "branch": "fix/operational-integrity",
+    "worktree_dirty": true,
+    "changed_paths": 29
   },
   "python": "3.14.2",
   "platform": "Darwin arm64",
@@ -53,7 +53,7 @@
       "command": "python -m mypy claims scripts tools",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.47
+      "seconds": 0.39
     },
     {
       "name": "compileall",
@@ -67,21 +67,21 @@
       "command": "python -m pytest -q -p no:cacheprovider",
       "exit_code": 0,
       "ok": true,
-      "seconds": 4.06
+      "seconds": 5.08
     },
     {
       "name": "supplied-case evaluation",
       "command": "python -m scripts.evaluate",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.12
+      "seconds": 0.2
     },
     {
       "name": "offline document suites",
       "command": "python -m scripts.evaluate_documents",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.31
+      "seconds": 0.46
     },
     {
       "name": "live OCR status (keys stripped)",
@@ -95,7 +95,7 @@
   "typecheck_ok": true,
   "compile_ok": true,
   "tests": {
-    "passed": 277,
+    "passed": 282,
     "failed": 0,
     "errors": 0,
     "skipped": 0,
@@ -110,7 +110,7 @@
     "total": 12,
     "fingerprints": {
       "policy_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-      "policy_canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160",
+      "policy_canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4",
       "fixture_sha256": "4b9b9a047ec6a6479a81f6b2767f00f931920ad7bedb3f547abb54b771034e63"
     },
     "cases": [
@@ -262,7 +262,7 @@
       "reference_repair": 4,
       "informational": 4
     },
-    "canonical_sha256": "36e830200717ec720d7ce6a12a716cc2269d3d1d6e06c93b077312346d0fa160"
+    "canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4"
   },
   "readme_block_updated": true,
   "docs_drift": [],

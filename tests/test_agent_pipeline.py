@@ -240,9 +240,9 @@ def test_payable_decision_requires_reconciled_ledger() -> None:
     assert result["decision"] == "MANUAL_REVIEW"
 
 
-def test_gemini_candidate_for_a_covered_dependent_keeps_the_dependent_allowlist() -> None:
-    # Formerly revalidation after Gemini used only the member's own name, so a
-    # covered dependent's documents became MEMBER_MISMATCH.
+def test_gemini_candidate_distinguishes_other_covered_member_from_unknown_patient() -> None:
+    # Revalidation keeps the family roster as context, but another covered
+    # member does not satisfy the selected-member filing contract.
     from claims.policy import load_policy
 
     policy = load_policy()
@@ -274,7 +274,9 @@ def test_gemini_candidate_for_a_covered_dependent_keeps_the_dependent_allowlist(
     )
 
     assert handoff["trace"][0]["status"] == "CANDIDATES_APPLIED"
-    assert handoff["issues"] == []
+    assert [issue["code"] for issue in handoff["issues"]] == ["OTHER_COVERED_MEMBER"]
+    assert handoff["issues"][0]["identity_match"] == "MATCH_OTHER_COVERED_MEMBER"
+    assert not any(issue["code"] == "MEMBER_MISMATCH" for issue in handoff["issues"])
     assert "MEMBER_MISMATCH" not in {issue.get("code") for issue in handoff["issues"]}
 
 

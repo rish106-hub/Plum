@@ -704,7 +704,9 @@ class PolicyNormalizer:
             "consultation services. For every other category all eligible lines are the category's service. If the "
             "service share of an unitemized bill cannot be established and the net payable exceeds what remains, a "
             "claim that could otherwise pay routes to review (CATEGORY_SUB_LIMIT_UNVERIFIED). A governing "
-            "pre-authorization supersedes the cap. Rejected alternative: an annual aggregate over the whole claim. "
+            "pre-authorization may satisfy the authorization requirement and govern its explicitly authorized amount, "
+            "but it never removes this category cap or any annual, sum-insured, or family benefit cap. Rejected "
+            "alternative: an annual aggregate over the whole claim. "
             "The supplied network consultation case pays Rs 3,240 in one consultation claim, above an annual Rs 2,000 "
             "consultation cap, so that reading would either break the fixture or pay more when category history is "
             "absent than when it is zero.",

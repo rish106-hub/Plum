@@ -74,10 +74,10 @@ Audit ids: `CATEGORY_SUB_LIMIT_RULE`, `CATEGORY_SERVICE_TERMS.CONSULTATION`.
   3. Neither: the history part is `NOT_EVALUATED`. A payable outcome carries the advisory `CATEGORY_SUB_LIMIT_HISTORY_NOT_EVALUATED`, and confidence drops by 0.03. The claim is still capped at the full sub-limit on its own.
 - Excess over the remaining sub-limit is removed as a ledger adjustment ("Consultation sub-limit", rule id `category_sub_limit`) with reason `CATEGORY_SUB_LIMIT_LIMITED`, and the outcome is `PARTIAL`.
 - If the service share cannot be established because a bill is not itemized, and the net payable exceeds the remaining sub-limit, a claim that could otherwise pay goes to review with `CATEGORY_SUB_LIMIT_UNVERIFIED`. A claim already rejected on other grounds does not carry this reason, since nothing is paid.
-- A matched pre-authorization rule supersedes the cap (status `AUTHORIZED_BY_PRE_AUTH` or `DEFERRED_TO_PRE_AUTH`), for the same reason as the ceiling in rule 1.
+- A matched pre-authorization rule can satisfy the authorization requirement and govern an explicitly authorized amount, but it never removes the category cap. Category, annual, sum-insured, and family limits are applied after pricing whether or not pre-authorization exists.
 - The trace step records the sub-limit, the usage key and its basis, the amount remaining before this claim, the service net payable, and `counted_against_sub_limit_paise`.
 
-**Web intake** supplies both usage figures from its local claim records, for the same member, the same category and the policy year, counting only earlier `APPROVED` or `PARTIAL` decisions. `category_sub_limit_used` is the sum of those decisions' `counted_against_sub_limit_paise`. It is omitted when any of them lacks that figure (for example a decision made before this rule existed), and the engine then falls back to `category_ytd_claims_amount`.
+**Web intake** supplies both usage figures from the atomic benefit reservation ledger, for the same member, the same category and the policy year, counting `RESERVED` and `PAID` benefit but excluding `RELEASED` benefit. `category_sub_limit_used` is the sum reserved against the category. Legacy payable rows without a reservation retain a compatibility fallback to their decision trace.
 
 **Why not a plain annual aggregate on the whole claim.** TC010 pays ₹3,240 in a single consultation claim, which is above an annual ₹2,000 consultation cap on everything billed. That reading would break the fixture, or it would pay more when history is absent than when history is zero. Capping only the consultation-fee lines is consistent with every supplied case: TC004's fee nets ₹900 and TC010's nets ₹1,080, both within ₹2,000, so neither amount changes.
 
@@ -117,7 +117,7 @@ When pre-authorization is required, the evidence decides the outcome:
 
 TC007 supplies no pre-authorization information at all and expects `PRE_AUTH_MISSING`. The missing-record reading therefore applies to every source, including uploads.
 
-**Provenance of the record.** The approval record is uploaded by the member; the engine cannot confirm it with the insurer. Its trace records `status_source: member_supplied_record_unverified_with_insurer` and `insurer_verified: false`. A pass adds the advisory `PRE_AUTH_NOT_VERIFIED_WITH_INSURER` to a payable outcome and lowers confidence by 0.05.
+**Provenance of the record.** Evidence carries `verification_status: DOCUMENT_PRESENT | INSURER_VERIFIED | NOT_AVAILABLE`. The web upload path produces `DOCUMENT_PRESENT`; its trace records `status_source: member_supplied_record_unverified_with_insurer` and `insurer_verified: false`. A pass adds the advisory `PRE_AUTH_NOT_VERIFIED_WITH_INSURER` to a payable outcome and lowers confidence by 0.05. Only an authoritative insurer/TPA integration may supply `INSURER_VERIFIED`, which removes that advisory.
 
 **Contradiction.** The global list says PET scan always needs pre-auth. The diagnostic threshold implies it is needed only above ₹10,000. The engine applies the stricter reading (always).
 

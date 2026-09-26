@@ -7,6 +7,7 @@ import json
 import sqlite3
 import time
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -32,12 +33,17 @@ def _real_clock_by_default(monkeypatch) -> None:
 
 def _client(tmp_path: Path, monkeypatch) -> TestClient:
     monkeypatch.setenv("PLUM_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("PLUM_REVIEW_TOKEN", "test-review-token-12345")
     return TestClient(web.app)
+
+
+REVIEW_HEADERS = {"X-Reviewer-ID": "test-reviewer", "X-Reviewer-Token": "test-review-token-12345"}
 
 
 def test_operations_worklist_page_is_available(tmp_path, monkeypatch) -> None:
     with _client(tmp_path, monkeypatch) as client:
-        response = client.get("/ops")
+        assert client.get("/ops").status_code == 401
+        response = client.get("/ops", headers=REVIEW_HEADERS)
     assert response.status_code == 200
     assert "Review" in response.text
 
@@ -456,17 +462,17 @@ def test_upload_decision_and_trace_are_persisted(tmp_path, monkeypatch):
             "bytes": PDF,
             "name": "Rajesh Kumar",
             "ytd_claims_amount": 0.0,
-            "ytd_claims_source": "database_approved_decisions",
+            "ytd_claims_source": "reserved_or_paid_benefit_ledger",
         }
         assert saved["state"] == "DECIDED"
         assert "ytd_claims_amount" not in saved["request"]
         assert captured["ytd_claims_amount"] == 0
-        assert captured["ytd_claims_source"] == "database_approved_decisions"
+        assert captured["ytd_claims_source"] == "reserved_or_paid_benefit_ledger"
         assert saved["result"]["decision"] == "APPROVED"
         assert saved["result"]["trace"][0]["rule_id"] == "extracted_facts"
         assert any(step.get("rule_id") == "CONSULTATION" for step in saved["result"]["trace"])
         assert saved["result"]["ledger"][1]["amount_paise"] == -15000
-        assert client.get("/api/claims").json()["claims"][0]["id"] == claim_id
+        assert client.get("/api/claims", headers=REVIEW_HEADERS).json()["claims"][0]["id"] == claim_id
 
 
 def test_identical_bill_on_another_claim_routes_to_review(tmp_path, monkeypatch):
@@ -532,10 +538,95 @@ def test_reviewer_can_resolve_manual_review(tmp_path, monkeypatch):
     monkeypatch.setattr(web, "process_uploads", lambda *_args, **_kwargs: {"documents": [], "issues": [{"code": "EXTRACTION_UNAVAILABLE", "file_name": "claim.pdf", "message": "Unavailable"}], "metrics": {}})
     with _client(tmp_path, monkeypatch) as client:
         claim_id = _submit(client).json()["id"]
-        response = client.post(f"/api/claims/{claim_id}/review-decision", json={"decision": "APPROVED", "approved_amount": 1000})
+        assert client.post(
+            f"/api/claims/{claim_id}/review-decision",
+            json={"decision": "APPROVED", "approved_amount": 1000},
+        ).status_code == 401
+        response = client.post(
+            f"/api/claims/{claim_id}/review-decision",
+            headers=REVIEW_HEADERS,
+            json={
+                "decision": "APPROVED", "approved_amount": 1000,
+                "reason_code": "EVIDENCE_CONFIRMED", "reason_text": "Documents support the claim.",
+                "evidence_summary": "Reviewed the bill, prescription, and policy trace.",
+            },
+        )
     assert response.status_code == 200
     assert response.json()["state"] == "DECIDED"
     assert response.json()["result"]["decision"] == "APPROVED"
+    assert response.json()["benefit_reservation"]["status"] == "RESERVED"
+    assert response.json()["reviewer_actions"][0]["reviewer_id"] == "test-reviewer"
+
+
+def test_settlement_release_returns_reserved_benefit_to_availability(tmp_path, monkeypatch):
+    monkeypatch.setattr(web, "process_uploads", lambda *_args, **_kwargs: {"documents": [], "issues": [{"code": "EXTRACTION_UNAVAILABLE", "file_name": "claim.pdf", "message": "Unavailable"}], "metrics": {}})
+    with _client(tmp_path, monkeypatch) as client:
+        claim_id = _submit(client).json()["id"]
+        decided = client.post(
+            f"/api/claims/{claim_id}/review-decision", headers=REVIEW_HEADERS,
+            json={
+                "decision": "APPROVED", "approved_amount": 1000,
+                "reason_code": "EVIDENCE_CONFIRMED", "reason_text": "Documents support the claim.",
+                "evidence_summary": "Reviewed the bill, prescription, and policy trace.",
+            },
+        ).json()
+        assert decided["benefit_reservation"]["status"] == "RESERVED"
+        paid = client.post(
+            f"/api/claims/{claim_id}/settlement", headers=REVIEW_HEADERS,
+            json={"status": "PAID", "reason_code": "REMITTANCE_MATCH", "reason_text": "Insurer remittance matched."},
+        ).json()
+        assert paid["benefit_reservation"]["status"] == "PAID"
+        released = client.post(
+            f"/api/claims/{claim_id}/settlement", headers=REVIEW_HEADERS,
+            json={"status": "RELEASED", "reason_code": "PAYMENT_REVERSED", "reason_text": "Insurer reversed the settlement."},
+        ).json()
+    assert released["benefit_reservation"]["status"] == "RELEASED"
+    assert [(event["from_status"], event["to_status"]) for event in released["settlement_events"]] == [("RESERVED", "PAID"), ("PAID", "RELEASED")]
+
+
+def test_concurrent_workers_cannot_overspend_category_balance(tmp_path, monkeypatch):
+    """Two workers reading one ₹15,000 category balance reserve at most ₹15,000 together."""
+    with _client(tmp_path, monkeypatch):
+        policy = web._read_policy()
+        request_data = {
+            "member_id": "EMP001", "policy_id": policy["policy_id"],
+            "policy_canonical_sha256": web._policy_fingerprint(policy),
+            "claim_category": "PHARMACY", "treatment_date": "2024-11-01",
+            "claimed_amount": 10000, "submission_date": "2024-11-05",
+        }
+        claim_ids = ["concurrent-a", "concurrent-b"]
+        with web._connect() as connection:
+            for claim_id in claim_ids:
+                connection.execute(
+                    "INSERT INTO claims (id, created_at, updated_at, state, member_id, treatment_date, request_json) VALUES (?, ?, ?, 'PROCESSING', ?, ?, ?)",
+                    (claim_id, web._now(), web._now(), request_data["member_id"], request_data["treatment_date"], json.dumps(request_data)),
+                )
+
+        def decide(payload, _policy):
+            used = web.to_paise(payload.get("category_sub_limit_used", 0))
+            approved = min(1_000_000, max(0, 1_500_000 - used))
+            return {
+                "state": "DECIDED", "decision": "APPROVED" if approved == 1_000_000 else "PARTIAL",
+                "approved_amount": web.to_rupees(approved), "approved_amount_paise": approved,
+                "reasons": [{"code": "TEST_POLICY", "message": "Concurrent reservation test."}],
+                "correction_requests": [], "confidence_score": 0.95, "ledger": [],
+                "trace": [{
+                    "stage": "policy", "rule_id": "category_sub_limit", "status": "PASS",
+                    "evidence": {"counted_against_sub_limit_paise": approved},
+                }],
+            }
+
+        monkeypatch.setattr(web, "evaluate_claim", decide)
+        monkeypatch.setattr(web, "adjudicate_handoff", lambda payload, policy, resolver: resolver(payload, policy))
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            list(pool.map(lambda claim_id: web._adjudicate_with_reservation(claim_id, request_data, policy, [], {}, []), claim_ids))
+        with web._connect() as connection:
+            reservations = connection.execute(
+                "SELECT amount_paise FROM benefit_reservations WHERE claim_id IN (?, ?) ORDER BY amount_paise",
+                claim_ids,
+            ).fetchall()
+    assert [row["amount_paise"] for row in reservations] == [500_000, 1_000_000]
+    assert sum(row["amount_paise"] for row in reservations) == 1_500_000
 
 
 def test_duplicate_hash_of_nonpayable_claim_does_not_block_later_claim(tmp_path, monkeypatch):
@@ -600,7 +691,7 @@ def test_history_is_loaded_from_local_claims_for_annual_and_frequency_limits(tmp
         assert client.get(f"/api/claims/{second['id']}").json()["result"]["decision"] == "APPROVED"
 
     assert observed[1]["ytd_claims_amount"] == 1350
-    assert observed[1]["ytd_claims_source"] == "database_approved_decisions"
+    assert observed[1]["ytd_claims_source"] == "reserved_or_paid_benefit_ledger"
     assert observed[1]["claims_history"] == [{"claim_id": first["id"], "date": "2024-11-01", "amount": 1500, "provider": None}]
     # Aggregate limits are supplied so the engine evaluates them instead of NOT_EVALUATED.
     assert observed[1]["sum_insured_used"] == 1350
@@ -642,7 +733,7 @@ def test_dependent_history_uses_primary_member_family_pool(tmp_path, monkeypatch
     # Category usage is per member: the employee's consultation is not the dependent's.
     assert observed[1]["category_ytd_claims_amount"] == 0
     assert observed[1]["claims_history"] == [{"claim_id": employee["id"], "date": "2024-11-01", "amount": 1500, "provider": None}]
-    assert observed[1]["claims_history_source"] == "local_family_submission_database"
+    assert observed[1]["claims_history_source"] == "atomic_benefit_reservation_ledger"
 
 
 def test_older_local_database_is_migrated_and_history_is_backfilled(tmp_path, monkeypatch):
@@ -678,7 +769,7 @@ def test_invalid_file_is_rejected_before_storage(tmp_path, monkeypatch):
         response = _submit(client, b"plain text", "text/plain")
         assert response.status_code == 422
         assert "supported PDF" in response.json()["detail"]
-        assert client.get("/api/claims").json()["claims"] == []
+        assert client.get("/api/claims", headers=REVIEW_HEADERS).json()["claims"] == []
 
 
 def test_document_prefill_suggests_only_document_backed_values_without_persisting(tmp_path, monkeypatch):
@@ -701,7 +792,7 @@ def test_document_prefill_suggests_only_document_backed_values_without_persistin
     with _client(tmp_path, monkeypatch) as client:
         response = client.post("/api/claims/prefill", files=[("files", ("bill.pdf", PDF, "application/pdf"))])
         assert response.status_code == 200
-        assert client.get("/api/claims").json()["claims"] == []
+        assert client.get("/api/claims", headers=REVIEW_HEADERS).json()["claims"] == []
     result = response.json()
     assert result["suggestions"] == {
         "member_id": "EMP001",
@@ -868,7 +959,7 @@ def test_consultation_sub_limit_usage_is_summed_from_earlier_decision_traces(tmp
         second = _submit_files(client, [_rx_pdf(date="2024-11-03"), _bill_pdf(date="2024-11-03")], treatment_date="2024-11-03")
     counted = next(step for step in first["result"]["trace"] if step["rule_id"] == "category_sub_limit")["evidence"]["counted_against_sub_limit_paise"]
     assert observed[1]["category_sub_limit_used"] == counted / 100
-    assert observed[1]["category_sub_limit_used_source"] == "database_decision_traces"
+    assert observed[1]["category_sub_limit_used_source"] == "atomic_benefit_reservation_ledger"
     assert observed[1]["claims_history"][0]["provider"] == first["result"]["provider"]
     step = next(step for step in second["result"]["trace"] if step["rule_id"] == "category_sub_limit")
     assert step["evidence"]["usage_key"] == "category_sub_limit_used"
@@ -930,7 +1021,6 @@ def test_same_bill_with_branch_suffix_on_provider_is_held_as_duplicate(tmp_path,
         assert first["id"] in resubmission["result"]["trace"][1]["evidence"]["matching_claim_ids"]
 
 
-@pytest.mark.xfail(strict=True, reason="Known gap: core accepts any family member's name on the documents; the engine fix is pending.")
 @pytest.mark.usefixtures("_demo_2024")
 def test_dependent_filing_with_primary_members_documents_cannot_bypass_sub_limit(tmp_path, monkeypatch):
     """Audit B-3: usage is per patient; filing Rajesh's visit under DEP001 must not be paid.

@@ -52,7 +52,7 @@ REVIEW_CODES = {
     "LINE_ITEM_DESCRIPTION_UNKNOWN", "LINE_ITEM_UNRESOLVED", "PHARMACY_BRAND_STATUS_UNKNOWN",
     "GENERIC_SUBSTITUTION_REVIEW", "PRE_AUTH_STATUS_UNKNOWN", "PRE_AUTH_CONFLICT", "PRE_AUTH_AMOUNT_UNVERIFIED",
     "COVERED_SYSTEM_UNKNOWN", "MEMBER_START_DATE_UNKNOWN", "TREATMENT_DATE_REQUIRED", "DOCUMENT_DATE_CONFLICT",
-    "PRACTITIONER_REGISTRATION_UNKNOWN", "EXCLUSION_QUALIFIER_REVIEW", "BILL_AMOUNT_UNVERIFIED",
+    "PRACTITIONER_REGISTRATION_UNKNOWN", "PRACTITIONER_REGISTRATION_INVALID", "EXCLUSION_QUALIFIER_REVIEW", "BILL_AMOUNT_UNVERIFIED",
     "DOCUMENT_QUALITY_INSUFFICIENT", "PATIENT_IDENTITY_UNVERIFIED", "CATEGORY_SUB_LIMIT_UNVERIFIED",
     "AMBIGUOUS_CLINICAL_TERM", "MIXED_SERVICE_LINE", "SESSION_COUNT_MALFORMED", "MALFORMED_SUBMISSION_DATE",
     "MALFORMED_PRE_EXISTING_CONDITIONS",
@@ -844,7 +844,7 @@ def _stage_pre_authorization(claim: _Claim) -> None:
     claim.trace.append(claim.pre_auth["trace"])
     if claim.pre_auth["code"]:
         claim.reason(claim.pre_auth["code"], claim.pre_auth["message"])
-    if claim.pre_auth["status"] == "PASS":
+    if claim.pre_auth["status"] == "PASS" and not claim.pre_auth["trace"].get("evidence", {}).get("insurer_verified"):
         claim.factor("pre_auth_record_member_supplied", 0.05, ("payable",))
         claim.advise("PRE_AUTH_NOT_VERIFIED_WITH_INSURER", "The pre-authorization approval record was uploaded by the member and has not been confirmed with the insurer; confirm it before settlement.")
 
@@ -895,6 +895,12 @@ def _pre_authorization(claim: _Claim) -> dict[str, Any]:
     raw_authorized = document_fields.get("approved_amount") or (pre_auth.get("approved_amount") if isinstance(pre_auth, dict) else None)
     authorized = _paise(raw_authorized) if raw_authorized not in (None, "") else None
     documented = approval_document is not None and issued_date is not None and bool(approval_reference)
+    verification_status = (
+        str(pre_auth.get("verification_status") or "DOCUMENT_PRESENT").upper()
+        if isinstance(pre_auth, dict) and documented else "NOT_AVAILABLE"
+    )
+    if verification_status not in {"DOCUMENT_PRESENT", "INSURER_VERIFIED", "NOT_AVAILABLE"}:
+        verification_status = "DOCUMENT_PRESENT" if documented else "NOT_AVAILABLE"
     validity_days = config["validity_days"]
     treatment_date = claim.treatment_date
 
@@ -906,7 +912,7 @@ def _pre_authorization(claim: _Claim) -> dict[str, Any]:
         invalid = treatment_date is None or issued_date > treatment_date or (treatment_date - issued_date).days > validity_days
         # The record is member-uploaded; the engine cannot confirm it with the insurer.
         status, code = ("FAIL", "PRE_AUTH_INVALID") if invalid else ("PASS", None)
-        source = "member_supplied_record_unverified_with_insurer"
+        source = "insurer_verified_record" if verification_status == "INSURER_VERIFIED" else "member_supplied_record_unverified_with_insurer"
     elif form_status is True or approval_document is not None:
         status, code, source = "NOT_EVALUATED", "PRE_AUTH_STATUS_UNKNOWN", "claimed_without_dated_approval_record"
     else:
@@ -925,7 +931,8 @@ def _pre_authorization(claim: _Claim) -> dict[str, Any]:
             "approval_reference": approval_reference or None,
             "authorized_amount": None if authorized is None else _rupees(authorized),
             "validity_days": validity_days, "status_source": source,
-            "insurer_verified": False,
+            "verification_status": verification_status,
+            "insurer_verified": verification_status == "INSURER_VERIFIED",
         },
     }
     labels = ", ".join(rule["label"] for rule in matched) or claim.category
@@ -1118,8 +1125,18 @@ def _stage_category_rules(claim: _Claim) -> None:
             claim.trace.append(_rule_trace("max_sessions", "NOT_EVALUATED", f"{category_ref}.max_sessions_per_year", {"max_sessions_per_year": cap}, "No session evidence was extracted."))
     if category_policy["requires_registered_practitioner"]:
         registered = [value for value in (str(_fields(doc).get("doctor_registration") or "").strip() for doc in documents) if value]
-        claim.trace.append(_rule_trace("registered_practitioner", "PASS" if registered else "NOT_EVALUATED", f"{category_ref}.requires_registered_practitioner", {"registrations": registered}, None if registered else "Practitioner registration was not extracted."))
-        if not registered:
+        valid_format = [value for value in registered if re.fullmatch(r"(?:AYUR/)?(?:KA|MH|DL|TN|GJ|AP|UP|WB|KL)/\d{4,6}/\d{4}", value, re.IGNORECASE)]
+        status = "REGISTRATION_PRESENT" if valid_format else "FAIL" if registered else "NOT_EVALUATED"
+        claim.trace.append(_rule_trace(
+            "registered_practitioner", status, f"{category_ref}.requires_registered_practitioner",
+            {"registrations": registered, "format_valid": bool(valid_format), "registry_verified": False},
+            "A format-valid registration is present but has not been checked against an authoritative practitioner registry."
+            if valid_format else "The extracted registration does not match the supported system/state format."
+            if registered else "Practitioner registration was not extracted.",
+        ))
+        if registered and not valid_format:
+            claim.reason("PRACTITIONER_REGISTRATION_INVALID", "The practitioner registration does not match the supported system/state format and must be verified before payment.")
+        elif not registered:
             claim.reason("PRACTITIONER_REGISTRATION_UNKNOWN", "The policy requires a registered practitioner, and registration was not extracted.")
 
 
