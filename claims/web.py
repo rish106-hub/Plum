@@ -271,13 +271,21 @@ async def _read_upload(upload: UploadFile) -> tuple[str, str, bytes]:
 def _correction_result(
     issues: list[dict[str, Any]], metrics: dict[str, Any], extra_trace: list[dict[str, Any]] | None = None
 ) -> dict[str, Any]:
-    correction_requests = [str(issue.get("message") or "Upload a clearer or correct document.") for issue in issues]
+    correction_requests = [
+        {
+            "code": str(issue.get("code") or "DOCUMENT_ISSUE"),
+            "message": str(issue.get("message") or "Upload a clearer or correct document."),
+            "file_name": issue.get("file_name"),
+            "required_type": issue.get("required_type"),
+        }
+        for issue in issues
+    ]
     return {
         "state": "DOCUMENT_CORRECTION_REQUIRED",
         "decision": None,
         "approved_amount": None,
         "approved_amount_paise": None,
-        "reasons": correction_requests,
+        "reasons": list(correction_requests),
         "correction_requests": correction_requests,
         "confidence_score": None,
         "ledger": [],
@@ -634,6 +642,8 @@ async def submit_claim(
     treatment_date: str = Form(...),
     claimed_amount: str = Form(...),
     pre_authorization_obtained: str | None = Form(None),
+    pre_authorization_issued_date: str | None = Form(None),
+    pre_authorization_reference: str | None = Form(None),
 ) -> JSONResponse:
     member_id = member_id.strip().upper()
     claim_category = claim_category.strip().upper()
@@ -685,7 +695,11 @@ async def submit_claim(
         "submission_date": now[:10],
     }
     if pre_authorization_obtained in {"true", "false"}:
-        request_data["pre_authorization"] = {"obtained": pre_authorization_obtained == "true"}
+        request_data["pre_authorization"] = {
+            "obtained": pre_authorization_obtained == "true",
+            "issued_date": (pre_authorization_issued_date or "").strip(),
+            "approval_reference": (pre_authorization_reference or "").strip(),
+        }
     with _connect() as connection:
         connection.execute(
             "INSERT INTO claims (id, created_at, updated_at, state, member_id, treatment_date, request_json) VALUES (?, ?, ?, ?, ?, ?, ?)",

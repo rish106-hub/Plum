@@ -111,4 +111,4 @@ Input requires member and policy IDs, claim category, treatment date, claimed am
 
 Decision is `APPROVED`, `PARTIAL`, `REJECTED`, `MANUAL_REVIEW`, or `null` while documents need correction. Financial adjustments are rounded to paise using decimal arithmetic. Trace entries distinguish `PASS`, `FAIL`, `ASSUMPTION`, `NOT_EVALUATED`, `FLAG`, and degraded/skipped stages. Missing material identity on a real upload leads to review. Malformed claim/policy evidence is returned as a traced review or correction result, rather than an unhandled exception. Confidence is an evidence-quality rubric, not a calibrated probability.
 
-The fixture-specific dental and consultation interpretations are recorded in `PLAN.md` and in the output trace. They are not general legal policy advice.
+The fixture-specific dental and consultation interpretations are recorded in the generated evaluation output trace. They are not general legal policy advice.

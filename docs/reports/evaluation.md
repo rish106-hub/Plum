@@ -357,9 +357,11 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "coverage.sum_insured_per_employee",
       "evidence": {
-        "sum_insured": 500000
+        "sum_insured_paise": 50000000,
+        "used_paise": null,
+        "remaining_paise": null
       },
-      "details": "No hospitalisation utilisation feed is available in this OPD evaluator."
+      "details": "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."
     },
     {
       "stage": "policy",
@@ -367,9 +369,12 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "coverage.family_floater.combined_limit",
       "evidence": {
-        "combined_limit": 150000
+        "enabled": true,
+        "combined_limit_paise": 15000000,
+        "used_paise": null,
+        "remaining_paise": null
       },
-      "details": "Family-floater consumption is not tracked separately from the annual OPD limit."
+      "details": "A separate family utilisation feed is required; annual OPD usage is not substituted."
     },
     {
       "stage": "policy",
@@ -462,6 +467,36 @@ Explicit behavior checks: **Passed**.
       }
     },
     {
+      "stage": "risk",
+      "rule_id": "high_value_claim",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.high_value_claim_threshold",
+      "evidence": {
+        "claimed_amount_paise": 150000,
+        "threshold_paise": 2500000
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "auto_manual_review_amount",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.auto_manual_review_above",
+      "evidence": {
+        "claimed_amount_paise": 150000,
+        "threshold_paise": 2500000
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "fraud_score",
+      "status": "NOT_EVALUATED",
+      "policy_ref": "fraud_thresholds.fraud_score_manual_review_threshold",
+      "evidence": {
+        "score": null,
+        "threshold": 0.8
+      }
+    },
+    {
       "stage": "optional_risk_enrichment",
       "rule_id": "risk_enrichment",
       "status": "PASS",
@@ -497,6 +532,16 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "eligible_before_cap": 1500,
         "sub_limit": 2000
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "generic_medicine_requirement",
+      "status": "PASS",
+      "policy_ref": "opd_categories.consultation.generic_mandatory",
+      "evidence": {
+        "generic_mandatory": false,
+        "branded_lines": []
       }
     },
     {
@@ -724,9 +769,11 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "coverage.sum_insured_per_employee",
       "evidence": {
-        "sum_insured": 500000
+        "sum_insured_paise": 50000000,
+        "used_paise": null,
+        "remaining_paise": null
       },
-      "details": "No hospitalisation utilisation feed is available in this OPD evaluator."
+      "details": "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."
     },
     {
       "stage": "policy",
@@ -734,9 +781,12 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "coverage.family_floater.combined_limit",
       "evidence": {
-        "combined_limit": 150000
+        "enabled": true,
+        "combined_limit_paise": 15000000,
+        "used_paise": null,
+        "remaining_paise": null
       },
-      "details": "Family-floater consumption is not tracked separately from the annual OPD limit."
+      "details": "A separate family utilisation feed is required; annual OPD usage is not substituted."
     },
     {
       "stage": "policy",
@@ -829,6 +879,36 @@ Explicit behavior checks: **Passed**.
       }
     },
     {
+      "stage": "risk",
+      "rule_id": "high_value_claim",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.high_value_claim_threshold",
+      "evidence": {
+        "claimed_amount_paise": 300000,
+        "threshold_paise": 2500000
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "auto_manual_review_amount",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.auto_manual_review_above",
+      "evidence": {
+        "claimed_amount_paise": 300000,
+        "threshold_paise": 2500000
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "fraud_score",
+      "status": "NOT_EVALUATED",
+      "policy_ref": "fraud_thresholds.fraud_score_manual_review_threshold",
+      "evidence": {
+        "score": null,
+        "threshold": 0.8
+      }
+    },
+    {
       "stage": "optional_risk_enrichment",
       "rule_id": "risk_enrichment",
       "status": "PASS",
@@ -864,6 +944,16 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "eligible_before_cap": 3000,
         "sub_limit": 2000
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "generic_medicine_requirement",
+      "status": "PASS",
+      "policy_ref": "opd_categories.consultation.generic_mandatory",
+      "evidence": {
+        "generic_mandatory": false,
+        "branded_lines": []
       }
     },
     {
@@ -1059,9 +1149,11 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "coverage.sum_insured_per_employee",
       "evidence": {
-        "sum_insured": 500000
+        "sum_insured_paise": 50000000,
+        "used_paise": null,
+        "remaining_paise": null
       },
-      "details": "No hospitalisation utilisation feed is available in this OPD evaluator."
+      "details": "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."
     },
     {
       "stage": "policy",
@@ -1069,9 +1161,12 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "coverage.family_floater.combined_limit",
       "evidence": {
-        "combined_limit": 150000
+        "enabled": true,
+        "combined_limit_paise": 15000000,
+        "used_paise": null,
+        "remaining_paise": null
       },
-      "details": "Family-floater consumption is not tracked separately from the annual OPD limit."
+      "details": "A separate family utilisation feed is required; annual OPD usage is not substituted."
     },
     {
       "stage": "policy",
@@ -1164,6 +1259,36 @@ Explicit behavior checks: **Passed**.
       }
     },
     {
+      "stage": "risk",
+      "rule_id": "high_value_claim",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.high_value_claim_threshold",
+      "evidence": {
+        "claimed_amount_paise": 1200000,
+        "threshold_paise": 2500000
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "auto_manual_review_amount",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.auto_manual_review_above",
+      "evidence": {
+        "claimed_amount_paise": 1200000,
+        "threshold_paise": 2500000
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "fraud_score",
+      "status": "NOT_EVALUATED",
+      "policy_ref": "fraud_thresholds.fraud_score_manual_review_threshold",
+      "evidence": {
+        "score": null,
+        "threshold": 0.8
+      }
+    },
+    {
       "stage": "optional_risk_enrichment",
       "rule_id": "risk_enrichment",
       "status": "PASS",
@@ -1199,6 +1324,16 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "eligible_before_cap": 8000,
         "sub_limit": 10000
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "generic_medicine_requirement",
+      "status": "PASS",
+      "policy_ref": "opd_categories.dental.generic_mandatory",
+      "evidence": {
+        "generic_mandatory": false,
+        "branded_lines": []
       }
     },
     {
@@ -1414,9 +1549,11 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "coverage.sum_insured_per_employee",
       "evidence": {
-        "sum_insured": 500000
+        "sum_insured_paise": 50000000,
+        "used_paise": null,
+        "remaining_paise": null
       },
-      "details": "No hospitalisation utilisation feed is available in this OPD evaluator."
+      "details": "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."
     },
     {
       "stage": "policy",
@@ -1424,9 +1561,12 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "coverage.family_floater.combined_limit",
       "evidence": {
-        "combined_limit": 150000
+        "enabled": true,
+        "combined_limit_paise": 15000000,
+        "used_paise": null,
+        "remaining_paise": null
       },
-      "details": "Family-floater consumption is not tracked separately from the annual OPD limit."
+      "details": "A separate family utilisation feed is required; annual OPD usage is not substituted."
     },
     {
       "stage": "policy",
@@ -1492,7 +1632,7 @@ Explicit behavior checks: **Passed**.
       "stage": "policy",
       "rule_id": "pre_authorization",
       "status": "FAIL",
-      "policy_ref": "pre_authorization.required_for / opd_categories.requires_pre_auth",
+      "policy_ref": "pre_authorization.required_for / opd_categories.requires_pre_auth / pre_authorization.validity_days",
       "evidence": {
         "matched_rules": [
           {
@@ -1501,8 +1641,12 @@ Explicit behavior checks: **Passed**.
           }
         ],
         "claimed_amount": 15000,
-        "pre_authorization": false,
-        "status_source": "claim_evidence"
+        "obtained": false,
+        "approval_document": null,
+        "issued_date": null,
+        "approval_reference": null,
+        "validity_days": 30,
+        "status_source": "missing_or_unconfirmed"
       }
     },
     {
@@ -1526,6 +1670,36 @@ Explicit behavior checks: **Passed**.
         "limit": 6,
         "month": "2024-11",
         "history_source": "fixture_or_supplied_history"
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "high_value_claim",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.high_value_claim_threshold",
+      "evidence": {
+        "claimed_amount_paise": 1500000,
+        "threshold_paise": 2500000
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "auto_manual_review_amount",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.auto_manual_review_above",
+      "evidence": {
+        "claimed_amount_paise": 1500000,
+        "threshold_paise": 2500000
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "fraud_score",
+      "status": "NOT_EVALUATED",
+      "policy_ref": "fraud_thresholds.fraud_score_manual_review_threshold",
+      "evidence": {
+        "score": null,
+        "threshold": 0.8
       }
     },
     {
@@ -1564,6 +1738,16 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "eligible_before_cap": 15000,
         "sub_limit": 10000
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "generic_medicine_requirement",
+      "status": "PASS",
+      "policy_ref": "opd_categories.diagnostic.generic_mandatory",
+      "evidence": {
+        "generic_mandatory": false,
+        "branded_lines": []
       }
     },
     {
@@ -1764,9 +1948,11 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "coverage.sum_insured_per_employee",
       "evidence": {
-        "sum_insured": 500000
+        "sum_insured_paise": 50000000,
+        "used_paise": null,
+        "remaining_paise": null
       },
-      "details": "No hospitalisation utilisation feed is available in this OPD evaluator."
+      "details": "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."
     },
     {
       "stage": "policy",
@@ -1774,9 +1960,12 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "coverage.family_floater.combined_limit",
       "evidence": {
-        "combined_limit": 150000
+        "enabled": true,
+        "combined_limit_paise": 15000000,
+        "used_paise": null,
+        "remaining_paise": null
       },
-      "details": "Family-floater consumption is not tracked separately from the annual OPD limit."
+      "details": "A separate family utilisation feed is required; annual OPD usage is not substituted."
     },
     {
       "stage": "policy",
@@ -1869,6 +2058,36 @@ Explicit behavior checks: **Passed**.
       }
     },
     {
+      "stage": "risk",
+      "rule_id": "high_value_claim",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.high_value_claim_threshold",
+      "evidence": {
+        "claimed_amount_paise": 750000,
+        "threshold_paise": 2500000
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "auto_manual_review_amount",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.auto_manual_review_above",
+      "evidence": {
+        "claimed_amount_paise": 750000,
+        "threshold_paise": 2500000
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "fraud_score",
+      "status": "NOT_EVALUATED",
+      "policy_ref": "fraud_thresholds.fraud_score_manual_review_threshold",
+      "evidence": {
+        "score": null,
+        "threshold": 0.8
+      }
+    },
+    {
       "stage": "optional_risk_enrichment",
       "rule_id": "risk_enrichment",
       "status": "PASS",
@@ -1904,6 +2123,16 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "eligible_before_cap": 7500,
         "sub_limit": 2000
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "generic_medicine_requirement",
+      "status": "PASS",
+      "policy_ref": "opd_categories.consultation.generic_mandatory",
+      "evidence": {
+        "generic_mandatory": false,
+        "branded_lines": []
       }
     },
     {
@@ -2120,9 +2349,11 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "coverage.sum_insured_per_employee",
       "evidence": {
-        "sum_insured": 500000
+        "sum_insured_paise": 50000000,
+        "used_paise": null,
+        "remaining_paise": null
       },
-      "details": "No hospitalisation utilisation feed is available in this OPD evaluator."
+      "details": "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."
     },
     {
       "stage": "policy",
@@ -2130,9 +2361,12 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "coverage.family_floater.combined_limit",
       "evidence": {
-        "combined_limit": 150000
+        "enabled": true,
+        "combined_limit_paise": 15000000,
+        "used_paise": null,
+        "remaining_paise": null
       },
-      "details": "Family-floater consumption is not tracked separately from the annual OPD limit."
+      "details": "A separate family utilisation feed is required; annual OPD usage is not substituted."
     },
     {
       "stage": "policy",
@@ -2225,6 +2459,36 @@ Explicit behavior checks: **Passed**.
       }
     },
     {
+      "stage": "risk",
+      "rule_id": "high_value_claim",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.high_value_claim_threshold",
+      "evidence": {
+        "claimed_amount_paise": 480000,
+        "threshold_paise": 2500000
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "auto_manual_review_amount",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.auto_manual_review_above",
+      "evidence": {
+        "claimed_amount_paise": 480000,
+        "threshold_paise": 2500000
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "fraud_score",
+      "status": "NOT_EVALUATED",
+      "policy_ref": "fraud_thresholds.fraud_score_manual_review_threshold",
+      "evidence": {
+        "score": null,
+        "threshold": 0.8
+      }
+    },
+    {
       "stage": "optional_risk_enrichment",
       "rule_id": "risk_enrichment",
       "status": "PASS",
@@ -2260,6 +2524,16 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "eligible_before_cap": 4800,
         "sub_limit": 2000
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "generic_medicine_requirement",
+      "status": "PASS",
+      "policy_ref": "opd_categories.consultation.generic_mandatory",
+      "evidence": {
+        "generic_mandatory": false,
+        "branded_lines": []
       }
     },
     {
@@ -2458,9 +2732,11 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "coverage.sum_insured_per_employee",
       "evidence": {
-        "sum_insured": 500000
+        "sum_insured_paise": 50000000,
+        "used_paise": null,
+        "remaining_paise": null
       },
-      "details": "No hospitalisation utilisation feed is available in this OPD evaluator."
+      "details": "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."
     },
     {
       "stage": "policy",
@@ -2468,9 +2744,12 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "coverage.family_floater.combined_limit",
       "evidence": {
-        "combined_limit": 150000
+        "enabled": true,
+        "combined_limit_paise": 15000000,
+        "used_paise": null,
+        "remaining_paise": null
       },
-      "details": "Family-floater consumption is not tracked separately from the annual OPD limit."
+      "details": "A separate family utilisation feed is required; annual OPD usage is not substituted."
     },
     {
       "stage": "policy",
@@ -2563,6 +2842,36 @@ Explicit behavior checks: **Passed**.
       }
     },
     {
+      "stage": "risk",
+      "rule_id": "high_value_claim",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.high_value_claim_threshold",
+      "evidence": {
+        "claimed_amount_paise": 450000,
+        "threshold_paise": 2500000
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "auto_manual_review_amount",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.auto_manual_review_above",
+      "evidence": {
+        "claimed_amount_paise": 450000,
+        "threshold_paise": 2500000
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "fraud_score",
+      "status": "NOT_EVALUATED",
+      "policy_ref": "fraud_thresholds.fraud_score_manual_review_threshold",
+      "evidence": {
+        "score": null,
+        "threshold": 0.8
+      }
+    },
+    {
       "stage": "optional_risk_enrichment",
       "rule_id": "risk_enrichment",
       "status": "PASS",
@@ -2598,6 +2907,16 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "eligible_before_cap": 4500,
         "sub_limit": 2000
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "generic_medicine_requirement",
+      "status": "PASS",
+      "policy_ref": "opd_categories.consultation.generic_mandatory",
+      "evidence": {
+        "generic_mandatory": false,
+        "branded_lines": []
       }
     },
     {
@@ -2810,9 +3129,11 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "coverage.sum_insured_per_employee",
       "evidence": {
-        "sum_insured": 500000
+        "sum_insured_paise": 50000000,
+        "used_paise": null,
+        "remaining_paise": null
       },
-      "details": "No hospitalisation utilisation feed is available in this OPD evaluator."
+      "details": "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."
     },
     {
       "stage": "policy",
@@ -2820,9 +3141,12 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "coverage.family_floater.combined_limit",
       "evidence": {
-        "combined_limit": 150000
+        "enabled": true,
+        "combined_limit_paise": 15000000,
+        "used_paise": null,
+        "remaining_paise": null
       },
-      "details": "Family-floater consumption is not tracked separately from the annual OPD limit."
+      "details": "A separate family utilisation feed is required; annual OPD usage is not substituted."
     },
     {
       "stage": "policy",
@@ -2915,6 +3239,36 @@ Explicit behavior checks: **Passed**.
       }
     },
     {
+      "stage": "risk",
+      "rule_id": "high_value_claim",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.high_value_claim_threshold",
+      "evidence": {
+        "claimed_amount_paise": 400000,
+        "threshold_paise": 2500000
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "auto_manual_review_amount",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.auto_manual_review_above",
+      "evidence": {
+        "claimed_amount_paise": 400000,
+        "threshold_paise": 2500000
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "fraud_score",
+      "status": "NOT_EVALUATED",
+      "policy_ref": "fraud_thresholds.fraud_score_manual_review_threshold",
+      "evidence": {
+        "score": null,
+        "threshold": 0.8
+      }
+    },
+    {
       "stage": "optional_risk_enrichment",
       "rule_id": "risk_enrichment",
       "status": "SKIPPED_COMPONENT_FAILURE",
@@ -2979,6 +3333,16 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "eligible_before_cap": 4000,
         "sub_limit": 8000
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "generic_medicine_requirement",
+      "status": "PASS",
+      "policy_ref": "opd_categories.alternative_medicine.generic_mandatory",
+      "evidence": {
+        "generic_mandatory": false,
+        "branded_lines": []
       }
     },
     {
@@ -3203,9 +3567,11 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "coverage.sum_insured_per_employee",
       "evidence": {
-        "sum_insured": 500000
+        "sum_insured_paise": 50000000,
+        "used_paise": null,
+        "remaining_paise": null
       },
-      "details": "No hospitalisation utilisation feed is available in this OPD evaluator."
+      "details": "Hospitalisation utilisation must be supplied separately; OPD history is not substituted for it."
     },
     {
       "stage": "policy",
@@ -3213,9 +3579,12 @@ Explicit behavior checks: **Passed**.
       "status": "NOT_EVALUATED",
       "policy_ref": "coverage.family_floater.combined_limit",
       "evidence": {
-        "combined_limit": 150000
+        "enabled": true,
+        "combined_limit_paise": 15000000,
+        "used_paise": null,
+        "remaining_paise": null
       },
-      "details": "Family-floater consumption is not tracked separately from the annual OPD limit."
+      "details": "A separate family utilisation feed is required; annual OPD usage is not substituted."
     },
     {
       "stage": "policy",
@@ -3308,6 +3677,36 @@ Explicit behavior checks: **Passed**.
       }
     },
     {
+      "stage": "risk",
+      "rule_id": "high_value_claim",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.high_value_claim_threshold",
+      "evidence": {
+        "claimed_amount_paise": 800000,
+        "threshold_paise": 2500000
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "auto_manual_review_amount",
+      "status": "PASS",
+      "policy_ref": "fraud_thresholds.auto_manual_review_above",
+      "evidence": {
+        "claimed_amount_paise": 800000,
+        "threshold_paise": 2500000
+      }
+    },
+    {
+      "stage": "risk",
+      "rule_id": "fraud_score",
+      "status": "NOT_EVALUATED",
+      "policy_ref": "fraud_thresholds.fraud_score_manual_review_threshold",
+      "evidence": {
+        "score": null,
+        "threshold": 0.8
+      }
+    },
+    {
       "stage": "optional_risk_enrichment",
       "rule_id": "risk_enrichment",
       "status": "PASS",
@@ -3343,6 +3742,16 @@ Explicit behavior checks: **Passed**.
       "evidence": {
         "eligible_before_cap": 5000,
         "sub_limit": 2000
+      }
+    },
+    {
+      "stage": "policy",
+      "rule_id": "generic_medicine_requirement",
+      "status": "PASS",
+      "policy_ref": "opd_categories.consultation.generic_mandatory",
+      "evidence": {
+        "generic_mandatory": false,
+        "branded_lines": []
       }
     },
     {

@@ -333,7 +333,7 @@ class ClaimCoreTests(unittest.TestCase):
         step = next(item for item in result["trace"] if item["rule_id"] == "pre_authorization")
         self.assertEqual(step["status"], "FAIL")
 
-    def test_pharmacy_branded_copay_requires_explicit_status(self) -> None:
+    def test_pharmacy_branded_medicine_routes_to_generic_substitution_review(self) -> None:
         claim = self._consultation_claim()
         claim["claim_category"] = "PHARMACY"
         bill = next(doc for doc in claim["documents"] if doc["doc_type"] == "HOSPITAL_BILL")
@@ -341,13 +341,39 @@ class ClaimCoreTests(unittest.TestCase):
         bill["fields"]["total"] = 1500
         bill["fields"]["line_items"] = [{"description": "Brand Medicine", "amount": 1500, "brand_status": "BRANDED", "brand_evidence": "Brand"}]
         result = evaluate_claim(claim, self.policy)
-        self.assertEqual(result["approved_amount"], 1050)
+        self.assertEqual(result["decision"], "MANUAL_REVIEW")
+        self.assertIn("GENERIC_SUBSTITUTION_REVIEW", {reason["code"] for reason in result["reasons"]})
         self.assertTrue(any(item["description"] == "Branded medicine co-pay" for item in result["ledger"]))
 
         bill["fields"]["line_items"][0].pop("brand_status")
         result = evaluate_claim(claim, self.policy)
         self.assertEqual(result["decision"], "MANUAL_REVIEW")
         self.assertIn("PHARMACY_BRAND_STATUS_UNKNOWN", {reason["code"] for reason in result["reasons"]})
+
+    def test_required_pre_auth_must_be_dated_and_within_validity_window(self) -> None:
+        claim = normalize_fixture(self.cases["TC007"])
+        claim["documents"].append({"file_id": "PREAUTH-1", "actual_type": "PRE_AUTHORIZATION", "quality": "GOOD", "fields": {"date": "2024-09-01", "approval_reference": "AUTH-123"}, "source": "fixture_metadata"})
+        claim["pre_authorization"] = {
+            "obtained": True,
+            "issued_date": "2024-09-01",
+            "approval_reference": "AUTH-123",
+        }
+        result = evaluate_claim(claim, self.policy)
+        self.assertEqual(result["decision"], "REJECTED")
+        self.assertIn("PRE_AUTH_INVALID", {reason["code"] for reason in result["reasons"]})
+
+    def test_required_pre_auth_accepts_dated_approval_evidence(self) -> None:
+        claim = normalize_fixture(self.cases["TC007"])
+        claim["documents"].append({"file_id": "PREAUTH-2", "actual_type": "PRE_AUTHORIZATION", "quality": "GOOD", "fields": {"date": "2024-10-20", "approval_reference": "AUTH-456"}, "source": "fixture_metadata"})
+        claim["pre_authorization"] = {
+            "obtained": True,
+            "issued_date": "2024-10-20",
+            "approval_reference": "AUTH-456",
+        }
+        result = evaluate_claim(claim, self.policy)
+        self.assertNotIn("PRE_AUTH_STATUS_UNKNOWN", {reason["code"] for reason in result["reasons"]})
+        step = next(item for item in result["trace"] if item["rule_id"] == "pre_authorization")
+        self.assertEqual(step["status"], "PASS")
 
     def test_blank_line_description_is_unknown_not_excluded(self) -> None:
         claim = self._consultation_claim()

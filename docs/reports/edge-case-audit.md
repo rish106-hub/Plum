@@ -6,10 +6,10 @@ This document is the current-state audit for the 26 September 2026 checkout. An 
 
 The current verification is:
 
-- 109 tests pass, including 20 subtests.
+- 112 tests pass, including 20 subtests.
 - `scripts.evaluate` matches all 12 supplied fixtures.
 - Ruff, mypy, compileall, and the isolated real-browser flow pass.
-- Live intake persists the submission date and pre-authorization status, compares extracted document dates, records evidence before policy, and exposes reviewer disposition.
+- Live intake persists the submission date and dated pre-authorization evidence, compares extracted document dates, records evidence before policy, and exposes reviewer disposition.
 
 ## Findings closed in the current implementation
 
@@ -23,6 +23,9 @@ The following earlier findings are now regression-tested or covered by a reachab
 - Duplicate checks include exact file hashes and complete logical bill fingerprints; correction/provider-failure attempts are excluded from paid-claim history.
 - Covered dependents and ordinary honorific variation are matched against the family roster; dangling dependent IDs were removed from the policy data.
 - Provider outages, malformed handoffs, unsupported citations, and unsafe traces fail closed into correction or manual review.
+- Required pre-authorizations now require a dated approval reference and are checked against the configured 30-day validity period.
+- High-value review thresholds and mandatory-generic pharmacy policy are traced. Branded medicine under the mandatory-generic rule routes to manual review rather than a silent payment decision.
+- A 6-scenario real-byte synthetic PDF/image intake evaluation is generated separately from the 12 structured policy fixtures.
 
 ## Deliberate limits and review debt
 
@@ -30,7 +33,7 @@ These remain explicit prototype boundaries rather than silently claimed capabili
 
 - `sum_insured_per_employee` and the family-floater combined limit remain `NOT_EVALUATED` because no hospitalisation/remittance utilisation feed exists. The annual OPD ledger is not a substitute for those balances.
 - The generic 365-day pre-existing-condition rule is evaluated when explicit `pre_existing_conditions` evidence is supplied; absent that evidence, the trace is `NOT_EVALUATED` and the claim is not treated as proof of no prior diagnosis.
-- OCR, handwriting, multilingual extraction, blur detection, and confidence calibration require a labelled image/PDF corpus and provider-backed measurement. Fixture agreement is not OCR accuracy.
+- OCR, handwriting, multilingual extraction, stamp overlap, and confidence calibration still require a consented, provider-backed labelled corpus. The synthetic real-byte benchmark demonstrates safe routing, not OCR accuracy.
 - Similarity-based duplicate detection for recompressed or cropped bills needs a measured false-positive threshold before introduction.
 - The local operations page has no production authentication, authorization, retention, or encryption controls.
 - SQLite is appropriate for this local prototype, not a concurrent production claims ledger.

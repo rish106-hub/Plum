@@ -10,14 +10,14 @@ The implementation covers the assignment’s required workflow:
 
 | Requirement | Implementation | Evidence |
 | --- | --- | --- |
-| Accept a claim | FastAPI form/API accepts member, category, treatment date, amount, and one or more PDFs/images. | `claims/web.py`, `tests/test_web.py` |
+| Accept a claim | FastAPI form/API accepts member, category, treatment date, amount, dated pre-authorization evidence, and one or more PDFs/images. | `claims/web.py`, `tests/test_web.py` |
 | Catch document problems early | A document gate checks type, readability, required documents, patient identity, dates, and bill consistency. It returns specific correction requests with `decision: null`. | `claims/documents.py`, `tests/test_documents.py` |
-| Extract structured information | Selectable PDF text is parsed locally; images/scanned PDFs can use Sarvam Document AI. Optional Gemini evidence review is opt-in and bounded. | `claims/documents.py`, `claims/ai_review.py` |
+| Extract structured information | Selectable PDF text is parsed locally; images/scanned PDFs can use Sarvam Document AI. The bounded schema covers clinical, bill, lab, and pharmacy fields needed for review, while optional Gemini evidence review is opt-in. | `claims/documents.py`, `claims/ai_review.py` |
 | Make a claim decision | Deterministic policy code produces `APPROVED`, `PARTIAL`, `REJECTED`, or `MANUAL_REVIEW`, with amount, reasons, confidence, ledger, and trace. | `claims/core.py`, `tests/test_core.py` |
 | Explain every outcome | Persisted trace events identify stages, rule IDs, policy references, evidence, pass/fail status, degradation, and pricing arithmetic. | `claims/agent_pipeline.py`, reviewer UI |
 | Handle failure gracefully | Invalid handoffs, provider failures, missing material evidence, duplicates, and ambiguity fail closed into correction or review rather than guessed payment. | `tests/test_agent_pipeline.py`, `tests/test_ai_review.py` |
 
-The assignment brief is reproduced in [`docs/reference/assignment.md`](docs/reference/assignment.md). Supporting architecture, contracts, reports, runbook, and screenshots are indexed in [`docs/README.md`](docs/README.md).
+The assignment brief is reproduced in [`docs/reference/assignment.md`](docs/reference/assignment.md). The supplied-artifact paths are mapped in [`docs/reference/submission-artifact-map.md`](docs/reference/submission-artifact-map.md). Supporting architecture, contracts, reports, runbook, and screenshots are indexed in [`docs/README.md`](docs/README.md).
 
 ## Quick start
 
@@ -65,9 +65,10 @@ All checks below were run against the current checkout on 26 September 2026. The
 .venv/bin/python -m mypy claims scripts tools
 .venv/bin/python -m compileall -q claims scripts tools
 PYTHONPATH=. .venv/bin/python -m scripts.evaluate
+PYTHONPATH=. .venv/bin/python -m scripts.evaluate_documents
 ```
 
-The evaluation command writes [`docs/reports/evaluation.md`](docs/reports/evaluation.md) and [`docs/reports/evaluation-data.json`](docs/reports/evaluation-data.json). The report contains the full trace for each case.
+The fixture evaluation command writes [`docs/reports/evaluation.md`](docs/reports/evaluation.md) and [`docs/reports/evaluation-data.json`](docs/reports/evaluation-data.json). The real-byte intake command writes [`docs/reports/document-evaluation.md`](docs/reports/document-evaluation.md) and [`docs/reports/document-evaluation.json`](docs/reports/document-evaluation.json). The first report contains the full trace for each supplied structured case; the second is explicitly a safe-routing benchmark, not an OCR accuracy report.
 
 ### Fixture results
 
@@ -86,9 +87,13 @@ The expected and produced outcomes matched for all 12 supplied structured cases:
 
 These fixtures contain structured metadata rather than actual PDF/image bytes. Therefore, 12/12 is a regression result for normalization, reconciliation, policy rules, money arithmetic, traces, and failure branches—not an OCR benchmark.
 
+### Document-intake evaluation
+
+The labelled synthetic document set uses actual generated PDF and image bytes, and covers a clean consultation, wrong document type, patient mismatch, amount conflict, multi-page bill, and blurred phone photo. It proves that the intake path accepts or safely routes those files; it does **not** claim handwriting, multilingual, stamp-overlap, or production OCR accuracy. The current generated report is [`docs/reports/document-evaluation.md`](docs/reports/document-evaluation.md).
+
 ### Browser results
 
-The fresh-data browser check exercised the actual submission and reviewer screens:
+The fresh-data browser check exercised the actual submission and reviewer screens with a controlled in-policy test timestamp; it does not backdate a live claim:
 
 | Flow | Expected | Final result |
 | --- | --- | --- |
@@ -158,6 +163,13 @@ The “multi-agent” boundary is deliberately bounded: Sarvam and optional Gemi
 Amounts are represented in integer paise at the policy boundary. The evaluator reconciles bill totals and line items, filters eligible lines, applies configured caps and sub-limits, applies network discount before co-pay, and emits each adjustment in the ledger. Policy failures and review signals have explicit precedence so a reviewer can see both the primary reason and the checks that were not evaluated.
 
 `NOT_EVALUATED` is distinct from `PASS`. For example, a fixture with no submission timestamp cannot establish the 30-day deadline. Confidence is an evidence-quality score, not a calibrated probability and not an auto-pay threshold.
+
+### Policy and evidence safety rules
+
+- A required pre-authorization must contain an approval reference and issue date. The evaluator checks the configured validity window against treatment date; missing evidence routes to review and invalid evidence rejects the claim.
+- High-value manual-review thresholds and generic-medicine requirements are read from `data/policy_terms.json`. A branded pharmacy item under a mandatory-generic policy is review-only until medical necessity is verified.
+- If structured extraction fails after local parsing identified missing material fields, the workflow routes to `MANUAL_REVIEW` as system degradation. It does not tell the member that their file was unclear.
+- Document-correction responses use the same `{code, message, file_name, required_type}` object shape as other result reasons, so UI and API consumers do not need state-specific string parsing.
 
 ## Cost model and cost arbitrage
 
