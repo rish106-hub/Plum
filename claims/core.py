@@ -1158,7 +1158,12 @@ def _category_service_net(claim: _Claim) -> int | None:
     lines = [line for line in claim.ledger if line["kind"] == "line_item" and line["status"] == "ELIGIBLE"]
     if any(not line["itemized"] for line in lines):
         return None
-    gross = sum(line["amount_paise"] for line in lines if _term_hits(line["description"], category_policy["service_terms"]))
+    # Fail safe: only lines recognised as tests or medicines fall outside the service.
+    gross = sum(
+        line["amount_paise"] for line in lines
+        if _term_hits(line["description"], category_policy["service_terms"])
+        or not _term_hits(line["description"], category_policy["non_service_terms"])
+    )
     after_discount = gross - _percentage(gross, claim.network_percent)
     return after_discount - _percentage(after_discount, category_policy["copay_percent"])
 

@@ -318,6 +318,17 @@ INTERPRETATION_CATEGORY_SERVICE_TERMS: dict[str, list[str]] = {
 benefit on these lines. Categories not listed here treat every eligible line as their own service. Consultation bills
 routinely carry tests and medicines (TC004, TC008, TC010), which are not consultation services."""
 
+INTERPRETATION_CATEGORY_NON_SERVICE_TERMS: dict[str, list[str]] = {
+    "CONSULTATION": [
+        "test", "lab", "laboratory", "cbc", "blood", "urine", "profile", "panel", "culture", "x-ray", "xray",
+        "scan", "ultrasound", "ecg", "medicine", "medicines", "drug", "tablet", "capsule", "syrup", "injection",
+        "pharmacy",
+    ],
+}
+"""Bill lines recognised as tests or medicines, which fall outside a category's own service. The sub_limit fails
+safe: an eligible line that matches neither the service terms nor these terms counts against the sub_limit, so an
+unfamiliar name for a consultation fee cannot escape the cap."""
+
 INFORMATIONAL_FIELDS: dict[str, str] = {
     "policy_name": "Descriptive; shown in outputs only.",
     "insurer": "Descriptive; shown in outputs only.",
@@ -605,8 +616,9 @@ class PolicyNormalizer:
                 self._record(
                     f"CATEGORY_SERVICE_TERMS.{category}", "interpretation", [f"{ref}.sub_limit"],
                     f"{category} sub_limit applies to bill lines that are the category's own service, recognised by: "
-                    f"{', '.join(service_terms)}. Other eligible lines on the same bill fall under the global per-claim "
-                    "limit only.",
+                    f"{', '.join(service_terms)}. Lines recognised as tests or medicines "
+                    f"({', '.join(INTERPRETATION_CATEGORY_NON_SERVICE_TERMS.get(category, []))}) fall under the global "
+                    "per-claim limit only; any other eligible line counts against the sub_limit.",
                 )
             if item.network_discount_percent is None:
                 self._record(
@@ -664,6 +676,7 @@ class PolicyNormalizer:
                 "covered_items": self._covered_items(category, ref, covered_items),
                 "service_scope": "matching_lines" if service_terms else "all_eligible_lines",
                 "service_terms": _terms(service_terms, [key.replace("_", " ")]) if service_terms else [],
+                "non_service_terms": _terms(INTERPRETATION_CATEGORY_NON_SERVICE_TERMS.get(category, []), []) if service_terms else [],
                 "covered_items_ref": f"{ref}.covered_procedures" if item.covered_procedures else f"{ref}.covered_items",
                 "requires_registered_practitioner": bool(item.requires_registered_practitioner),
                 "max_sessions_per_year": item.max_sessions_per_year,

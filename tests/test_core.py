@@ -738,6 +738,11 @@ class AuditRoundTwoTests(unittest.TestCase):
         adjustment = next(item for item in result["ledger"] if item.get("rule_id") == "category_sub_limit")
         self.assertEqual(adjustment["amount_paise"], -241000)
 
+    def test_an_unfamiliar_name_for_a_consultation_fee_does_not_escape_the_sub_limit(self) -> None:
+        result = evaluate_claim(self.set_bill(self.claim("TC004"), ("Doctor visit charges", 4000)), self.policy)
+        self.assertEqual((result["decision"], result["approved_amount"]), ("PARTIAL", 2000))
+        self.assertEqual(result["reasons"][0]["code"], "CATEGORY_SUB_LIMIT_LIMITED")
+
     def test_category_history_bounds_repeated_consultations(self) -> None:
         paid, used = [], 0
         for _ in range(4):
