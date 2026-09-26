@@ -347,13 +347,27 @@ class SarvamDocumentProvider:
                 "duplicate_stamp_detected": {"type": "boolean", "description": "True only when a DUPLICATE or COPY stamp is visibly present"},
                 "original_stamp_detected": {"type": "boolean", "description": "True only when an ORIGINAL stamp is visibly present"},
                 "alteration_confidence": {"type": "number", "description": "Confidence from 0 to 1 for the visible alteration signals; 0 when none"},
-                "test_results": {"type": "array", "description": "Visible lab results only; empty if absent", "items": {"type": "object", "properties": {"test_name": {"type": "string"}, "result": {"type": "string"}, "unit": {"type": "string"}, "reference_range": {"type": "string"}}}},
+                "test_results": {
+                    "type": "array",
+                    "description": "Visible lab results only; empty if absent",
+                    "items": {
+                        "type": "object",
+                        "description": "One visible laboratory test result",
+                        "properties": {
+                            "test_name": {"type": "string", "description": "Test name exactly as printed"},
+                            "result": {"type": "string", "description": "Test result exactly as printed"},
+                            "unit": {"type": "string", "description": "Result unit exactly as printed"},
+                            "reference_range": {"type": "string", "description": "Reference range exactly as printed"},
+                        },
+                    },
+                },
                 "total": {"type": "number", "description": "Final bill total in Indian rupees; 0 if absent or unreadable"},
                 "line_items": {
                     "type": "array",
                     "description": "Each visible billed treatment or product and its price; empty if not itemized",
                     "items": {
                         "type": "object",
+                        "description": "One visible itemized treatment or product charge",
                         "properties": {
                             "description": {"type": "string", "description": "Line item description exactly as printed"},
                             "amount": {"type": "number", "description": "Line item amount in Indian rupees"},

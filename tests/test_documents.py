@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import ssl
 import zipfile
 from datetime import date
@@ -354,6 +355,40 @@ def test_sarvam_sdk_job_contract_and_bounded_download(monkeypatch: pytest.Monkey
     assert isinstance(context, ssl.SSLContext)
     assert context.verify_mode == ssl.CERT_REQUIRED
     assert api.calls == ["digitise", "status", "download_url"]
+
+
+def test_sarvam_extract_schema_describes_every_nested_field() -> None:
+    captured: dict[str, object] = {}
+
+    class FakeDocAI:
+        def extract(self, **kwargs: object) -> SimpleNamespace:
+            captured["schema"] = json.loads(str(kwargs["schema"]))
+            return SimpleNamespace(job_id="job-1")
+
+        def get_status(self, **kwargs: object) -> SimpleNamespace:
+            return SimpleNamespace(status="completed")
+
+        def get_results(self, **kwargs: object) -> SimpleNamespace:
+            return SimpleNamespace(result={})
+
+    provider = SarvamDocumentProvider.__new__(SarvamDocumentProvider)
+    provider.client = SimpleNamespace(doc_ai=FakeDocAI())  # type: ignore[assignment]
+    provider.extract_fields(image_bytes(), "image/png", "HOSPITAL_BILL")
+
+    def assert_descriptions(node: dict[str, object], nested: bool = False) -> None:
+        if nested:
+            assert isinstance(node.get("description"), str) and node["description"].strip()
+        for field in node.get("properties", {}).values():  # type: ignore[union-attr]
+            assert isinstance(field, dict)
+            assert isinstance(field.get("description"), str) and field["description"].strip()
+            if field.get("type") == "array":
+                items = field.get("items")
+                assert isinstance(items, dict)
+                assert_descriptions(items, nested=True)
+
+    schema = captured["schema"]
+    assert isinstance(schema, dict)
+    assert_descriptions(schema)
 
 
 # --- Audit round 2: mandatory bill date, shared helpers, money rounding ---------
