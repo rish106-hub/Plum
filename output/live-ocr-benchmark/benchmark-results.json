@@ -1,0 +1,742 @@
+{
+  "schema": "plum.live_ocr_outcome_results.v1",
+  "provider": "sarvam_document_ai",
+  "status": "PASS",
+  "passed": 4,
+  "total": 4,
+  "results": [
+    {
+      "scenario": "approved",
+      "expected": "APPROVED",
+      "matched": true,
+      "submitted_through_website": true,
+      "verified_through_api": true,
+      "browser_errors": [],
+      "claim_id": "e2fb6b414a5546a0b83686c60c0b4547",
+      "state": "DECIDED",
+      "decision": "APPROVED",
+      "approved_amount": 1350,
+      "reason_codes": [
+        "COVERED"
+      ],
+      "document_metrics": {
+        "files": 2,
+        "pages": 2,
+        "provider_calls": 4,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 2,
+        "sarvam_digitise_pages": 2,
+        "sarvam_extract_calls": 2,
+        "sarvam_extract_pages": 2,
+        "gemini": {
+          "status": "DISABLED",
+          "calls": 0,
+          "pages": 0
+        }
+      },
+      "extracted_documents": [
+        {
+          "file_id": "UPLOAD-1",
+          "document_type": "PRESCRIPTION",
+          "quality": "GOOD",
+          "extraction_source": "sarvam_digitise+extract",
+          "confidence": 0.75,
+          "fields": {
+            "diagnosis": "Viral Fever",
+            "doctor_name": "Dr. Arun Sharma",
+            "doctor_registration": "KA/45678/2015",
+            "line_items": [],
+            "medicines": [
+              "Paracetamol 650 mg, one tablet after food for 5 days",
+              "Vitamin C 500 mg, one tablet daily for 7 days"
+            ],
+            "date": "01-Nov-2024",
+            "tests_ordered": [
+              "CBC",
+              "Dengue NS1"
+            ],
+            "patient_age": "39 years",
+            "patient_name": "Rajesh Kumar",
+            "patient_gender": "Male"
+          },
+          "sources": [
+            {
+              "field": "doctor_name",
+              "source": "sarvam_digitise",
+              "page": null,
+              "snippet": "Dr. Arun Sharma"
+            },
+            {
+              "field": "doctor_registration",
+              "source": "sarvam_digitise",
+              "page": null,
+              "snippet": "<table><tr><td colspan=\"2\">CITY MEDICAL CENTRE</td></tr><tr><td colspan=\"2\">MEDICAL PRESCRIPTION</td></tr><tr><td>Doctor:</td><td>Dr. Arun Sharma, MBBS, MD</td></tr><tr><td>Registr"
+            },
+            {
+              "field": "diagnosis",
+              "source": "sarvam_digitise",
+              "page": null,
+              "snippet": "<table><tr><td colspan=\"2\">CITY MEDICAL CENTRE</td></tr><tr><td colspan=\"2\">MEDICAL PRESCRIPTION</td></tr><tr><td>Doctor:</td><td>Dr. Arun Sharma, MBBS, MD</td></tr><tr><td>Registr"
+            },
+            {
+              "field": "tests_ordered",
+              "source": "sarvam_digitise",
+              "page": null,
+              "snippet": "Investigations: CBC, Dengue NS1"
+            },
+            {
+              "field": "discount",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "crossed_out_amount",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "igst_amount",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "alteration_confidence",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "alteration_detected",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "gst_amount",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "sgst_amount",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "original_stamp_detected",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "line_items",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "cgst_amount",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "duplicate_stamp_detected",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "medicines",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "date",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "round_off",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "patient_age",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "test_results",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "patient_name",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "patient_gender",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "handwritten_amount_correction",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "subtotal",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            }
+          ]
+        },
+        {
+          "file_id": "UPLOAD-2",
+          "document_type": "HOSPITAL_BILL",
+          "quality": "GOOD",
+          "extraction_source": "sarvam_digitise+extract",
+          "confidence": 0.75,
+          "fields": {
+            "total": 1500.0,
+            "hospital_name": "CITY MEDICAL CENTRE",
+            "line_items": [
+              {
+                "description": "Consultation Fee",
+                "amount": 1000.0,
+                "brand_status": "UNKNOWN",
+                "brand_evidence": "",
+                "quantity": 1.0,
+                "mrp": 0.0
+              },
+              {
+                "description": "CBC Test",
+                "amount": 300.0,
+                "brand_status": "UNKNOWN",
+                "brand_evidence": "",
+                "quantity": 1.0,
+                "mrp": 0.0
+              },
+              {
+                "description": "Dengue NS1 Test",
+                "amount": 200.0,
+                "brand_status": "UNKNOWN",
+                "brand_evidence": "",
+                "quantity": 1.0,
+                "mrp": 0.0
+              }
+            ],
+            "medicines": [],
+            "date": "01-Nov-2024",
+            "tests_ordered": [],
+            "patient_name": "Rajesh Kumar",
+            "bill_number": "CMC-LIVE-1001"
+          },
+          "sources": [
+            {
+              "field": "line_items",
+              "source": "sarvam_digitise",
+              "page": null,
+              "snippet": "3 item lines"
+            },
+            {
+              "field": "discount",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "crossed_out_amount",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "igst_amount",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "alteration_confidence",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "alteration_detected",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "gst_amount",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "sgst_amount",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "total",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "original_stamp_detected",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "hospital_name",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "cgst_amount",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "duplicate_stamp_detected",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "medicines",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "date",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "round_off",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "tests_ordered",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "test_results",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "patient_name",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "handwritten_amount_correction",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "subtotal",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "bill_number",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            }
+          ]
+        }
+      ],
+      "evidence_checks": [
+        {
+          "name": "live_provider_completed",
+          "passed": true,
+          "observed": {
+            "provider_calls": 4,
+            "provider_failures": 0
+          }
+        },
+        {
+          "name": "diagnosis_clean",
+          "passed": true,
+          "observed": "Viral Fever"
+        },
+        {
+          "name": "patient_age_preserved",
+          "passed": true,
+          "observed": "39 years"
+        },
+        {
+          "name": "patient_gender_preserved",
+          "passed": true,
+          "observed": "Male"
+        },
+        {
+          "name": "bill_total",
+          "passed": true,
+          "observed": 1500.0
+        }
+      ],
+      "elapsed_seconds": 33.199,
+      "response_file": "/Users/somilthakur/Desktop/Project/output/live-ocr-benchmark/responses/approved.json",
+      "screenshot": "/Users/somilthakur/Desktop/Project/output/live-ocr-benchmark/screenshots/outcome-approved.png"
+    },
+    {
+      "scenario": "doubtful",
+      "expected": "SAFE_HOLD",
+      "matched": true,
+      "submitted_through_website": true,
+      "verified_through_api": true,
+      "browser_errors": [],
+      "claim_id": "4d61038d948a472db7593af5338dc42e",
+      "state": "DOCUMENT_CORRECTION_REQUIRED",
+      "decision": null,
+      "approved_amount": null,
+      "reason_codes": [
+        "UNIDENTIFIED_DOCUMENT",
+        "MISSING_DOCUMENT"
+      ],
+      "document_metrics": {
+        "files": 2,
+        "pages": 2,
+        "provider_calls": 3,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 2,
+        "sarvam_digitise_pages": 2,
+        "sarvam_extract_calls": 1,
+        "sarvam_extract_pages": 1,
+        "gemini": {
+          "status": "DISABLED",
+          "calls": 0,
+          "pages": 0
+        }
+      },
+      "extracted_documents": [],
+      "evidence_checks": [
+        {
+          "name": "live_provider_completed",
+          "passed": true,
+          "observed": {
+            "provider_calls": 3,
+            "provider_failures": 0
+          }
+        },
+        {
+          "name": "missing_total_not_invented",
+          "passed": true,
+          "observed": null
+        }
+      ],
+      "elapsed_seconds": 15.08,
+      "response_file": "/Users/somilthakur/Desktop/Project/output/live-ocr-benchmark/responses/doubtful.json",
+      "screenshot": "/Users/somilthakur/Desktop/Project/output/live-ocr-benchmark/screenshots/outcome-doubtful.png"
+    },
+    {
+      "scenario": "rejected",
+      "expected": "REJECTED",
+      "matched": true,
+      "submitted_through_website": true,
+      "verified_through_api": true,
+      "browser_errors": [],
+      "claim_id": "690becfa1fbf46a381bd6e83fd397229",
+      "state": "DECIDED",
+      "decision": "REJECTED",
+      "approved_amount": 0,
+      "reason_codes": [
+        "NO_PAYABLE_AMOUNT",
+        "EXCLUDED_PROCEDURE"
+      ],
+      "document_metrics": {
+        "files": 1,
+        "pages": 1,
+        "provider_calls": 2,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 1,
+        "sarvam_digitise_pages": 1,
+        "sarvam_extract_calls": 1,
+        "sarvam_extract_pages": 1,
+        "gemini": {
+          "status": "DISABLED",
+          "calls": 0,
+          "pages": 0
+        }
+      },
+      "extracted_documents": [
+        {
+          "file_id": "UPLOAD-1",
+          "document_type": "HOSPITAL_BILL",
+          "quality": "GOOD",
+          "extraction_source": "sarvam_digitise+extract",
+          "confidence": 0.75,
+          "fields": {
+            "total": 1200.0,
+            "hospital_name": "SMILE DENTAL CARE",
+            "line_items": [
+              {
+                "description": "Teeth Whitening - Cosmetic",
+                "amount": 1200.0,
+                "brand_status": "UNKNOWN",
+                "brand_evidence": "",
+                "quantity": 1.0,
+                "mrp": 0.0
+              }
+            ],
+            "medicines": [],
+            "date": "03-Nov-2024",
+            "tests_ordered": [],
+            "patient_name": "Amit Verma",
+            "bill_number": "SDC-LIVE-3001"
+          },
+          "sources": [
+            {
+              "field": "line_items",
+              "source": "sarvam_digitise",
+              "page": null,
+              "snippet": "1 item lines"
+            },
+            {
+              "field": "discount",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "crossed_out_amount",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "igst_amount",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "alteration_confidence",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "alteration_detected",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "gst_amount",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "sgst_amount",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "total",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "original_stamp_detected",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "hospital_name",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "cgst_amount",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "duplicate_stamp_detected",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "medicines",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "date",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "round_off",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "tests_ordered",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "test_results",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "patient_name",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "handwritten_amount_correction",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "subtotal",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            },
+            {
+              "field": "bill_number",
+              "source": "sarvam_extract",
+              "page": null,
+              "snippet": ""
+            }
+          ]
+        }
+      ],
+      "evidence_checks": [
+        {
+          "name": "live_provider_completed",
+          "passed": true,
+          "observed": {
+            "provider_calls": 2,
+            "provider_failures": 0
+          }
+        },
+        {
+          "name": "excluded_service_extracted",
+          "passed": true,
+          "observed": [
+            {
+              "description": "Teeth Whitening - Cosmetic",
+              "amount": 1200.0,
+              "brand_status": "UNKNOWN",
+              "brand_evidence": "",
+              "quantity": 1.0,
+              "mrp": 0.0
+            }
+          ]
+        }
+      ],
+      "elapsed_seconds": 12.08,
+      "response_file": "/Users/somilthakur/Desktop/Project/output/live-ocr-benchmark/responses/rejected.json",
+      "screenshot": "/Users/somilthakur/Desktop/Project/output/live-ocr-benchmark/screenshots/outcome-rejected.png"
+    },
+    {
+      "scenario": "human_review",
+      "expected": "MANUAL_REVIEW",
+      "matched": true,
+      "submitted_through_website": true,
+      "verified_through_api": true,
+      "browser_errors": [],
+      "claim_id": "17633e33edbc475fb34ed540332d23ad",
+      "state": "MANUAL_REVIEW",
+      "decision": "MANUAL_REVIEW",
+      "approved_amount": 0,
+      "reason_codes": [
+        "DUPLICATE_STAMP"
+      ],
+      "document_metrics": {
+        "files": 2,
+        "pages": 2,
+        "provider_calls": 4,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 2,
+        "sarvam_digitise_pages": 2,
+        "sarvam_extract_calls": 2,
+        "sarvam_extract_pages": 2,
+        "gemini": {
+          "status": "DISABLED",
+          "calls": 0,
+          "pages": 0
+        }
+      },
+      "extracted_documents": [],
+      "evidence_checks": [
+        {
+          "name": "live_provider_completed",
+          "passed": true,
+          "observed": {
+            "provider_calls": 4,
+            "provider_failures": 0
+          }
+        },
+        {
+          "name": "duplicate_stamp_detected",
+          "passed": true,
+          "observed": [
+            "DUPLICATE_STAMP"
+          ]
+        }
+      ],
+      "elapsed_seconds": 21.092,
+      "response_file": "/Users/somilthakur/Desktop/Project/output/live-ocr-benchmark/responses/human_review.json",
+      "screenshot": "/Users/somilthakur/Desktop/Project/output/live-ocr-benchmark/screenshots/outcome-human_review.png"
+    }
+  ]
+}

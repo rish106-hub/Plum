@@ -288,7 +288,9 @@ def _text_content(text: str, kind: str) -> tuple[dict[str, Any], list[dict[str, 
         for page_line in lines:
             match = re.search(pattern, page_line, re.IGNORECASE)
             if match:
-                value: Any = match.group(1).strip(trim)
+                value: Any = " ".join(
+                    html.unescape(re.sub(r"<[^>]+>", " ", match.group(1))).split()
+                ).strip(trim)
                 if transform:
                     value = transform(value)
                 content[name] = value

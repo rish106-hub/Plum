@@ -23,7 +23,7 @@ DECISION_FIELDS = {
     "correction_requests", "confidence_score", "trace", "ledger",
 }
 TRACE_FIELDS = {
-    "patient_name", "date", "diagnosis", "treatment", "doctor_name",
+    "patient_name", "patient_age", "patient_gender", "date", "diagnosis", "treatment", "doctor_name",
     "doctor_registration", "hospital_name", "test_name", "tests_ordered",
     "total", "line_items", "bill_number", "medicines",
 }

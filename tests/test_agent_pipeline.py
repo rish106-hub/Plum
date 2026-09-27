@@ -13,11 +13,16 @@ def test_document_trace_records_grounded_facts_without_full_ocr() -> None:
     trace = document_evidence_trace([{
         "file_id": "UPLOAD-1",
         "actual_type": "HOSPITAL_BILL",
-        "content": {"patient_name": "Rajesh Kumar", "total": 1500, "raw_text": "private full OCR"},
+        "content": {
+            "patient_name": "Rajesh Kumar", "patient_age": "39 years", "patient_gender": "Male",
+            "total": 1500, "raw_text": "private full OCR",
+        },
         "evidence": [{"field": "total", "source": "pdf_text", "snippet": "Total: 1500"}],
     }])
 
-    assert trace["evidence"][0]["fields"] == {"patient_name": "Rajesh Kumar", "total": 1500}
+    assert trace["evidence"][0]["fields"] == {
+        "patient_name": "Rajesh Kumar", "patient_age": "39 years", "patient_gender": "Male", "total": 1500,
+    }
     assert trace["evidence"][0]["sources"][0]["snippet"] == "Total: 1500"
     assert "private full OCR" not in str(trace)
 

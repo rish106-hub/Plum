@@ -1,0 +1,1661 @@
+{
+  "id": "690becfa1fbf46a381bd6e83fd397229",
+  "created_at": "2026-09-27T11:58:21.709253+00:00",
+  "updated_at": "2026-09-27T11:58:32.407489+00:00",
+  "state": "DECIDED",
+  "request": {
+    "member_id": "EMP003",
+    "policy_id": "PLUM_GHI_2024",
+    "policy_canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4",
+    "claim_category": "DENTAL",
+    "treatment_date": "2024-11-03",
+    "claimed_amount": 1200,
+    "submitted_at": "2024-11-05T00:00:00+00:00",
+    "submission_date": "2024-11-05",
+    "submission_timezone": "Asia/Kolkata",
+    "submission_clock": {
+      "source": "PLUM_DEMO_CLOCK",
+      "value": "2024-11-05",
+      "applied_at": "2024-11-05T00:00:00+00:00",
+      "submission_date": "2024-11-05",
+      "environment": "development"
+    }
+  },
+  "result": {
+    "state": "DECIDED",
+    "decision": "REJECTED",
+    "approved_amount": 0,
+    "approved_amount_paise": 0,
+    "reasons": [
+      {
+        "code": "NO_PAYABLE_AMOUNT",
+        "message": "No payable amount remains after policy adjustments."
+      },
+      {
+        "code": "EXCLUDED_PROCEDURE",
+        "message": "Teeth Whitening - Cosmetic is excluded (Teeth whitening); ₹1200 removed."
+      }
+    ],
+    "correction_requests": [],
+    "confidence_score": 0.96,
+    "trace": [
+      {
+        "stage": "clock",
+        "rule_id": "demo_clock",
+        "status": "OVERRIDDEN",
+        "evidence": {
+          "source": "PLUM_DEMO_CLOCK",
+          "value": "2024-11-05",
+          "submission_date": "2024-11-05",
+          "environment": "development"
+        },
+        "details": "Submission date came from the development/test demo clock, not the real clock. This decision is not a production adjudication."
+      },
+      {
+        "stage": "document_evidence",
+        "rule_id": "extracted_facts",
+        "status": "RECORDED",
+        "schema_version": 1,
+        "evidence": [
+          {
+            "file_id": "UPLOAD-1",
+            "document_type": "HOSPITAL_BILL",
+            "quality": "GOOD",
+            "extraction_source": "sarvam_digitise+extract",
+            "confidence": 0.75,
+            "fields": {
+              "total": 1200.0,
+              "hospital_name": "SMILE DENTAL CARE",
+              "line_items": [
+                {
+                  "description": "Teeth Whitening - Cosmetic",
+                  "amount": 1200.0,
+                  "brand_status": "UNKNOWN",
+                  "brand_evidence": "",
+                  "quantity": 1.0,
+                  "mrp": 0.0
+                }
+              ],
+              "medicines": [],
+              "date": "03-Nov-2024",
+              "tests_ordered": [],
+              "patient_name": "Amit Verma",
+              "bill_number": "SDC-LIVE-3001"
+            },
+            "sources": [
+              {
+                "field": "line_items",
+                "source": "sarvam_digitise",
+                "page": null,
+                "snippet": "1 item lines"
+              },
+              {
+                "field": "discount",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "crossed_out_amount",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "igst_amount",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "alteration_confidence",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "alteration_detected",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "gst_amount",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "sgst_amount",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "total",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "original_stamp_detected",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "hospital_name",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "cgst_amount",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "duplicate_stamp_detected",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "medicines",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "date",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "round_off",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "tests_ordered",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "test_results",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "patient_name",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "handwritten_amount_correction",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "subtotal",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              },
+              {
+                "field": "bill_number",
+                "source": "sarvam_extract",
+                "page": null,
+                "snippet": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "stage": "configuration",
+        "rule_id": "policy_source",
+        "status": "LOADED",
+        "policy_ref": "policy",
+        "evidence": {
+          "policy_id": "PLUM_GHI_2024",
+          "schema_version": "plum.canonical_policy.v1",
+          "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
+          "canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4",
+          "canonical_sha256_verified": true,
+          "audit_sha256": "88819fb1497e773ab6d71c3021548df8049548839f63c0c41a8c77fbe86f8a0d",
+          "audit_entries": 100,
+          "interpretation_entries": 56,
+          "conflict_resolutions": [
+            "DENTAL_REPORT_CONFLICT.DENTAL",
+            "PER_CLAIM_CEILING_RULE",
+            "CATEGORY_SUB_LIMIT_RULE",
+            "EXCLUSION_MERGED.DENTAL.teeth_whitening",
+            "EXCLUSION_MERGED.DENTAL.orthodontic_treatment",
+            "EXCLUSION_MERGED.VISION.lasik_surgery",
+            "EXCLUSION_MERGED.VISION.refractive_surgery",
+            "PRE_AUTH_THRESHOLD_CONFLICT.pet_scan"
+          ],
+          "audit": [
+            {
+              "id": "AGGREGATE_LIMITS_NEED_UTILISATION",
+              "kind": "interpretation",
+              "source_paths": [
+                "coverage.annual_opd_limit",
+                "coverage.sum_insured_per_employee",
+                "coverage.family_floater.combined_limit"
+              ],
+              "description": "Annual OPD limit, sum insured and family floater are cross-claim aggregates of benefit paid. They are applied to the net payable (after network discount and co-pay) when a utilisation figure accompanies the claim; otherwise the rule is NOT_EVALUATED, disclosed as an advisory reason, and lowers confidence on payable outcomes. They never block an otherwise decidable claim."
+            },
+            {
+              "id": "BENEFIT_ORDER",
+              "kind": "interpretation",
+              "source_paths": [
+                "coverage.per_claim_limit",
+                "opd_categories.*.sub_limit",
+                "opd_categories.*.network_discount_percent",
+                "opd_categories.*.copay_percent",
+                "coverage.annual_opd_limit",
+                "coverage.sum_insured_per_employee",
+                "coverage.family_floater.combined_limit"
+              ],
+              "description": "Order: (1) line eligibility; (2) per-claim ceiling on the eligible amount (admissibility, rejects); (3) pre-authorized amount cap; (4) network discount; (5) co-pay on the discounted amount; (6) benefit caps on the resulting net payable, in order: category sub_limit on the category's own service lines, remaining annual OPD limit, remaining sum insured, remaining family floater."
+            },
+            {
+              "id": "PER_CLAIM_CEILING.CONSULTATION",
+              "kind": "derived",
+              "source_paths": [
+                "coverage.per_claim_limit",
+                "opd_categories.consultation.sub_limit"
+              ],
+              "description": "CONSULTATION per-claim ceiling is Rs 5000: the global per-claim limit is the claim ceiling; the lower category sub_limit caps the net benefit on the category's own service lines (see CATEGORY_SUB_LIMIT_RULE).",
+              "ceiling": 5000
+            },
+            {
+              "id": "CATEGORY_SERVICE_TERMS.CONSULTATION",
+              "kind": "interpretation",
+              "source_paths": [
+                "opd_categories.consultation.sub_limit"
+              ],
+              "description": "CONSULTATION sub_limit applies to bill lines that are the category's own service, recognised by: consultation, consultation fee, consultation charges, consulting fee, doctor fee, doctors fee, physician fee, opd fee, opd charges, visit fee, teleconsultation. Lines recognised as tests or medicines (test, lab, laboratory, cbc, blood, urine, profile, panel, culture, x-ray, xray, scan, ultrasound, ecg, medicine, medicines, drug, tablet, capsule, syrup, injection, pharmacy) fall under the global per-claim limit only; any other eligible line counts against the sub_limit."
+            },
+            {
+              "id": "PER_CLAIM_CEILING.DIAGNOSTIC",
+              "kind": "derived",
+              "source_paths": [
+                "coverage.per_claim_limit",
+                "opd_categories.diagnostic.sub_limit"
+              ],
+              "description": "DIAGNOSTIC per-claim ceiling is Rs 10000: category sub_limit exceeds the global per-claim limit and supersedes it for this category.",
+              "ceiling": 10000
+            },
+            {
+              "id": "PER_CLAIM_CEILING.PHARMACY",
+              "kind": "derived",
+              "source_paths": [
+                "coverage.per_claim_limit",
+                "opd_categories.pharmacy.sub_limit"
+              ],
+              "description": "PHARMACY per-claim ceiling is Rs 15000: category sub_limit exceeds the global per-claim limit and supersedes it for this category.",
+              "ceiling": 15000
+            },
+            {
+              "id": "NO_NETWORK_DISCOUNT.PHARMACY",
+              "kind": "absent_optional_field",
+              "source_paths": [
+                "opd_categories.pharmacy.network_discount_percent"
+              ],
+              "description": "PHARMACY declares no network discount; 0% is applied."
+            },
+            {
+              "id": "CATEGORY_PRE_AUTH_FLAG_ABSENT.PHARMACY",
+              "kind": "absent_optional_field",
+              "source_paths": [
+                "opd_categories.pharmacy.requires_pre_auth"
+              ],
+              "description": "PHARMACY has no category-wide pre-authorization flag; item rules in pre_authorization.required_for still apply."
+            },
+            {
+              "id": "BRAND_CLASSIFICATION.PHARMACY",
+              "kind": "interpretation",
+              "source_paths": [
+                "opd_categories.pharmacy.branded_drug_copay_percent",
+                "opd_categories.pharmacy.generic_mandatory"
+              ],
+              "description": "Branded co-pay requires each medicine line to be classified BRANDED/GENERIC with supporting text; unclassified lines route to review."
+            },
+            {
+              "id": "PER_CLAIM_CEILING.DENTAL",
+              "kind": "derived",
+              "source_paths": [
+                "coverage.per_claim_limit",
+                "opd_categories.dental.sub_limit"
+              ],
+              "description": "DENTAL per-claim ceiling is Rs 10000: category sub_limit exceeds the global per-claim limit and supersedes it for this category.",
+              "ceiling": 10000
+            },
+            {
+              "id": "NO_NETWORK_DISCOUNT.DENTAL",
+              "kind": "absent_optional_field",
+              "source_paths": [
+                "opd_categories.dental.network_discount_percent"
+              ],
+              "description": "DENTAL declares no network discount; 0% is applied."
+            },
+            {
+              "id": "CATEGORY_PRE_AUTH_FLAG_ABSENT.DENTAL",
+              "kind": "absent_optional_field",
+              "source_paths": [
+                "opd_categories.dental.requires_pre_auth"
+              ],
+              "description": "DENTAL has no category-wide pre-authorization flag; item rules in pre_authorization.required_for still apply."
+            },
+            {
+              "id": "DENTAL_REPORT_CONFLICT.DENTAL",
+              "kind": "conflict_resolution",
+              "source_paths": [
+                "opd_categories.dental.requires_dental_report",
+                "document_requirements.DENTAL.optional"
+              ],
+              "description": "requires_dental_report=true conflicts with document_requirements listing DENTAL_REPORT as optional (listed). The document matrix governs the correction gate; an absent report is traced as ADVISORY and lowers confidence on payable outcomes."
+            },
+            {
+              "id": "COVERED_ITEM_TERMS.DENTAL.Root Canal Treatment",
+              "kind": "interpretation",
+              "source_paths": [
+                "opd_categories.dental"
+              ],
+              "description": "'Root Canal Treatment' is also recognised on a bill line as: root canal, RCT, endodontic treatment."
+            },
+            {
+              "id": "COVERED_ITEM_TERMS.DENTAL.Tooth Extraction",
+              "kind": "interpretation",
+              "source_paths": [
+                "opd_categories.dental"
+              ],
+              "description": "'Tooth Extraction' is also recognised on a bill line as: extraction, tooth removal."
+            },
+            {
+              "id": "COVERED_ITEM_TERMS.DENTAL.Dental Filling",
+              "kind": "interpretation",
+              "source_paths": [
+                "opd_categories.dental"
+              ],
+              "description": "'Dental Filling' is also recognised on a bill line as: filling, composite restoration, amalgam restoration."
+            },
+            {
+              "id": "COVERED_ITEM_TERMS.DENTAL.Scaling and Polishing",
+              "kind": "interpretation",
+              "source_paths": [
+                "opd_categories.dental"
+              ],
+              "description": "'Scaling and Polishing' is also recognised on a bill line as: scaling, polishing, oral prophylaxis, teeth cleaning."
+            },
+            {
+              "id": "COVERED_ITEM_TERMS.DENTAL.Dental X-Ray",
+              "kind": "interpretation",
+              "source_paths": [
+                "opd_categories.dental"
+              ],
+              "description": "'Dental X-Ray' is also recognised on a bill line as: x-ray, xray, IOPA, OPG, dental radiograph."
+            },
+            {
+              "id": "COVERED_ITEM_TERMS.DENTAL.Crown Placement",
+              "kind": "interpretation",
+              "source_paths": [
+                "opd_categories.dental"
+              ],
+              "description": "'Crown Placement' is also recognised on a bill line as: crown, dental cap."
+            },
+            {
+              "id": "COVERED_ITEM_TERMS.DENTAL.Gum Treatment",
+              "kind": "interpretation",
+              "source_paths": [
+                "opd_categories.dental"
+              ],
+              "description": "'Gum Treatment' is also recognised on a bill line as: periodontal treatment, periodontal therapy, gum surgery, gingival treatment."
+            },
+            {
+              "id": "PER_CLAIM_CEILING.VISION",
+              "kind": "derived",
+              "source_paths": [
+                "coverage.per_claim_limit",
+                "opd_categories.vision.sub_limit"
+              ],
+              "description": "VISION per-claim ceiling is Rs 5000: sub_limit equals the global limit.",
+              "ceiling": 5000
+            },
+            {
+              "id": "NO_NETWORK_DISCOUNT.VISION",
+              "kind": "absent_optional_field",
+              "source_paths": [
+                "opd_categories.vision.network_discount_percent"
+              ],
+              "description": "VISION declares no network discount; 0% is applied."
+            },
+            {
+              "id": "CATEGORY_PRE_AUTH_FLAG_ABSENT.VISION",
+              "kind": "absent_optional_field",
+              "source_paths": [
+                "opd_categories.vision.requires_pre_auth"
+              ],
+              "description": "VISION has no category-wide pre-authorization flag; item rules in pre_authorization.required_for still apply."
+            },
+            {
+              "id": "COVERED_ITEM_TERMS.VISION.Glasses",
+              "kind": "interpretation",
+              "source_paths": [
+                "opd_categories.vision"
+              ],
+              "description": "'Glasses' is also recognised on a bill line as: spectacles, eyeglasses, spectacle lenses."
+            },
+            {
+              "id": "COVERED_ITEM_TERMS.VISION.Contact Lenses",
+              "kind": "interpretation",
+              "source_paths": [
+                "opd_categories.vision"
+              ],
+              "description": "'Contact Lenses' is also recognised on a bill line as: contact lens."
+            },
+            {
+              "id": "COVERED_ITEM_TERMS.VISION.Eye Examination",
+              "kind": "interpretation",
+              "source_paths": [
+                "opd_categories.vision"
+              ],
+              "description": "'Eye Examination' is also recognised on a bill line as: eye exam, eye test, eye checkup, refraction test."
+            },
+            {
+              "id": "COVERED_ITEM_TERMS.VISION.Cataract Surgery",
+              "kind": "interpretation",
+              "source_paths": [
+                "opd_categories.vision"
+              ],
+              "description": "'Cataract Surgery' is also recognised on a bill line as: cataract, phacoemulsification."
+            },
+            {
+              "id": "PER_CLAIM_CEILING.ALTERNATIVE_MEDICINE",
+              "kind": "derived",
+              "source_paths": [
+                "coverage.per_claim_limit",
+                "opd_categories.alternative_medicine.sub_limit"
+              ],
+              "description": "ALTERNATIVE_MEDICINE per-claim ceiling is Rs 8000: category sub_limit exceeds the global per-claim limit and supersedes it for this category.",
+              "ceiling": 8000
+            },
+            {
+              "id": "NO_NETWORK_DISCOUNT.ALTERNATIVE_MEDICINE",
+              "kind": "absent_optional_field",
+              "source_paths": [
+                "opd_categories.alternative_medicine.network_discount_percent"
+              ],
+              "description": "ALTERNATIVE_MEDICINE declares no network discount; 0% is applied."
+            },
+            {
+              "id": "CATEGORY_PRE_AUTH_FLAG_ABSENT.ALTERNATIVE_MEDICINE",
+              "kind": "absent_optional_field",
+              "source_paths": [
+                "opd_categories.alternative_medicine.requires_pre_auth"
+              ],
+              "description": "ALTERNATIVE_MEDICINE has no category-wide pre-authorization flag; item rules in pre_authorization.required_for still apply."
+            },
+            {
+              "id": "COVERED_SYSTEM_TERMS.Ayurveda",
+              "kind": "interpretation",
+              "source_paths": [
+                "opd_categories.alternative_medicine.covered_systems"
+              ],
+              "description": "Ayurveda is also recognised from: ayurvedic, panchakarma, vaidya."
+            },
+            {
+              "id": "COVERED_SYSTEM_TERMS.Homeopathy",
+              "kind": "interpretation",
+              "source_paths": [
+                "opd_categories.alternative_medicine.covered_systems"
+              ],
+              "description": "Homeopathy is also recognised from: homoeopathy, homeopathic, homoeopathic."
+            },
+            {
+              "id": "COVERED_SYSTEM_TERMS.Unani",
+              "kind": "interpretation",
+              "source_paths": [
+                "opd_categories.alternative_medicine.covered_systems"
+              ],
+              "description": "Unani is also recognised from: hakim."
+            },
+            {
+              "id": "COVERED_SYSTEM_TERMS.Naturopathy",
+              "kind": "interpretation",
+              "source_paths": [
+                "opd_categories.alternative_medicine.covered_systems"
+              ],
+              "description": "Naturopathy is also recognised from: naturopathic, nature cure."
+            },
+            {
+              "id": "PER_CLAIM_CEILING_RULE",
+              "kind": "conflict_resolution",
+              "source_paths": [
+                "coverage.per_claim_limit",
+                "opd_categories.*.sub_limit"
+              ],
+              "description": "Each category's per-claim ceiling is max(coverage.per_claim_limit, category sub_limit), tested against the eligible amount after excluded/non-covered lines are removed; exceeding it rejects the claim (PER_CLAIM_EXCEEDED). Where a matched pre-authorization rule governs the treatment, the pre-authorization decides instead. The ceiling cannot be the lower consultation sub_limit: the supplied network consultation case pays Rs 3,240 on a Rs 4,500 bill."
+            },
+            {
+              "id": "CATEGORY_SUB_LIMIT_RULE",
+              "kind": "conflict_resolution",
+              "source_paths": [
+                "opd_categories.*.sub_limit",
+                "coverage.per_claim_limit"
+              ],
+              "description": "A category sub_limit is an annual, per-member cap on the net benefit (after network discount and co-pay) paid for the category's own service lines. This claim's own service benefit is always capped; earlier usage this policy year (category_sub_limit_used, else category_ytd_claims_amount as an upper bound) reduces what remains, and when neither is supplied the history is NOT_EVALUATED and disclosed. Any excess is removed and the claim is PARTIAL. For consultation the service lines are consultation-fee lines (CATEGORY_SERVICE_TERMS.CONSULTATION); tests and medicines billed with a consultation are not consultation services. For every other category all eligible lines are the category's service. If the service share of an unitemized bill cannot be established and the net payable exceeds what remains, a claim that could otherwise pay routes to review (CATEGORY_SUB_LIMIT_UNVERIFIED). A governing pre-authorization may satisfy the authorization requirement and govern its explicitly authorized amount, but it never removes this category cap or any annual, sum-insured, or family benefit cap. Rejected alternative: an annual aggregate over the whole claim. The supplied network consultation case pays Rs 3,240 in one consultation claim, above an annual Rs 2,000 consultation cap, so that reading would either break the fixture or pay more when category history is absent than when it is zero."
+            },
+            {
+              "id": "PRESCRIPTION_REQUIREMENT.CONSULTATION",
+              "kind": "derived",
+              "source_paths": [
+                "opd_categories.consultation.requires_prescription",
+                "document_requirements.CONSULTATION"
+              ],
+              "description": "requires_prescription=true agrees with the document matrix (PRESCRIPTION required); the document gate enforces it."
+            },
+            {
+              "id": "PRESCRIPTION_REQUIREMENT.DIAGNOSTIC",
+              "kind": "derived",
+              "source_paths": [
+                "opd_categories.diagnostic.requires_prescription",
+                "document_requirements.DIAGNOSTIC"
+              ],
+              "description": "requires_prescription=true agrees with the document matrix (PRESCRIPTION required); the document gate enforces it."
+            },
+            {
+              "id": "PRESCRIPTION_REQUIREMENT.PHARMACY",
+              "kind": "derived",
+              "source_paths": [
+                "opd_categories.pharmacy.requires_prescription",
+                "document_requirements.PHARMACY"
+              ],
+              "description": "requires_prescription=true agrees with the document matrix (PRESCRIPTION required); the document gate enforces it."
+            },
+            {
+              "id": "PRESCRIPTION_REQUIREMENT.DENTAL",
+              "kind": "derived",
+              "source_paths": [
+                "opd_categories.dental.requires_prescription",
+                "document_requirements.DENTAL"
+              ],
+              "description": "requires_prescription=false agrees with the document matrix (PRESCRIPTION not required); the document gate enforces it."
+            },
+            {
+              "id": "PRESCRIPTION_REQUIREMENT.VISION",
+              "kind": "derived",
+              "source_paths": [
+                "opd_categories.vision.requires_prescription",
+                "document_requirements.VISION"
+              ],
+              "description": "requires_prescription=true agrees with the document matrix (PRESCRIPTION required); the document gate enforces it."
+            },
+            {
+              "id": "PRESCRIPTION_REQUIREMENT.ALTERNATIVE_MEDICINE",
+              "kind": "derived",
+              "source_paths": [
+                "opd_categories.alternative_medicine.requires_prescription",
+                "document_requirements.ALTERNATIVE_MEDICINE"
+              ],
+              "description": "requires_prescription=true agrees with the document matrix (PRESCRIPTION required); the document gate enforces it."
+            },
+            {
+              "id": "CONDITION_TERMS.diabetes",
+              "kind": "interpretation",
+              "source_paths": [
+                "waiting_periods.specific_conditions.diabetes"
+              ],
+              "description": "diabetes waiting period is also triggered by: diabetic, diabetes mellitus, T2DM, T1DM."
+            },
+            {
+              "id": "CONDITION_TERMS.hypertension",
+              "kind": "interpretation",
+              "source_paths": [
+                "waiting_periods.specific_conditions.hypertension"
+              ],
+              "description": "hypertension waiting period is also triggered by: HTN, high blood pressure."
+            },
+            {
+              "id": "CONDITION_TERMS.thyroid_disorders",
+              "kind": "interpretation",
+              "source_paths": [
+                "waiting_periods.specific_conditions.thyroid_disorders"
+              ],
+              "description": "thyroid disorders waiting period is also triggered by: thyroid, hypothyroidism, hyperthyroidism, thyroiditis."
+            },
+            {
+              "id": "CONDITION_TERMS.joint_replacement",
+              "kind": "interpretation",
+              "source_paths": [
+                "waiting_periods.specific_conditions.joint_replacement"
+              ],
+              "description": "joint replacement waiting period is also triggered by: knee replacement, hip replacement, arthroplasty."
+            },
+            {
+              "id": "CONDITION_TERMS.maternity",
+              "kind": "interpretation",
+              "source_paths": [
+                "waiting_periods.specific_conditions.maternity"
+              ],
+              "description": "maternity waiting period is also triggered by: pregnancy, antenatal, prenatal, obstetric."
+            },
+            {
+              "id": "CONDITION_TERMS.mental_health",
+              "kind": "interpretation",
+              "source_paths": [
+                "waiting_periods.specific_conditions.mental_health"
+              ],
+              "description": "mental health waiting period is also triggered by: depression, anxiety disorder, psychiatric."
+            },
+            {
+              "id": "CONDITION_TERMS.obesity_treatment",
+              "kind": "interpretation",
+              "source_paths": [
+                "waiting_periods.specific_conditions.obesity_treatment"
+              ],
+              "description": "obesity treatment waiting period is also triggered by: obesity, bariatric, weight loss."
+            },
+            {
+              "id": "CONDITION_TERMS.hernia",
+              "kind": "interpretation",
+              "source_paths": [
+                "waiting_periods.specific_conditions.hernia"
+              ],
+              "description": "hernia waiting period is also triggered by: inguinal hernia, umbilical hernia."
+            },
+            {
+              "id": "CONDITION_TERMS.cataract",
+              "kind": "interpretation",
+              "source_paths": [
+                "waiting_periods.specific_conditions.cataract"
+              ],
+              "description": "cataract waiting period is also triggered by: cataract surgery."
+            },
+            {
+              "id": "EXCLUSION_MERGED.DENTAL.teeth_whitening",
+              "kind": "conflict_resolution",
+              "source_paths": [
+                "exclusions.dental_exclusions[0]",
+                "opd_categories.dental.excluded_procedures[0]"
+              ],
+              "description": "'Teeth Whitening' duplicates 'Teeth whitening' for DENTAL; merged into one canonical exclusion."
+            },
+            {
+              "id": "EXCLUSION_MERGED.DENTAL.orthodontic_treatment",
+              "kind": "conflict_resolution",
+              "source_paths": [
+                "exclusions.dental_exclusions[1]",
+                "opd_categories.dental.excluded_procedures[2]"
+              ],
+              "description": "'Orthodontic Treatment (Braces)' duplicates 'Orthodontic treatment' for DENTAL; merged into one canonical exclusion."
+            },
+            {
+              "id": "EXCLUSION_MERGED.VISION.lasik_surgery",
+              "kind": "conflict_resolution",
+              "source_paths": [
+                "exclusions.vision_exclusions[0]",
+                "opd_categories.vision.excluded_items[0]"
+              ],
+              "description": "'LASIK Surgery' duplicates 'LASIK' for VISION; merged into one canonical exclusion."
+            },
+            {
+              "id": "EXCLUSION_MERGED.VISION.refractive_surgery",
+              "kind": "conflict_resolution",
+              "source_paths": [
+                "exclusions.vision_exclusions[1]",
+                "opd_categories.vision.excluded_items[2]"
+              ],
+              "description": "'Refractive Surgery' duplicates 'Refractive surgery' for VISION; merged into one canonical exclusion."
+            },
+            {
+              "id": "EXCLUSION_TERMS.Self-inflicted injuries",
+              "kind": "interpretation",
+              "source_paths": [
+                "exclusions.conditions[0]"
+              ],
+              "description": "'Self-inflicted injuries' is matched through: self-harm, deliberate self harm."
+            },
+            {
+              "id": "EXCLUSION_TERMS.War or nuclear hazard",
+              "kind": "interpretation",
+              "source_paths": [
+                "exclusions.conditions[1]"
+              ],
+              "description": "'War or nuclear hazard' is matched through: war, nuclear hazard, war injury."
+            },
+            {
+              "id": "EXCLUSION_TERMS.Substance abuse treatment",
+              "kind": "interpretation",
+              "source_paths": [
+                "exclusions.conditions[2]"
+              ],
+              "description": "'Substance abuse treatment' is matched through: substance abuse, de-addiction, drug rehabilitation, alcohol dependence."
+            },
+            {
+              "id": "EXCLUSION_TERMS.Experimental treatments",
+              "kind": "interpretation",
+              "source_paths": [
+                "exclusions.conditions[3]"
+              ],
+              "description": "'Experimental treatments' is matched through: experimental treatment, experimental therapy, investigational treatment."
+            },
+            {
+              "id": "EXCLUSION_TERMS.Infertility and assisted reproduction",
+              "kind": "interpretation",
+              "source_paths": [
+                "exclusions.conditions[4]"
+              ],
+              "description": "'Infertility and assisted reproduction' is matched through: infertility, assisted reproduction, IVF, in vitro fertilisation, in vitro fertilization."
+            },
+            {
+              "id": "EXCLUSION_TERMS.Obesity and weight loss programs",
+              "kind": "interpretation",
+              "source_paths": [
+                "exclusions.conditions[5]"
+              ],
+              "description": "'Obesity and weight loss programs' is matched through: obesity, weight loss program, weight loss, weight management, bariatric."
+            },
+            {
+              "id": "EXCLUSION_TERMS.Bariatric surgery",
+              "kind": "interpretation",
+              "source_paths": [
+                "exclusions.conditions[6]"
+              ],
+              "description": "'Bariatric surgery' is matched through: gastric bypass, sleeve gastrectomy."
+            },
+            {
+              "id": "EXCLUSION_TERMS.Cosmetic or aesthetic procedures",
+              "kind": "interpretation",
+              "source_paths": [
+                "exclusions.conditions[7]"
+              ],
+              "description": "'Cosmetic or aesthetic procedures' is matched through: aesthetic procedure, cosmetic procedure, cosmetic surgery, cosmetic treatment."
+            },
+            {
+              "id": "EXCLUSION_TERMS.Vaccination (non-medically necessary)",
+              "kind": "interpretation",
+              "source_paths": [
+                "exclusions.conditions[8]"
+              ],
+              "description": "'Vaccination (non-medically necessary)' is matched through: vaccination, vaccine."
+            },
+            {
+              "id": "EXCLUSION_TERMS.Health supplements and tonics",
+              "kind": "interpretation",
+              "source_paths": [
+                "exclusions.conditions[9]"
+              ],
+              "description": "'Health supplements and tonics' is matched through: health supplement, supplement, tonic, multivitamin."
+            },
+            {
+              "id": "EXCLUSION_TERMS.Teeth whitening",
+              "kind": "interpretation",
+              "source_paths": [
+                "exclusions.dental_exclusions[0]",
+                "opd_categories.dental.excluded_procedures[0]"
+              ],
+              "description": "'Teeth whitening' is matched through: tooth whitening, whitening."
+            },
+            {
+              "id": "EXCLUSION_TERMS.Orthodontic Treatment (Braces)",
+              "kind": "interpretation",
+              "source_paths": [
+                "exclusions.dental_exclusions[1]",
+                "opd_categories.dental.excluded_procedures[2]"
+              ],
+              "description": "'Orthodontic Treatment (Braces)' is matched through: orthodontic treatment, braces."
+            },
+            {
+              "id": "EXCLUSION_LINE_TERMS.Cosmetic dental procedures",
+              "kind": "interpretation",
+              "source_paths": [
+                "exclusions.dental_exclusions[2]"
+              ],
+              "description": "'Cosmetic dental procedures' also matches bill lines containing: cosmetic, aesthetic, upgrade."
+            },
+            {
+              "id": "EXCLUSION_TERMS.Implants (Cosmetic)",
+              "kind": "interpretation",
+              "source_paths": [
+                "opd_categories.dental.excluded_procedures[3]"
+              ],
+              "description": "'Implants (Cosmetic)' is matched through: cosmetic implant."
+            },
+            {
+              "id": "PRE_AUTH_PARSED.mri_scan",
+              "kind": "derived",
+              "source_paths": [
+                "pre_authorization.required_for[0]"
+              ],
+              "description": "'MRI scan (amount > ₹10,000)' parsed as item 'MRI scan' requiring pre-authorization above Rs 10000. Short forms: MRI, magnetic resonance imaging."
+            },
+            {
+              "id": "PRE_AUTH_PARSED.ct_scan",
+              "kind": "derived",
+              "source_paths": [
+                "pre_authorization.required_for[1]"
+              ],
+              "description": "'CT scan (amount > ₹10,000)' parsed as item 'CT scan' requiring pre-authorization above Rs 10000. Short forms: CT, computed tomography."
+            },
+            {
+              "id": "PRE_AUTH_PARSED.pet_scan",
+              "kind": "derived",
+              "source_paths": [
+                "pre_authorization.required_for[2]"
+              ],
+              "description": "'PET scan' parsed as item 'PET scan' always requiring pre-authorization. Short forms: PET, PET-CT, positron emission tomography."
+            },
+            {
+              "id": "PRE_AUTH_PARSED.major_surgical_procedures",
+              "kind": "derived",
+              "source_paths": [
+                "pre_authorization.required_for[3]"
+              ],
+              "description": "'Major surgical procedures' parsed as item 'Major surgical procedures' always requiring pre-authorization. Short forms: major surgery."
+            },
+            {
+              "id": "PRE_AUTH_PARSED.planned_hospitalization",
+              "kind": "derived",
+              "source_paths": [
+                "pre_authorization.required_for[4]"
+              ],
+              "description": "'Planned hospitalization' parsed as item 'Planned hospitalization' always requiring pre-authorization. Short forms: planned hospitalisation, planned admission."
+            },
+            {
+              "id": "PRE_AUTH_THRESHOLD_CONFLICT.pet_scan",
+              "kind": "conflict_resolution",
+              "source_paths": [
+                "pre_authorization.required_for[2]",
+                "opd_categories.diagnostic.high_value_tests_requiring_pre_auth[2]",
+                "opd_categories.diagnostic.pre_auth_threshold"
+              ],
+              "description": "'PET scan' threshold differs between pre_authorization.required_for (always) and opd_categories.diagnostic.pre_auth_threshold (above Rs 10000); the stricter reading (always) is used."
+            },
+            {
+              "id": "PRE_AUTH_MATCH_SCOPE",
+              "kind": "interpretation",
+              "source_paths": [
+                "pre_authorization.required_for"
+              ],
+              "description": "Pre-authorization rules match the services in the claim (treatment, ordered tests, test names, bill lines), never the diagnosis, and ignore negated mentions. Single-word short forms of 4 letters or fewer (MRI, CT, PET) match only as whole words inside an ordered test, a test name or a bill line; 'PET' additionally needs an imaging word in the same entry (scan, ct, imaging, tomography)."
+            },
+            {
+              "id": "NETWORK_NAME_VARIANTS.Apollo Hospitals",
+              "kind": "interpretation",
+              "source_paths": [
+                "network_hospitals[0]"
+              ],
+              "description": "Apollo Hospitals is also recognised as: Apollo Hospital."
+            },
+            {
+              "id": "NETWORK_NAME_VARIANTS.Fortis Healthcare",
+              "kind": "interpretation",
+              "source_paths": [
+                "network_hospitals[1]"
+              ],
+              "description": "Fortis Healthcare is also recognised as: Fortis Hospital, Fortis Hospitals."
+            },
+            {
+              "id": "NETWORK_NAME_VARIANTS.Max Healthcare",
+              "kind": "interpretation",
+              "source_paths": [
+                "network_hospitals[2]"
+              ],
+              "description": "Max Healthcare is also recognised as: Max Hospital, Max Super Speciality Hospital."
+            },
+            {
+              "id": "NETWORK_NAME_VARIANTS.Manipal Hospitals",
+              "kind": "interpretation",
+              "source_paths": [
+                "network_hospitals[3]"
+              ],
+              "description": "Manipal Hospitals is also recognised as: Manipal Hospital."
+            },
+            {
+              "id": "NETWORK_NAME_VARIANTS.Narayana Health",
+              "kind": "interpretation",
+              "source_paths": [
+                "network_hospitals[4]"
+              ],
+              "description": "Narayana Health is also recognised as: Narayana Hrudayalaya."
+            },
+            {
+              "id": "NETWORK_NAME_VARIANTS.Medanta",
+              "kind": "interpretation",
+              "source_paths": [
+                "network_hospitals[5]"
+              ],
+              "description": "Medanta is also recognised as: Medanta The Medicity."
+            },
+            {
+              "id": "NETWORK_NAME_VARIANTS.Kokilaben Dhirubhai Ambani Hospital",
+              "kind": "interpretation",
+              "source_paths": [
+                "network_hospitals[6]"
+              ],
+              "description": "Kokilaben Dhirubhai Ambani Hospital is also recognised as: Kokilaben Hospital."
+            },
+            {
+              "id": "NETWORK_NAME_VARIANTS.Aster CMI Hospital",
+              "kind": "interpretation",
+              "source_paths": [
+                "network_hospitals[7]"
+              ],
+              "description": "Aster CMI Hospital is also recognised as: Aster CMI."
+            },
+            {
+              "id": "NETWORK_NAME_VARIANTS.Columbia Asia",
+              "kind": "interpretation",
+              "source_paths": [
+                "network_hospitals[8]"
+              ],
+              "description": "Columbia Asia is also recognised as: Columbia Asia Hospital."
+            },
+            {
+              "id": "NETWORK_NAME_VARIANTS.Sakra World Hospital",
+              "kind": "interpretation",
+              "source_paths": [
+                "network_hospitals[9]"
+              ],
+              "description": "Sakra World Hospital is also recognised as: Sakra Hospital."
+            },
+            {
+              "id": "DANGLING_DEPENDENT.EMP003.DEP003",
+              "kind": "reference_repair",
+              "source_paths": [
+                "members[2].dependents[0]"
+              ],
+              "description": "EMP003 lists dependent DEP003, which is not in the roster (or does not point back). It is excluded from covered-patient matching; a claim for it cannot be verified and routes to review as an unknown member."
+            },
+            {
+              "id": "DANGLING_DEPENDENT.EMP007.DEP004",
+              "kind": "reference_repair",
+              "source_paths": [
+                "members[6].dependents[0]"
+              ],
+              "description": "EMP007 lists dependent DEP004, which is not in the roster (or does not point back). It is excluded from covered-patient matching; a claim for it cannot be verified and routes to review as an unknown member."
+            },
+            {
+              "id": "DANGLING_DEPENDENT.EMP007.DEP005",
+              "kind": "reference_repair",
+              "source_paths": [
+                "members[6].dependents[1]"
+              ],
+              "description": "EMP007 lists dependent DEP005, which is not in the roster (or does not point back). It is excluded from covered-patient matching; a claim for it cannot be verified and routes to review as an unknown member."
+            },
+            {
+              "id": "DANGLING_DEPENDENT.EMP010.DEP006",
+              "kind": "reference_repair",
+              "source_paths": [
+                "members[9].dependents[0]"
+              ],
+              "description": "EMP010 lists dependent DEP006, which is not in the roster (or does not point back). It is excluded from covered-patient matching; a claim for it cannot be verified and routes to review as an unknown member."
+            },
+            {
+              "id": "DEPENDENT_JOIN_DATE.DEP001",
+              "kind": "derived",
+              "source_paths": [
+                "members[10]",
+                "members[0].join_date"
+              ],
+              "description": "DEP001 has no join_date and inherits EMP001's (2024-04-01)."
+            },
+            {
+              "id": "RELATIONSHIP_VOCABULARY.DEP002",
+              "kind": "interpretation",
+              "source_paths": [
+                "members[11].relationship",
+                "coverage.family_floater.covered_relationships"
+              ],
+              "description": "Roster relationship CHILD is read as family-floater relationship CHILDREN."
+            },
+            {
+              "id": "DEPENDENT_JOIN_DATE.DEP002",
+              "kind": "derived",
+              "source_paths": [
+                "members[11]",
+                "members[0].join_date"
+              ],
+              "description": "DEP002 has no join_date and inherits EMP001's (2024-04-01)."
+            },
+            {
+              "id": "NETWORK_MATCH_RULE",
+              "kind": "interpretation",
+              "source_paths": [
+                "network_hospitals"
+              ],
+              "description": "Provider names match a network hospital exactly, or before a comma/dash branch or city suffix."
+            },
+            {
+              "id": "SUBMISSION_CURRENCY",
+              "kind": "derived",
+              "source_paths": [
+                "submission_rules.currency"
+              ],
+              "description": "The schema accepts only INR. All money is converted to integer paise; a claim that states a different currency is rejected as malformed input."
+            },
+            {
+              "id": "FRAUD_THRESHOLD_ROLES",
+              "kind": "interpretation",
+              "source_paths": [
+                "fraud_thresholds.high_value_claim_threshold",
+                "fraud_thresholds.auto_manual_review_above"
+              ],
+              "description": "auto_manual_review_above routes a single claim above it to manual review. high_value_claim_threshold (the same amount in the supplied policy) marks a single claim as high value in the risk trace and is the limit on the member family's trailing 30-day claimed value used by the risk-signal enrichment component; exceeding it routes to review (RISK_SIGNAL_REVIEW)."
+            },
+            {
+              "id": "INFORMATIONAL_FIELD.policy_name",
+              "kind": "informational",
+              "source_paths": [
+                "policy_name"
+              ],
+              "description": "Descriptive; shown in outputs only."
+            },
+            {
+              "id": "INFORMATIONAL_FIELD.insurer",
+              "kind": "informational",
+              "source_paths": [
+                "insurer"
+              ],
+              "description": "Descriptive; shown in outputs only."
+            },
+            {
+              "id": "INFORMATIONAL_FIELD.policy_holder.company_name",
+              "kind": "informational",
+              "source_paths": [
+                "policy_holder.company_name"
+              ],
+              "description": "Descriptive; shown in outputs only."
+            },
+            {
+              "id": "INFORMATIONAL_FIELD.policy_holder.employee_count",
+              "kind": "informational",
+              "source_paths": [
+                "policy_holder.employee_count"
+              ],
+              "description": "Group size is an underwriting fact; no claim rule in the policy depends on it."
+            }
+          ]
+        },
+        "details": "Canonical policy configuration, verified against its fingerprint. The complete normalizer audit trail that produced it is recorded here so it is persisted with the decision."
+      },
+      {
+        "stage": "document_gate",
+        "rule_id": "document_requirements",
+        "status": "PASS",
+        "policy_ref": "document_requirements.DENTAL",
+        "evidence": [
+          {
+            "file_id": "UPLOAD-1",
+            "type": "HOSPITAL_BILL",
+            "quality": "GOOD",
+            "patient_name": "Amit Verma",
+            "provenance": null
+          }
+        ],
+        "details": []
+      },
+      {
+        "stage": "eligibility",
+        "rule_id": "membership",
+        "status": "PASS",
+        "policy_ref": "members[2] / policy_id / opd_categories.dental",
+        "evidence": {
+          "member_id": "EMP003",
+          "category": "DENTAL"
+        }
+      },
+      {
+        "stage": "identity",
+        "rule_id": "roster_patient_match",
+        "status": "PASS",
+        "policy_ref": "members",
+        "evidence": {
+          "document_names": [
+            "Amit Verma"
+          ],
+          "benefit_member_id": "EMP003",
+          "benefit_member_name": "Amit Verma"
+        }
+      },
+      {
+        "stage": "identity",
+        "rule_id": "identity_verification",
+        "status": "NOT_EVALUATED",
+        "evidence": {
+          "document_layer_status": null
+        },
+        "details": "Identity verdict supplied by the document layer; an explicit failed or unverified verdict blocks payment."
+      },
+      {
+        "stage": "reconciliation",
+        "rule_id": "bill_amount",
+        "status": "PASS",
+        "evidence": {
+          "claimed_paise": 120000,
+          "bill_total_paise": 120000,
+          "line_items_total_paise": 120000,
+          "bill_files": [
+            "UPLOAD-1"
+          ]
+        }
+      },
+      {
+        "stage": "reconciliation",
+        "rule_id": "document_quality",
+        "status": "PASS",
+        "evidence": {
+          "weak_documents": [],
+          "required_types": [
+            "HOSPITAL_BILL"
+          ]
+        }
+      },
+      {
+        "stage": "policy",
+        "rule_id": "document_treatment_date",
+        "status": "PASS",
+        "policy_ref": "claim.treatment_date",
+        "evidence": {
+          "treatment_date": "2024-11-03",
+          "document_dates": [
+            {
+              "file_id": "UPLOAD-1",
+              "date": "2024-11-03"
+            }
+          ],
+          "unreadable_date_files": []
+        }
+      },
+      {
+        "stage": "policy",
+        "rule_id": "policy_renewal_status",
+        "status": "PASS",
+        "policy_ref": "policy_holder.renewal_status",
+        "evidence": {
+          "renewal_status": "ACTIVE"
+        }
+      },
+      {
+        "stage": "policy",
+        "rule_id": "covered_relationship",
+        "status": "PASS",
+        "policy_ref": "coverage.family_floater.covered_relationships",
+        "evidence": {
+          "relationship": "SELF",
+          "covered_relationship": "SELF"
+        }
+      },
+      {
+        "stage": "policy",
+        "rule_id": "category_covered",
+        "status": "PASS",
+        "policy_ref": "opd_categories.dental.covered",
+        "evidence": {
+          "covered": true
+        }
+      },
+      {
+        "stage": "policy",
+        "rule_id": "policy_coverage_period",
+        "status": "PASS",
+        "policy_ref": "policy_holder.policy_start_date / policy_holder.policy_end_date",
+        "evidence": {
+          "treatment_date": "2024-11-03",
+          "policy_start_date": "2024-04-01",
+          "policy_end_date": "2025-03-31"
+        }
+      },
+      {
+        "stage": "policy",
+        "rule_id": "minimum_claim_amount",
+        "status": "PASS",
+        "policy_ref": "submission_rules.minimum_claim_amount",
+        "evidence": {
+          "claimed_amount_paise": 120000,
+          "minimum_claim_amount_paise": 50000
+        }
+      },
+      {
+        "stage": "policy",
+        "rule_id": "submission_deadline",
+        "status": "PASS",
+        "policy_ref": "submission_rules.deadline_days_from_treatment",
+        "evidence": {
+          "days_elapsed": 2,
+          "deadline_days": 30
+        }
+      },
+      {
+        "stage": "policy",
+        "rule_id": "pre_existing_condition_wait",
+        "status": "NOT_EVALUATED",
+        "policy_ref": "waiting_periods.pre_existing_conditions_days",
+        "evidence": {
+          "days": 365,
+          "conditions": []
+        },
+        "details": "No explicit pre-existing-condition evidence was supplied with the claim."
+      },
+      {
+        "stage": "policy",
+        "rule_id": "waiting_period",
+        "status": "PASS",
+        "policy_ref": "waiting_periods.initial_waiting_period_days",
+        "evidence": {
+          "condition": "initial",
+          "matched_terms": [],
+          "join_date": "2024-04-01",
+          "join_date_source": "members[2].join_date",
+          "treatment_date": "2024-11-03",
+          "eligible_from": "2024-05-01"
+        }
+      },
+      {
+        "stage": "policy",
+        "rule_id": "excluded_condition",
+        "status": "PASS",
+        "policy_ref": "exclusions.conditions",
+        "evidence": []
+      },
+      {
+        "stage": "policy",
+        "rule_id": "pre_authorization",
+        "status": "PASS",
+        "policy_ref": "opd_categories.dental.requires_pre_auth / pre_authorization.required_for",
+        "details": "Not required for the services and amount in this claim."
+      },
+      {
+        "stage": "risk",
+        "rule_id": "same_day_claims",
+        "status": "PASS",
+        "policy_ref": "fraud_thresholds.same_day_claims_limit",
+        "evidence": {
+          "same_day_claim_count_including_current": 1,
+          "limit": 2,
+          "prior_claims": [],
+          "history_source": "atomic_benefit_reservation_ledger"
+        }
+      },
+      {
+        "stage": "risk",
+        "rule_id": "monthly_claims",
+        "status": "PASS",
+        "policy_ref": "fraud_thresholds.monthly_claims_limit",
+        "evidence": {
+          "monthly_claim_count_including_current": 1,
+          "limit": 6,
+          "month": "2024-11",
+          "history_source": "atomic_benefit_reservation_ledger"
+        }
+      },
+      {
+        "stage": "risk",
+        "rule_id": "high_value_claim",
+        "status": "PASS",
+        "policy_ref": "fraud_thresholds.high_value_claim_threshold",
+        "evidence": {
+          "claimed_amount_paise": 120000,
+          "threshold_paise": 2500000
+        },
+        "details": "Single-claim marker; routing is by auto_manual_review_above (FRAUD_THRESHOLD_ROLES)."
+      },
+      {
+        "stage": "risk",
+        "rule_id": "auto_manual_review_amount",
+        "status": "PASS",
+        "policy_ref": "fraud_thresholds.auto_manual_review_above",
+        "evidence": {
+          "claimed_amount_paise": 120000,
+          "threshold_paise": 2500000
+        }
+      },
+      {
+        "stage": "risk",
+        "rule_id": "fraud_score",
+        "status": "NOT_EVALUATED",
+        "policy_ref": "fraud_thresholds.fraud_score_manual_review_threshold",
+        "evidence": {
+          "score": null,
+          "threshold": 0.8
+        }
+      },
+      {
+        "stage": "optional_risk_enrichment",
+        "rule_id": "risk_enrichment",
+        "status": "PASS",
+        "degraded": false,
+        "evidence": [
+          {
+            "signal": "trailing_30_day_value",
+            "status": "PASS",
+            "evidence": {
+              "claims_in_window": 1,
+              "value_paise": 120000,
+              "threshold_paise": 2500000,
+              "window": [
+                "2024-10-04",
+                "2024-11-03"
+              ]
+            },
+            "policy_ref": "fraud_thresholds.high_value_claim_threshold"
+          },
+          {
+            "signal": "repeat_billing",
+            "status": "PASS",
+            "evidence": {
+              "matching_claims": [],
+              "provider": "smile dental care",
+              "amount_paise": 120000
+            }
+          }
+        ]
+      },
+      {
+        "stage": "policy",
+        "rule_id": "advisory_document",
+        "status": "ADVISORY",
+        "policy_ref": "opd_categories.dental.requires_dental_report",
+        "evidence": {
+          "document": "DENTAL_REPORT",
+          "present": false,
+          "interpretation": "DENTAL_REPORT_CONFLICT.DENTAL"
+        },
+        "details": "The category flag and the document matrix disagree; the matrix (optional) governs, so absence does not block."
+      },
+      {
+        "stage": "policy",
+        "rule_id": "per_claim_limit",
+        "status": "PASS",
+        "policy_ref": "opd_categories.dental.sub_limit",
+        "evidence": {
+          "claimed_amount": 1200,
+          "eligible_amount": 0,
+          "limit": 10000,
+          "global_per_claim_limit": 5000,
+          "category_sub_limit": 10000,
+          "limit_source": "opd_categories.dental.sub_limit",
+          "interpretation": "PER_CLAIM_CEILING_RULE"
+        }
+      },
+      {
+        "stage": "policy",
+        "rule_id": "network_hospital",
+        "status": "NOT_APPLICABLE",
+        "policy_ref": "network_hospitals",
+        "evidence": {
+          "hospital_name": "SMILE DENTAL CARE",
+          "match": null,
+          "match_rule": "exact_or_branch_suffix",
+          "discount_percent": 0
+        }
+      },
+      {
+        "stage": "policy",
+        "rule_id": "generic_medicine_requirement",
+        "status": "PASS",
+        "policy_ref": "opd_categories.dental.generic_mandatory",
+        "evidence": {
+          "generic_mandatory": false,
+          "branded_lines": []
+        }
+      },
+      {
+        "stage": "pricing",
+        "rule_id": "payable_amount",
+        "status": "CALCULATED",
+        "evidence": {
+          "eligible_paise": 0,
+          "network_hospital": false,
+          "network_discount_paise": 0,
+          "copay_paise": 0,
+          "branded_basis_paise": 0,
+          "branded_copay_paise": 0,
+          "payable_paise": 0
+        },
+        "details": "Network discount applied before co-pay; benefit limits are applied to this net amount next."
+      },
+      {
+        "stage": "policy",
+        "rule_id": "category_sub_limit",
+        "status": "PASS",
+        "policy_ref": "opd_categories.dental.sub_limit",
+        "evidence": {
+          "sub_limit": 10000,
+          "period": "policy_year_per_member",
+          "service_scope": "all_eligible_lines",
+          "usage_key": "category_sub_limit_used",
+          "usage_basis": "exact: prior service benefit counted against this sub_limit",
+          "used": 0,
+          "remaining_before_claim": 10000,
+          "service_net_payable": 0,
+          "counted_against_sub_limit_paise": 0,
+          "net_payable_after": 0,
+          "interpretation": "CATEGORY_SUB_LIMIT_RULE"
+        }
+      },
+      {
+        "stage": "policy",
+        "rule_id": "annual_opd_limit",
+        "status": "PASS",
+        "policy_ref": "coverage.annual_opd_limit",
+        "evidence": {
+          "annual_limit": 50000,
+          "ytd_claims_amount": 0,
+          "ytd_source": "reserved_or_paid_benefit_ledger",
+          "remaining": 50000,
+          "net_payable_before_limit": 0
+        },
+        "details": "Applied to the net payable after discount and co-pay."
+      },
+      {
+        "stage": "policy",
+        "rule_id": "sum_insured",
+        "status": "PASS",
+        "policy_ref": "coverage.sum_insured_per_employee",
+        "evidence": {
+          "sum_insured_paise": 50000000,
+          "used_paise": 0,
+          "remaining_paise": 50000000,
+          "net_payable_before_limit_paise": 0
+        },
+        "details": "Aggregate limit on the net payable; applied only when utilisation is supplied with the claim."
+      },
+      {
+        "stage": "policy",
+        "rule_id": "family_floater_limit",
+        "status": "PASS",
+        "policy_ref": "coverage.family_floater.combined_limit",
+        "evidence": {
+          "enabled": true,
+          "combined_limit_paise": 15000000,
+          "used_paise": 0,
+          "remaining_paise": 15000000,
+          "net_payable_before_limit_paise": 0
+        },
+        "details": "Aggregate limit on the net payable; applied only when family utilisation is supplied with the claim."
+      },
+      {
+        "stage": "confidence",
+        "rule_id": "confidence_rubric",
+        "status": "PASS",
+        "evidence": {
+          "base": 0.96,
+          "outcome_classes": [
+            "amount_dependent_rejection",
+            "rejection"
+          ],
+          "factors": [
+            {
+              "reason": "advisory_document_absent",
+              "points": 0.03,
+              "applies_to": [
+                "payable"
+              ],
+              "document": "DENTAL_REPORT",
+              "applied": false
+            }
+          ],
+          "score": 0.96
+        },
+        "details": "Heuristic evidence-completeness rubric, not a calibrated probability. The base score is reduced only by unknowns and degradations that are material to the outcome reached: an unknown is material when resolving it could change that outcome or its amount."
+      },
+      {
+        "stage": "decision",
+        "rule_id": "outcome",
+        "status": "REJECTED",
+        "evidence": {
+          "primary_reason": "NO_PAYABLE_AMOUNT",
+          "review_reasons": [],
+          "approved_amount_paise": 0,
+          "post_decision_review_recommended": false
+        }
+      }
+    ],
+    "ledger": [
+      {
+        "kind": "line_item",
+        "description": "Teeth Whitening - Cosmetic",
+        "source_document": "UPLOAD-1",
+        "amount_paise": 120000,
+        "amount": 1200,
+        "status": "EXCLUDED",
+        "reason_code": "EXCLUDED_PROCEDURE",
+        "reason": "Excluded under the policy: Teeth whitening.",
+        "itemized": true,
+        "exclusion_matches": [
+          {
+            "exclusion_id": "DENTAL:teeth_whitening",
+            "label": "Teeth whitening",
+            "matched_terms": [
+              {
+                "text": "teeth whitening",
+                "provenance": "policy_text"
+              },
+              {
+                "text": "whitening",
+                "provenance": "policy_text"
+              }
+            ],
+            "qualifier": null,
+            "policy_text_match": true,
+            "source_paths": [
+              "exclusions.dental_exclusions[0]",
+              "opd_categories.dental.excluded_procedures[0]"
+            ]
+          },
+          {
+            "exclusion_id": "DENTAL:cosmetic_dental_procedures",
+            "label": "Cosmetic dental procedures",
+            "matched_terms": [
+              {
+                "text": "cosmetic",
+                "provenance": "policy_text"
+              }
+            ],
+            "qualifier": null,
+            "policy_text_match": true,
+            "source_paths": [
+              "exclusions.dental_exclusions[2]"
+            ]
+          }
+        ],
+        "covered_item": null,
+        "brand_status": null,
+        "brand_evidence": null,
+        "policy_ref": "exclusions.dental_exclusions[0]"
+      },
+      {
+        "kind": "adjustment",
+        "description": "Network discount",
+        "amount_paise": 0,
+        "amount": 0,
+        "policy_ref": "opd_categories.dental.network_discount_percent",
+        "basis_paise": 0,
+        "percent": 0
+      },
+      {
+        "kind": "adjustment",
+        "description": "Member co-pay",
+        "amount_paise": 0,
+        "amount": 0,
+        "policy_ref": "opd_categories.dental.copay_percent",
+        "basis_paise": 0,
+        "percent": 0
+      }
+    ],
+    "provider": "SMILE DENTAL CARE",
+    "document_metrics": {
+      "files": 1,
+      "pages": 1,
+      "provider_calls": 2,
+      "provider_failures": 0,
+      "sarvam_digitise_calls": 1,
+      "sarvam_digitise_pages": 1,
+      "sarvam_extract_calls": 1,
+      "sarvam_extract_pages": 1,
+      "gemini": {
+        "status": "DISABLED",
+        "calls": 0,
+        "pages": 0
+      }
+    }
+  },
+  "error_message": null,
+  "documents": [
+    {
+      "id": "c15be03d8be042268b1d201de7781710",
+      "original_name": "rejected_receipt.pdf",
+      "media_type": "application/pdf",
+      "size_bytes": 71165,
+      "sha256": "88c0b2c29bc431211039532cd82579ab9cdc5359c64bda966656716f75fee366"
+    }
+  ],
+  "events": [
+    {
+      "occurred_at": "2026-09-27T11:58:21.710335+00:00",
+      "stage": "QUEUED",
+      "detail": {
+        "file_count": 1
+      }
+    },
+    {
+      "occurred_at": "2026-09-27T11:58:21.710355+00:00",
+      "stage": "DEMO_CLOCK",
+      "detail": {
+        "source": "PLUM_DEMO_CLOCK",
+        "value": "2024-11-05",
+        "submission_date": "2024-11-05"
+      }
+    },
+    {
+      "occurred_at": "2026-09-27T11:58:21.711702+00:00",
+      "stage": "PROCESSING",
+      "detail": {
+        "message": "Checking submitted documents"
+      }
+    },
+    {
+      "occurred_at": "2026-09-27T11:58:32.407954+00:00",
+      "stage": "DECIDED",
+      "detail": {
+        "decision": "REJECTED",
+        "benefit_reservation": "NONE"
+      }
+    }
+  ],
+  "benefit_reservation": null,
+  "reviewer_actions": [],
+  "settlement_events": []
+}

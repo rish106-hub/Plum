@@ -1,0 +1,58 @@
+{
+  "schema": "plum.live_ocr_outcome_benchmark.v1",
+  "documents_are_synthetic": true,
+  "pdfs_are_image_only": true,
+  "scenarios": [
+    {
+      "name": "approved",
+      "member_id": "EMP001",
+      "member_name": "Rajesh Kumar",
+      "category": "CONSULTATION",
+      "treatment_date": "2024-11-01",
+      "claimed_amount": "1500",
+      "documents": [
+        "approved_prescription.pdf",
+        "approved_receipt.pdf"
+      ],
+      "expected": "APPROVED"
+    },
+    {
+      "name": "doubtful",
+      "member_id": "EMP002",
+      "member_name": "Priya Singh",
+      "category": "CONSULTATION",
+      "treatment_date": "2024-11-02",
+      "claimed_amount": "900",
+      "documents": [
+        "doubtful_prescription.pdf",
+        "doubtful_receipt.pdf"
+      ],
+      "expected": "SAFE_HOLD"
+    },
+    {
+      "name": "rejected",
+      "member_id": "EMP003",
+      "member_name": "Amit Verma",
+      "category": "DENTAL",
+      "treatment_date": "2024-11-03",
+      "claimed_amount": "1200",
+      "documents": [
+        "rejected_receipt.pdf"
+      ],
+      "expected": "REJECTED"
+    },
+    {
+      "name": "human_review",
+      "member_id": "EMP004",
+      "member_name": "Sneha Reddy",
+      "category": "CONSULTATION",
+      "treatment_date": "2024-11-04",
+      "claimed_amount": "1000",
+      "documents": [
+        "human_review_prescription.pdf",
+        "human_review_receipt.pdf"
+      ],
+      "expected": "MANUAL_REVIEW"
+    }
+  ]
+}

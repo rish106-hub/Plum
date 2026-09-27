@@ -118,6 +118,15 @@ def test_loose_bill_parser_rejects_address_like_bare_integer() -> None:
     assert "line_items" not in content
 
 
+def test_html_table_scalar_does_not_leak_markup_into_diagnosis() -> None:
+    content, _ = _text_content(
+        '<table><tr><td>Diagnosis:</td><td>Viral Fever</td></tr></table>',
+        "PRESCRIPTION",
+    )
+
+    assert content["diagnosis"] == "Viral Fever"
+
+
 def test_bill_table_accepts_common_indian_header_variants_and_reconciles_adjustments() -> None:
     text = """HOSPITAL BILL
 Patient: Rajesh Kumar

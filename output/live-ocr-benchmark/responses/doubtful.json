@@ -1,0 +1,161 @@
+{
+  "id": "4d61038d948a472db7593af5338dc42e",
+  "created_at": "2026-09-27T11:58:05.312759+00:00",
+  "updated_at": "2026-09-27T11:58:19.540585+00:00",
+  "state": "DOCUMENT_CORRECTION_REQUIRED",
+  "request": {
+    "member_id": "EMP002",
+    "policy_id": "PLUM_GHI_2024",
+    "policy_canonical_sha256": "d07403592834f8d1011398ac62607c5c423a3da4ab2aa1ea347b8554394a34e4",
+    "claim_category": "CONSULTATION",
+    "treatment_date": "2024-11-02",
+    "claimed_amount": 900,
+    "submitted_at": "2024-11-05T00:00:00+00:00",
+    "submission_date": "2024-11-05",
+    "submission_timezone": "Asia/Kolkata",
+    "submission_clock": {
+      "source": "PLUM_DEMO_CLOCK",
+      "value": "2024-11-05",
+      "applied_at": "2024-11-05T00:00:00+00:00",
+      "submission_date": "2024-11-05",
+      "environment": "development"
+    }
+  },
+  "result": {
+    "state": "DOCUMENT_CORRECTION_REQUIRED",
+    "decision": null,
+    "approved_amount": null,
+    "approved_amount_paise": null,
+    "reasons": [
+      {
+        "code": "UNIDENTIFIED_DOCUMENT",
+        "message": "Could not identify doubtful_receipt.pdf as a medical document. Upload a clear photo or PDF showing the document heading.",
+        "file_name": "doubtful_receipt.pdf",
+        "required_type": null
+      },
+      {
+        "code": "MISSING_DOCUMENT",
+        "message": "doubtful_prescription.pdf is a prescription; this consultation claim needs a hospital or clinic bill. Upload that document.",
+        "file_name": "doubtful_prescription.pdf",
+        "required_type": "HOSPITAL_BILL"
+      }
+    ],
+    "correction_requests": [
+      {
+        "code": "UNIDENTIFIED_DOCUMENT",
+        "message": "Could not identify doubtful_receipt.pdf as a medical document. Upload a clear photo or PDF showing the document heading.",
+        "file_name": "doubtful_receipt.pdf",
+        "required_type": null
+      },
+      {
+        "code": "MISSING_DOCUMENT",
+        "message": "doubtful_prescription.pdf is a prescription; this consultation claim needs a hospital or clinic bill. Upload that document.",
+        "file_name": "doubtful_prescription.pdf",
+        "required_type": "HOSPITAL_BILL"
+      }
+    ],
+    "confidence_score": null,
+    "ledger": [],
+    "trace": [
+      {
+        "stage": "clock",
+        "rule_id": "demo_clock",
+        "status": "OVERRIDDEN",
+        "evidence": {
+          "source": "PLUM_DEMO_CLOCK",
+          "value": "2024-11-05",
+          "submission_date": "2024-11-05",
+          "environment": "development"
+        },
+        "details": "Submission date came from the development/test demo clock, not the real clock. This decision is not a production adjudication."
+      },
+      {
+        "stage": "document_gate",
+        "status": "BLOCKED",
+        "rule_id": "UNIDENTIFIED_DOCUMENT",
+        "evidence": {
+          "file_name": "doubtful_receipt.pdf",
+          "required_type": null
+        },
+        "reason": "Could not identify doubtful_receipt.pdf as a medical document. Upload a clear photo or PDF showing the document heading."
+      },
+      {
+        "stage": "document_gate",
+        "status": "BLOCKED",
+        "rule_id": "MISSING_DOCUMENT",
+        "evidence": {
+          "file_name": "doubtful_prescription.pdf",
+          "required_type": "HOSPITAL_BILL"
+        },
+        "reason": "doubtful_prescription.pdf is a prescription; this consultation claim needs a hospital or clinic bill. Upload that document."
+      }
+    ],
+    "metrics": {
+      "files": 2,
+      "pages": 2,
+      "provider_calls": 3,
+      "provider_failures": 0,
+      "sarvam_digitise_calls": 2,
+      "sarvam_digitise_pages": 2,
+      "sarvam_extract_calls": 1,
+      "sarvam_extract_pages": 1,
+      "gemini": {
+        "status": "DISABLED",
+        "calls": 0,
+        "pages": 0
+      }
+    }
+  },
+  "error_message": null,
+  "documents": [
+    {
+      "id": "476cd5c35bb4453ebdadd31a4548ece2",
+      "original_name": "doubtful_prescription.pdf",
+      "media_type": "application/pdf",
+      "size_bytes": 98662,
+      "sha256": "ef40ab75dfdab1049339747a7774757f86c7e36a495c424fd301953e08ab2c64"
+    },
+    {
+      "id": "e782905c843843659f07c5ec57e67e7b",
+      "original_name": "doubtful_receipt.pdf",
+      "media_type": "application/pdf",
+      "size_bytes": 64753,
+      "sha256": "2af46397372c686e16967296a8877e92d30108452a48a684787b67f211955442"
+    }
+  ],
+  "events": [
+    {
+      "occurred_at": "2026-09-27T11:58:05.314050+00:00",
+      "stage": "QUEUED",
+      "detail": {
+        "file_count": 2
+      }
+    },
+    {
+      "occurred_at": "2026-09-27T11:58:05.314070+00:00",
+      "stage": "DEMO_CLOCK",
+      "detail": {
+        "source": "PLUM_DEMO_CLOCK",
+        "value": "2024-11-05",
+        "submission_date": "2024-11-05"
+      }
+    },
+    {
+      "occurred_at": "2026-09-27T11:58:05.315210+00:00",
+      "stage": "PROCESSING",
+      "detail": {
+        "message": "Checking submitted documents"
+      }
+    },
+    {
+      "occurred_at": "2026-09-27T11:58:19.540778+00:00",
+      "stage": "DOCUMENT_CORRECTION_REQUIRED",
+      "detail": {
+        "issue_count": 2
+      }
+    }
+  ],
+  "benefit_reservation": null,
+  "reviewer_actions": [],
+  "settlement_events": []
+}

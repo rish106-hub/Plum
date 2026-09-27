@@ -1,0 +1,62 @@
+INFO:     Started server process [92569]
+INFO:     Waiting for application startup.
+DEMO CLOCK ACTIVE: claims are stamped with submission time 2024-11-05T00:00:00+00:00 from PLUM_DEMO_CLOCK (PLUM_ENV=development). Every affected claim records this in its decision trace.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8011 (Press CTRL+C to quit)
+INFO:     127.0.0.1:61788 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "POST /api/claims HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:61790 - "GET /api/claims/7f0d0e3483a24c33bcfe37a895e78318 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/7f0d0e3483a24c33bcfe37a895e78318 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/7f0d0e3483a24c33bcfe37a895e78318 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/7f0d0e3483a24c33bcfe37a895e78318 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/7f0d0e3483a24c33bcfe37a895e78318 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/7f0d0e3483a24c33bcfe37a895e78318 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/7f0d0e3483a24c33bcfe37a895e78318 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/7f0d0e3483a24c33bcfe37a895e78318 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/7f0d0e3483a24c33bcfe37a895e78318 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/7f0d0e3483a24c33bcfe37a895e78318 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/7f0d0e3483a24c33bcfe37a895e78318 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61799 - "GET /claims/7f0d0e3483a24c33bcfe37a895e78318 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61800 - "GET /static/app.js?v=20260926 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61799 - "GET /static/styles.css?v=20260926 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61799 - "GET /api/claims/7f0d0e3483a24c33bcfe37a895e78318 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "POST /api/claims HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:61790 - "GET /api/claims/2d64d7ccce3c4c4c8f8abf07689a6b90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/2d64d7ccce3c4c4c8f8abf07689a6b90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/2d64d7ccce3c4c4c8f8abf07689a6b90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/2d64d7ccce3c4c4c8f8abf07689a6b90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/2d64d7ccce3c4c4c8f8abf07689a6b90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/2d64d7ccce3c4c4c8f8abf07689a6b90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/2d64d7ccce3c4c4c8f8abf07689a6b90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/2d64d7ccce3c4c4c8f8abf07689a6b90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/2d64d7ccce3c4c4c8f8abf07689a6b90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/2d64d7ccce3c4c4c8f8abf07689a6b90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61807 - "GET /claims/2d64d7ccce3c4c4c8f8abf07689a6b90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61807 - "GET /api/claims/2d64d7ccce3c4c4c8f8abf07689a6b90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "POST /api/claims HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:61790 - "GET /api/claims/71bc3fd1194644b6a3ce923283a775be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/71bc3fd1194644b6a3ce923283a775be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/71bc3fd1194644b6a3ce923283a775be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/71bc3fd1194644b6a3ce923283a775be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/71bc3fd1194644b6a3ce923283a775be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61810 - "GET /claims/71bc3fd1194644b6a3ce923283a775be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61810 - "GET /api/claims/71bc3fd1194644b6a3ce923283a775be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "POST /api/claims HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:61790 - "GET /api/claims/9620c2e9467648d3b9332fabb98aeded HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/9620c2e9467648d3b9332fabb98aeded HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/9620c2e9467648d3b9332fabb98aeded HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/9620c2e9467648d3b9332fabb98aeded HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/9620c2e9467648d3b9332fabb98aeded HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/9620c2e9467648d3b9332fabb98aeded HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/9620c2e9467648d3b9332fabb98aeded HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/9620c2e9467648d3b9332fabb98aeded HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/9620c2e9467648d3b9332fabb98aeded HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/9620c2e9467648d3b9332fabb98aeded HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/9620c2e9467648d3b9332fabb98aeded HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61790 - "GET /api/claims/9620c2e9467648d3b9332fabb98aeded HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61819 - "GET /claims/9620c2e9467648d3b9332fabb98aeded HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61819 - "GET /api/claims/9620c2e9467648d3b9332fabb98aeded HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [92569]
