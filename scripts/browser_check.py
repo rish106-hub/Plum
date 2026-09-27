@@ -13,8 +13,8 @@ Start the server with a new ``PLUM_DATA_DIR`` for this deterministic scenario:
       PLUM_REVIEW_TOKEN=local-review-token \
       .venv/bin/python -m uvicorn claims.web:app
 
-The workflow deliberately creates repeat submissions to exercise duplicate and
-review handling, so an existing demo database can make the first approval
+The workflow deliberately creates repeat submissions to exercise both cleared
+and confirmed duplicate findings, so an existing demo database can make the first approval
 scenario fail the same-day-claims fraud threshold.
 """
 
@@ -118,6 +118,8 @@ def main() -> None:
         duplicate = _fill(page, [rx, bill])
         assert duplicate["result"]["decision"] == "MANUAL_REVIEW", duplicate["result"]
         assert duplicate["result"]["reasons"][0]["code"] == "DUPLICATE_BILL"
+        duplicate_issue = next(issue for issue in duplicate["result"]["review_issues"] if issue["code"] == "DUPLICATE_BILL")
+        assert {"FALSE_POSITIVE", "CONFIRMED_DUPLICATE"} <= set(duplicate_issue["allowed_findings"])
         assert page.locator("#result-content").is_visible()
         assert page.locator("#escalation-panel").is_visible()
         assert "identical bill" in page.locator("#escalation-reason").inner_text().lower()
@@ -127,18 +129,37 @@ def main() -> None:
         page.screenshot(path=str(SCREENSHOTS / "duplicate-review.png"), full_page=True)
 
         page.goto(f"{BASE_URL}/ops", wait_until="networkidle")
-        page.locator(".worklist-row").filter(has_text="MANUAL REVIEW").click()
+        page.locator(f'.worklist-row[data-claim-id="{duplicate["id"]}"]').click()
         page.locator("#ops-review-form").wait_for(state="visible")
-        page.locator("#ops-review-decision").select_option("REJECTED")
-        page.locator("#ops-review-amount").fill("0")
+        assert page.locator("#ops-review-amount").count() == 0
+        page.locator("#ops-review-issue").select_option(duplicate_issue["issue_id"])
+        page.locator("#ops-review-finding").select_option("FALSE_POSITIVE")
+        page.locator("#ops-review-reason-code").fill("DUPLICATE_FALSE_POSITIVE")
+        page.locator("#ops-review-reason-text").fill("The two submissions are separate consultations supported by the source records.")
+        page.locator("#ops-review-evidence").fill("Compared the bill hash, bill number, amount, date, and prior claim trace.")
+        page.locator("#ops-review-form button[type='submit']").click()
+        page.locator("#ops-review-action").wait_for(state="hidden")
+        cleared = page.request.get(f"{BASE_URL}/api/claims/{duplicate['id']}").json()
+        assert cleared["state"] == "DECIDED", cleared
+        assert cleared["result"]["decision"] in {"APPROVED", "PARTIAL"}, cleared["result"]
+
+        confirmed_duplicate = _fill(page, [rx, bill])
+        assert confirmed_duplicate["result"]["decision"] == "MANUAL_REVIEW", confirmed_duplicate["result"]
+        confirmed_issue = next(issue for issue in confirmed_duplicate["result"]["review_issues"] if issue["code"] == "DUPLICATE_BILL")
+        page.goto(f"{BASE_URL}/ops", wait_until="networkidle")
+        page.locator(f'.worklist-row[data-claim-id="{confirmed_duplicate["id"]}"]').click()
+        page.locator("#ops-review-form").wait_for(state="visible")
+        page.locator("#ops-review-issue").select_option(confirmed_issue["issue_id"])
+        page.locator("#ops-review-finding").select_option("CONFIRMED_DUPLICATE")
         page.locator("#ops-review-reason-code").fill("DUPLICATE_CONFIRMED")
         page.locator("#ops-review-reason-text").fill("The submitted bill duplicates an earlier paid claim.")
         page.locator("#ops-review-evidence").fill("Compared the bill hash, bill number, amount, date, and prior claim trace.")
         page.locator("#ops-review-form button[type='submit']").click()
         page.locator("#ops-review-action").wait_for(state="hidden")
-        reviewed = page.request.get(f"{BASE_URL}/api/claims/{duplicate['id']}").json()
-        assert reviewed["state"] == "DECIDED"
+        reviewed = page.request.get(f"{BASE_URL}/api/claims/{confirmed_duplicate['id']}").json()
+        assert reviewed["state"] == "DECIDED", reviewed
         assert reviewed["result"]["decision"] == "REJECTED"
+        assert reviewed["result"]["approved_amount"] == 0
 
         assert not errors, errors
         browser.close()
@@ -149,7 +170,8 @@ def main() -> None:
                 "approval": {"id": approval["id"], "decision": approval["result"]["decision"], "approved_amount": approval["result"]["approved_amount"], "submission_date": approval["request"]["submission_date"], "clock": approval["result"]["trace"][0]["evidence"]},
                 "correction": {"id": correction["id"], "decision": correction["result"]["decision"], "state": correction["state"]},
                 "duplicate_bill": {"id": duplicate["id"], "decision": duplicate["result"]["decision"], "reason": duplicate["result"]["reasons"][0]["code"]},
-                "reviewer_disposition": {"id": reviewed["id"], "decision": reviewed["result"]["decision"]},
+                "reviewer_false_positive": {"id": cleared["id"], "decision": cleared["result"]["decision"]},
+                "reviewer_confirmed_duplicate": {"id": reviewed["id"], "decision": reviewed["result"]["decision"]},
                 "browser_errors": errors,
             },
             indent=2,

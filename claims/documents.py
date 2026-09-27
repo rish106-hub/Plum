@@ -296,6 +296,8 @@ def _text_content(text: str, kind: str) -> tuple[dict[str, Any], list[dict[str, 
                 return
 
     field("patient_name", r"(?:patient(?:\s+name)?|name\s+of\s+patient)\s*[:\-]\s*([A-Za-z][A-Za-z .'-]{2,70}?)(?=\s{2,}|\s+Date\s*:|\s+Age\s*:|$)")
+    field("patient_age", r"\b(?:patient\s+)?age\s*[:\-]\s*([0-9]{1,3}(?:\s*(?:years?|yrs?|months?|mos?))?)")
+    field("patient_gender", r"\b(?:gender|sex)\s*[:\-]\s*(male|female|other|m|f)\b")
     field("doctor_name", r"\b(Dr\.?\s+[A-Za-z][A-Za-z .'-]{2,65})(?=\s{2,}|\s+Reg\.?|\s+MBBS|$)")
     field("doctor_registration", r"\b((?:AYUR/)?(?:KA|MH|DL|TN|GJ|AP|UP|WB|KL)/\d{4,6}/\d{4})\b")
     field("doctor_specialization", r"\b(?:MBBS|MD|MS)\s*\(?([A-Za-z][A-Za-z ]{2,50})\)?")
@@ -316,10 +318,26 @@ def _text_content(text: str, kind: str) -> tuple[dict[str, Any], list[dict[str, 
     )
     field("gstin", r"\bGSTIN\s*[:\-]?\s*([A-Z0-9]{10,20})")
     field("drug_license_number", r"\bdrug\s+lic(?:en[cs]e)?\s*(?:no\.?|number|#)?\s*[:\-]?\s*([\w/-]{3,50})")
+    if kind == "PRESCRIPTION":
+        for output_field, label in (("medicines", r"medicines?|medications?"), ("tests_ordered", r"investigations?|tests?\s+ordered")):
+            for page_line in lines:
+                match = re.search(rf"\b(?:{label})\s*[:\-]\s*(.{{3,300}})", page_line, re.IGNORECASE)
+                if match:
+                    values = [value.strip(" .") for value in re.split(r"\s*(?:,|;|\band\b)\s*", match.group(1), flags=re.IGNORECASE) if value.strip(" .")]
+                    if values:
+                        content[output_field] = values
+                        evidence.append({"field": output_field, "source": "pdf_text", "snippet": page_line[:180], "confidence": 0.85})
+                    break
     if kind in {"HOSPITAL_BILL", "PHARMACY_BILL"}:
         field("subtotal", r"\bsub\s*-?\s*total\s*[:₹Rs. ]+([\d,]+(?:\.\d{1,2})?)", _amount)
         field("discount", r"\b(?:discount|less)\s*[:₹Rs. -]+([\d,]+(?:\.\d{1,2})?)", _amount)
-        field("gst_amount", r"\b(?:gst|cgst|sgst|igst|tax)(?:\s*@\s*\d+(?:\.\d+)?%?)?\s*[:₹Rs. ]+([\d,]+(?:\.\d{1,2})?)", _amount)
+        # A printed GST total takes precedence over its split Indian tax
+        # components. Keep the components as evidence, but never add both the
+        # combined total and CGST/SGST/IGST during reconciliation.
+        field("gst_amount", r"\b(?:gst|total\s+gst|total\s+tax|tax)\b(?:\s*@\s*\d+(?:\.\d+)?%?)?\s*[:₹Rs. ]+([\d,]+(?:\.\d{1,2})?)", _amount)
+        field("cgst_amount", r"\bcgst\b(?:\s*@\s*\d+(?:\.\d+)?%?)?\s*[:₹Rs. ]+([\d,]+(?:\.\d{1,2})?)", _amount)
+        field("sgst_amount", r"\bsgst\b(?:\s*@\s*\d+(?:\.\d+)?%?)?\s*[:₹Rs. ]+([\d,]+(?:\.\d{1,2})?)", _amount)
+        field("igst_amount", r"\bigst\b(?:\s*@\s*\d+(?:\.\d+)?%?)?\s*[:₹Rs. ]+([\d,]+(?:\.\d{1,2})?)", _amount)
         field("round_off", r"\bround\s*-?\s*off\s*[:₹Rs. ]*([+-]?[\d,]+(?:\.\d{1,2})?)", _amount, " :;,")
         field("total", r"\b(?:final\s+total(?:\s+amount)?|grand\s+total|net\s+amount|total\s+amount)\s*[:₹Rs. ]+([\d,]+(?:\.\d{1,2})?)", _amount)
         if "total" not in content:
@@ -327,7 +345,7 @@ def _text_content(text: str, kind: str) -> tuple[dict[str, Any], list[dict[str, 
         items = _html_table_line_items(text)
         if not items:
             for line in lines:
-                if "<table" in line.casefold() or re.search(r"\b(?:total|subtotal|discount|gst|tax|date|bill\s*no)\b", line, re.IGNORECASE):
+                if "<table" in line.casefold() or re.search(r"\b(?:total|subtotal|discount|(?:c|s|i)?gst|tax|date|bill\s*no)\b", line, re.IGNORECASE):
                     continue
                 item = _loose_line_item(line)
                 if item is not None:
@@ -347,16 +365,6 @@ def _amount(value: str) -> float | None:
         return None
 
 
-def _reconciles_line_items(items: Any, total: Any) -> bool:
-    """Return true only when typed item amounts equal a typed bill total exactly."""
-    if not isinstance(items, list) or not items or total is None:
-        return False
-    try:
-        return sum(to_paise(item.get("amount")) for item in items if isinstance(item, dict)) == to_paise(total)
-    except (InvalidOperation, TypeError, ValueError):
-        return False
-
-
 def _reconciles_bill_arithmetic(fields: dict[str, Any]) -> bool:
     """Reconcile itemized bill arithmetic, including printed tax and reductions.
 
@@ -371,7 +379,13 @@ def _reconciles_bill_arithmetic(fields: dict[str, Any]) -> bool:
         item_total = sum(to_paise(item.get("amount")) for item in items if isinstance(item, dict))
         if "subtotal" in fields and to_paise(fields["subtotal"]) != item_total:
             return False
-        adjustments = to_paise(fields.get("gst_amount", 0)) - to_paise(fields.get("discount", 0))
+        combined_tax = to_paise(fields.get("gst_amount", 0))
+        split_tax = sum(to_paise(fields.get(component, 0)) for component in ("cgst_amount", "sgst_amount", "igst_amount"))
+        # Structured providers use zero for an absent optional number. Treat a
+        # non-zero printed combined GST as authoritative; otherwise use the
+        # split components. This also leaves genuinely zero-rated bills at zero.
+        tax = combined_tax if combined_tax else split_tax
+        adjustments = tax - to_paise(fields.get("discount", 0))
         adjustments += to_paise(fields.get("round_off", 0), allow_negative=True)
         return item_total + adjustments == to_paise(total)
     except (InvalidOperation, TypeError, ValueError):
@@ -529,6 +543,8 @@ class SarvamDocumentProvider:
             "type": "object",
             "properties": {
                 "patient_name": {"type": "string", "description": "Patient name exactly as printed on the document; empty if unreadable"},
+                "patient_age": {"type": "string", "description": "Patient age exactly as printed, including its unit when shown; empty if absent"},
+                "patient_gender": {"type": "string", "description": "Patient gender or sex exactly as printed; empty if absent"},
                 "doctor_name": {"type": "string", "description": "Treating doctor name exactly as printed; empty if absent"},
                 "doctor_registration": {"type": "string", "description": "Doctor registration number exactly as printed; empty if absent"},
                 "doctor_specialization": {"type": "string", "description": "Doctor specialization exactly as printed; empty if absent"},
@@ -546,8 +562,13 @@ class SarvamDocumentProvider:
                 "pathologist_name": {"type": "string", "description": "Pathologist name exactly as printed; empty if absent"},
                 "pathologist_registration": {"type": "string", "description": "Pathologist registration exactly as printed; empty if absent"},
                 "drug_license_number": {"type": "string", "description": "Pharmacy drug licence number exactly as printed; empty if absent"},
+                "subtotal": {"type": "number", "description": "Bill subtotal before discounts, tax, and round-off in Indian rupees; 0 if absent"},
                 "discount": {"type": "number", "description": "Bill discount in Indian rupees; 0 if absent"},
-                "gst_amount": {"type": "number", "description": "GST amount in Indian rupees; 0 if absent"},
+                "gst_amount": {"type": "number", "description": "Combined or total GST amount in Indian rupees; 0 if no combined total is printed"},
+                "cgst_amount": {"type": "number", "description": "CGST amount in Indian rupees; 0 if absent"},
+                "sgst_amount": {"type": "number", "description": "SGST amount in Indian rupees; 0 if absent"},
+                "igst_amount": {"type": "number", "description": "IGST amount in Indian rupees; 0 if absent"},
+                "round_off": {"type": "number", "description": "Signed bill round-off adjustment in Indian rupees; 0 if absent"},
                 "alteration_detected": {"type": "boolean", "description": "True only when a crossed-out, overwritten, erased, or handwritten-corrected financial amount is visibly present"},
                 "crossed_out_amount": {"type": "boolean", "description": "True only when a financial amount is visibly crossed out"},
                 "handwritten_amount_correction": {"type": "boolean", "description": "True only when a financial amount has a visible handwritten correction"},
@@ -567,6 +588,17 @@ class SarvamDocumentProvider:
                             "reference_range": {"type": "string", "description": "Reference range exactly as printed"},
                         },
                     },
+                },
+                "test_name": {"type": "string", "description": "Primary test or investigation name exactly as printed; empty if absent"},
+                "tests_ordered": {
+                    "type": "array",
+                    "description": "Investigations or tests explicitly ordered on a prescription; empty if absent",
+                    "items": {"type": "string", "description": "One ordered test exactly as printed"},
+                },
+                "medicines": {
+                    "type": "array",
+                    "description": "Medicines explicitly prescribed, including strength, dosage, and duration when printed; empty if absent",
+                    "items": {"type": "string", "description": "One prescribed medicine exactly as printed"},
                 },
                 "total": {"type": "number", "description": "Final bill total in Indian rupees; 0 if absent or unreadable"},
                 "line_items": {
@@ -611,7 +643,7 @@ def _provider_result(value: Any) -> tuple[str, str, dict[str, Any], list[str]]:
     if quality not in {"GOOD", "PARTIAL", "UNREADABLE"}:
         quality = "PARTIAL"
     fields: dict[str, Any] = value["fields"] if isinstance(value.get("fields"), dict) else value
-    allowed = {"patient_name", "doctor_name", "doctor_registration", "doctor_specialization", "diagnosis", "treatment", "date", "sample_date", "report_date", "hospital_name", "provider_address", "total", "subtotal", "round_off", "approved_amount", "line_items", "test_name", "test_results", "medicines", "tests_ordered", "bill_number", "approval_reference", "gstin", "gst_amount", "nabl_status", "pathologist_name", "pathologist_registration", "drug_license_number", "discount", "alteration_detected", "crossed_out_amount", "handwritten_amount_correction", "duplicate_stamp_detected", "original_stamp_detected", "alteration_confidence"}
+    allowed = {"patient_name", "patient_age", "patient_gender", "doctor_name", "doctor_registration", "doctor_specialization", "diagnosis", "treatment", "date", "sample_date", "report_date", "hospital_name", "provider_address", "total", "subtotal", "round_off", "approved_amount", "line_items", "test_name", "test_results", "medicines", "tests_ordered", "bill_number", "approval_reference", "gstin", "gst_amount", "cgst_amount", "sgst_amount", "igst_amount", "nabl_status", "pathologist_name", "pathologist_registration", "drug_license_number", "discount", "alteration_detected", "crossed_out_amount", "handwritten_amount_correction", "duplicate_stamp_detected", "original_stamp_detected", "alteration_confidence"}
     content = {key: fields[key] for key in allowed if key in fields and fields[key] not in (None, "")}
     for flag in ("alteration_detected", "crossed_out_amount", "handwritten_amount_correction", "duplicate_stamp_detected", "original_stamp_detected"):
         if flag in content:
@@ -645,21 +677,52 @@ def _provider_result(value: Any) -> tuple[str, str, dict[str, Any], list[str]]:
                         brand_evidence = str(item.get("brand_evidence", ""))[:100]
                         if brand_status not in {"BRANDED", "GENERIC"} or not _evidence_in_text(description, brand_evidence):
                             brand_status, brand_evidence = "UNKNOWN", ""
-                        clean_items.append({"description": description, "amount": amount, "brand_status": brand_status, "brand_evidence": brand_evidence})
+                        clean_item = {"description": description, "amount": amount, "brand_status": brand_status, "brand_evidence": brand_evidence}
+                        for field in ("batch_number", "expiry"):
+                            if isinstance(item.get(field), str) and item[field].strip():
+                                clean_item[field] = item[field].strip()[:100]
+                        for field in ("quantity", "mrp"):
+                            number = _amount(str(item.get(field, "")))
+                            if number is not None and number >= 0:
+                                clean_item[field] = number
+                        clean_items.append(clean_item)
         content["line_items"] = clean_items
+    for field in ("medicines", "tests_ordered"):
+        if field in content:
+            content[field] = [str(item).strip()[:200] for item in content[field][:50] if isinstance(item, str) and item.strip()] if isinstance(content[field], list) else []
     warnings = value.get("warnings")
     return kind, quality, content, [str(w)[:200] for w in warnings[:10]] if isinstance(warnings, list) else []
 
 
+MATERIAL_FIELDS: dict[str, tuple[str, ...]] = {
+    "PRESCRIPTION": ("patient_name", "diagnosis"),
+    # Printed bill dates anchor both the treatment episode and duplicate checks.
+    "HOSPITAL_BILL": ("patient_name", "date", "total", "line_items"),
+    "PHARMACY_BILL": ("patient_name", "date", "total", "line_items"),
+    "LAB_REPORT": ("patient_name", "date", "test_name"),
+    "DIAGNOSTIC_REPORT": ("patient_name", "date", "test_name"),
+    "DENTAL_REPORT": ("patient_name", "date", "diagnosis"),
+}
+
+
+def _material_field_present(kind: str, field: str, content: dict[str, Any]) -> bool:
+    value = content.get(field)
+    if field == "total":
+        return value is not None and value != ""
+    return bool(value)
+
+
 def _needs_extract(kind: str, content: dict[str, Any]) -> bool:
+    if any(not _material_field_present(kind, field, content) for field in MATERIAL_FIELDS.get(kind, ())):
+        return True
     if kind in BILL_TYPES:
-        if "total" not in content or not content.get("line_items") or parse_document_date(content.get("date")) is None:
+        if parse_document_date(content.get("date")) is None:
             return True
         if kind == "PHARMACY_BILL" and any(item.get("brand_status") not in {"BRANDED", "GENERIC"} for item in content["line_items"]):
             return True
-        return abs(sum(item["amount"] for item in content["line_items"]) - content["total"]) > 1
+        return not _reconciles_bill_arithmetic(content)
     if kind == "PRESCRIPTION":
-        return "diagnosis" not in content
+        return not content.get("medicines") and not content.get("tests_ordered")
     return False
 
 
@@ -684,16 +747,6 @@ def revalidate_documents(
     requirements = policy.get("document_requirements", {}).get(claim_category, {})
     actual_good: set[str] = set()
     named: list[tuple[str, str]] = []
-    material_fields = {
-        "PRESCRIPTION": ("patient_name", "diagnosis"),
-        # A bill's printed date is mandatory: it anchors the treatment episode and
-        # the duplicate-bill fingerprint, so an undated bill is a member correction.
-        "HOSPITAL_BILL": ("patient_name", "date", "total", "line_items"),
-        "PHARMACY_BILL": ("patient_name", "date", "total", "line_items"),
-        "LAB_REPORT": ("patient_name", "date", "test_name"),
-        "DIAGNOSTIC_REPORT": ("patient_name", "date", "test_name"),
-        "DENTAL_REPORT": ("patient_name", "date", "diagnosis"),
-    }
     for doc in documents:
         kind = str(doc.get("actual_type") or "UNKNOWN").upper()
         quality = str(doc.get("quality") or "PARTIAL").upper()
@@ -707,10 +760,8 @@ def revalidate_documents(
             issues.append(_issue("PARTIAL_DOCUMENT", name, f"The {TYPE_NAMES.get(kind, 'document')} in {name} is partly unreadable. Re-upload the full page with names and amounts visible."))
         elif kind in VALID_TYPES:
             actual_good.add(kind)
-        for field in material_fields.get(kind, ()):
-            present = bool(fields.get(field))
-            if field == "total":
-                present = fields.get(field) is not None and fields.get(field) != ""
+        for field in MATERIAL_FIELDS.get(kind, ()):
+            present = _material_field_present(kind, field, fields)
             if field == "date" and present and kind in BILL_TYPES and parse_document_date(fields.get("date")) is None:
                 issues.append(_issue(
                     "MATERIAL_FIELD_UNVERIFIED", name,
@@ -1010,7 +1061,7 @@ def process_uploads(
                 merged_content = {**additional, **content}
                 extracted_total = additional.get("total")
                 local_total = content.get("total")
-                if kind in BILL_TYPES and _reconciles_line_items(additional.get("line_items"), extracted_total):
+                if kind in BILL_TYPES and _reconciles_bill_arithmetic(additional):
                     try:
                         if local_total is None or to_paise(local_total) == to_paise(extracted_total):
                             merged_content["line_items"] = additional["line_items"]
@@ -1043,7 +1094,7 @@ def process_uploads(
                         }
                         for local_item in content["line_items"]
                     ]
-                    if not _reconciles_line_items(merged_content.get("line_items"), merged_content.get("total")):
+                    if not _reconciles_bill_arithmetic(merged_content):
                         merged_content["line_items"] = local_items_with_brand_evidence
                 content = merged_content
                 warnings.extend(provider_warnings)

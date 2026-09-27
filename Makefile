@@ -2,7 +2,7 @@
 PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 export PYTHONPATH := $(CURDIR)
 
-.PHONY: verify verify-live test lint eval eval-documents eval-live samples demo
+.PHONY: verify verify-live test lint eval eval-documents eval-live samples browser-check demo
 
 ## Full offline verification: artifact hashes, ruff, mypy, pytest, evaluations, reports, summary.
 verify:
@@ -30,6 +30,10 @@ eval-live:
 
 samples:
 	$(PYTHON) -m tools.generate_samples
+
+## Run the real browser flow against a separately started development server.
+browser-check: samples
+	$(PYTHON) -m scripts.browser_check
 
 ## Local demo with the 2024 policy period replayed (development only; see docs/guides/local-runbook.md).
 demo:

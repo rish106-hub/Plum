@@ -325,6 +325,15 @@ def init_db() -> None:
         ):
             if name not in columns:
                 connection.execute(f"ALTER TABLE claims ADD COLUMN {name} {definition}")
+        action_columns = {row[1] for row in connection.execute("PRAGMA table_info(reviewer_actions)")}
+        for name, definition in (
+            ("issue_id", "TEXT"),
+            ("issue_code", "TEXT"),
+            ("evidence_digest", "TEXT"),
+            ("reviewer_finding", "TEXT"),
+        ):
+            if name not in action_columns:
+                connection.execute(f"ALTER TABLE reviewer_actions ADD COLUMN {name} {definition}")
         # These indexed fields make duplicate checks and member benefit history
         # a bounded lookup instead of reparsing every saved claim on each request.
         connection.execute("CREATE INDEX IF NOT EXISTS idx_claims_member_treatment ON claims(member_id, treatment_date, state)")
@@ -389,6 +398,7 @@ def _set_state_in_connection(
         row = connection.execute("SELECT request_json FROM claims WHERE id=?", (claim_id,)).fetchone()
         if row is not None:
             result = _with_clock_trace(json.loads(row["request_json"]), result)
+        result = _attach_review_issues(connection, claim_id, state, result)
     connection.execute(
             "UPDATE claims SET state=?, updated_at=?, result_json=?, error_message=?, decision=?, approved_amount_paise=?, "
             "adjudicated=COALESCE(?, adjudicated) WHERE id=?",
@@ -424,7 +434,8 @@ def _load_claim(claim_id: str) -> dict[str, Any] | None:
             (claim_id,),
         ).fetchone()
         reviewer_actions = connection.execute(
-            "SELECT occurred_at, reviewer_id, reason_code, reason_text, evidence_summary, before_json, after_json FROM reviewer_actions WHERE claim_id=? ORDER BY id",
+            "SELECT occurred_at, reviewer_id, reason_code, reason_text, evidence_summary, issue_id, issue_code, "
+            "evidence_digest, reviewer_finding, before_json, after_json FROM reviewer_actions WHERE claim_id=? ORDER BY id",
             (claim_id,),
         ).fetchall()
         settlement_events = connection.execute(
@@ -447,7 +458,7 @@ def _load_claim(claim_id: str) -> dict[str, Any] | None:
         "benefit_reservation": dict(reservation) if reservation else None,
         "reviewer_actions": [
             {
-                **{key: action[key] for key in ("occurred_at", "reviewer_id", "reason_code", "reason_text", "evidence_summary")},
+                **{key: action[key] for key in ("occurred_at", "reviewer_id", "reason_code", "reason_text", "evidence_summary", "issue_id", "issue_code", "evidence_digest", "reviewer_finding")},
                 "before": json.loads(action["before_json"]), "after": json.loads(action["after_json"]),
             }
             for action in reviewer_actions
@@ -701,6 +712,80 @@ def _provider_review_result(issues: list[dict[str, Any]], metrics: dict[str, Any
     }
 
 
+REVIEW_FINDINGS: dict[str, tuple[str, ...]] = {
+    "DUPLICATE_BILL": ("FALSE_POSITIVE", "CONFIRMED_DUPLICATE"),
+    "DUPLICATE_STAMP": ("VALID_ORIGINAL_CONFIRMED", "DUPLICATE_CONFIRMED"),
+    "DOCUMENT_ALTERATION": ("BENIGN_ANNOTATION", "FINANCIAL_AMOUNT_CHANGED", "REQUEST_ORIGINAL"),
+}
+DEFAULT_REVIEW_FINDINGS = ("REQUEST_ORIGINAL", "RETRY_PROCESSING")
+CLEARING_FINDINGS = {"FALSE_POSITIVE", "VALID_ORIGINAL_CONFIRMED", "BENIGN_ANNOTATION"}
+ADVERSE_FINDINGS = {"CONFIRMED_DUPLICATE", "DUPLICATE_CONFIRMED", "CONFIRMED_ADVERSE"}
+CORRECTION_FINDINGS = {"FINANCIAL_AMOUNT_CHANGED", "REQUEST_ORIGINAL"}
+
+
+def _review_issue_instances(
+    claim_id: str,
+    result: dict[str, Any],
+    connection: sqlite3.Connection | None = None,
+) -> list[dict[str, Any]]:
+    """Bind each review reason to the exact documents and evidence that produced it."""
+    close = connection is None
+    active = connection or _connect()
+    try:
+        documents = [
+            {"file_id": row["id"], "file_name": row["original_name"], "file_sha256": row["sha256"]}
+            for row in active.execute(
+                "SELECT id, original_name, sha256 FROM documents WHERE claim_id=? ORDER BY rowid", (claim_id,)
+            )
+        ]
+    finally:
+        if close:
+            active.close()
+    instances: list[dict[str, Any]] = []
+    for reason in result.get("reasons") or []:
+        code = str(reason.get("code") or "MANUAL_REVIEW").upper()
+        file_name = str(reason.get("file_name") or "")
+        relevant_documents = [item for item in documents if not file_name or item["file_name"] == file_name]
+        evidence = {
+            "code": code,
+            "message": str(reason.get("message") or ""),
+            "reason": reason,
+            "documents": relevant_documents or documents,
+        }
+        digest = hashlib.sha256(
+            json.dumps(evidence, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+        ).hexdigest()
+        issue_id = hashlib.sha256(f"{claim_id}:{code}:{digest}".encode("utf-8")).hexdigest()[:32]
+        instances.append({
+            "issue_id": issue_id,
+            "code": code,
+            "message": str(reason.get("message") or "Manual review is required."),
+            "evidence_digest": digest,
+            "allowed_findings": list(REVIEW_FINDINGS.get(code, DEFAULT_REVIEW_FINDINGS)),
+        })
+    return instances
+
+
+def _attach_review_issues(
+    connection: sqlite3.Connection, claim_id: str, state: str, result: dict[str, Any]
+) -> dict[str, Any]:
+    decorated = dict(result)
+    if state == "MANUAL_REVIEW" and result.get("decision") == "MANUAL_REVIEW":
+        decorated["review_issues"] = _review_issue_instances(claim_id, decorated, connection)
+    else:
+        decorated.pop("review_issues", None)
+    return decorated
+
+
+def _review_finding(claim_id: str, issue_id: str) -> str | None:
+    with _connect() as connection:
+        row = connection.execute(
+            "SELECT reviewer_finding FROM reviewer_actions WHERE claim_id=? AND issue_id=? ORDER BY id DESC LIMIT 1",
+            (claim_id, issue_id),
+        ).fetchone()
+    return str(row["reviewer_finding"]) if row and row["reviewer_finding"] else None
+
+
 def _document_risk_review_result(issues: list[dict[str, Any]], metrics: dict[str, Any]) -> dict[str, Any]:
     """Route possible alteration or duplicate stamps to an operator, never to automatic fraud rejection."""
     signals = [issue for issue in issues if issue.get("code") in {"DOCUMENT_ALTERATION", "DUPLICATE_STAMP"}]
@@ -713,6 +798,8 @@ def _document_risk_review_result(issues: list[dict[str, Any]], metrics: dict[str
             {
                 "code": str(issue["code"]),
                 "message": str(issue["message"]),
+                "file_name": issue.get("file_name"),
+                "signals": issue.get("signals", {}),
             }
             for issue in signals
         ],
@@ -976,7 +1063,12 @@ def _duplicate_review_result(hits: list[dict[str, Any]], metrics: dict[str, Any]
         "decision": "MANUAL_REVIEW",
         "approved_amount": 0,
         "approved_amount_paise": 0,
-        "reasons": [{"code": "DUPLICATE_BILL", "message": "Another paid or pending claim has an identical bill file, or a bill with the same bill number, amount, and printed date (or, without a readable date or bill number, the same provider, amount, and patient). Verify that the expense has not already been reimbursed."}],
+        "reasons": [{
+            "code": "DUPLICATE_BILL",
+            "message": "Another paid or pending claim has an identical bill file, or a bill with the same bill number, amount, and printed date (or, without a readable date or bill number, the same provider, amount, and patient). Verify that the expense has not already been reimbursed.",
+            "matching_claim_ids": prior_ids,
+            "match_types": sorted({hit["match_type"] for hit in hits}),
+        }],
         "correction_requests": [],
         "confidence_score": 0.2,
         "ledger": [],
@@ -1197,20 +1289,20 @@ def process_claim(claim_id: str) -> None:
         # Duplicate detection runs before the correction gate: a resubmitted bill that
         # was already paid must reach a reviewer, not be sent back for a fresh date.
         documents = inspection.get("documents", [])
-        confirmation = request_data.get("review_confirmation") if isinstance(request_data.get("review_confirmation"), dict) else {}
-        confirmed_codes = {str(code).upper() for code in confirmation.get("confirmed_issue_codes", [])}
         _save_bill_fingerprints(claim_id, _bill_fingerprints(documents))
         duplicate_hits = _duplicate_bill_hits(claim_id, documents)
-        if duplicate_hits and "DUPLICATE_BILL" not in confirmed_codes:
+        if duplicate_hits:
             result = _duplicate_review_result(duplicate_hits, inspection.get("metrics", {}))
             result["trace"].extend(gemini_trace)
-            _set_state(
-                claim_id,
-                "MANUAL_REVIEW",
-                result=result,
-                detail={"duplicate_bill_match_count": len({cid for hit in duplicate_hits for cid in hit["previous_claim_ids"]})},
-            )
-            return
+            issue = _review_issue_instances(claim_id, result)[0]
+            if _review_finding(claim_id, issue["issue_id"]) != "FALSE_POSITIVE":
+                _set_state(
+                    claim_id,
+                    "MANUAL_REVIEW",
+                    result=result,
+                    detail={"duplicate_bill_match_count": len({cid for hit in duplicate_hits for cid in hit["previous_claim_ids"]})},
+                )
+                return
         if ai_result and _gemini_provider_failure(ai_result) and issues:
             result = _provider_review_result(issues, inspection.get("metrics", {}))
             result["trace"].extend(gemini_trace)
@@ -1222,14 +1314,20 @@ def process_claim(claim_id: str) -> None:
             )
             return
         risk_issues = [issue for issue in issues if issue.get("code") in {"DOCUMENT_ALTERATION", "DUPLICATE_STAMP"}]
-        unconfirmed_risk_issues = [issue for issue in risk_issues if str(issue.get("code")) not in confirmed_codes]
+        unconfirmed_risk_issues = []
+        for issue in risk_issues:
+            issue_result = _document_risk_review_result([issue], inspection.get("metrics", {}))
+            issue_instance = _review_issue_instances(claim_id, issue_result)[0]
+            if _review_finding(claim_id, issue_instance["issue_id"]) not in CLEARING_FINDINGS:
+                unconfirmed_risk_issues.append(issue)
         if unconfirmed_risk_issues:
-            result = _document_risk_review_result(issues, inspection.get("metrics", {}))
+            result = _document_risk_review_result(unconfirmed_risk_issues, inspection.get("metrics", {}))
             result["trace"].extend(gemini_trace)
             _set_state(claim_id, "MANUAL_REVIEW", result=result, detail={"document_risk_signal_count": len(result["reasons"])})
             return
-        if confirmed_codes:
-            issues = [issue for issue in issues if str(issue.get("code")) not in confirmed_codes]
+        if risk_issues:
+            cleared = {id(issue) for issue in risk_issues if issue not in unconfirmed_risk_issues}
+            issues = [issue for issue in issues if id(issue) not in cleared]
             inspection["issues"] = issues
         if issues:
             metrics = inspection.get("metrics", {})
@@ -1434,25 +1532,31 @@ def get_claim(claim_id: str) -> dict[str, Any]:
 
 @app.post("/api/claims/{claim_id}/review-decision")
 def resolve_manual_review(request: Request, claim_id: str, disposition: dict[str, Any] = Body(...)) -> dict[str, Any]:
-    """Record evidence confirmation, then re-run deterministic adjudication.
-
-    A reviewer can confirm a narrowly scoped review signal, but cannot pick an
-    approval amount. The stored files are read again and the ordinary document
-    gate, policy reducer, and atomic benefit reservation decide the outcome.
-    """
+    """Resolve one current, evidence-bound issue without reviewer-entered payment."""
     reviewer_id = _require_reviewer(request)
-    if str(disposition.get("decision") or "").upper() != "CONFIRM_EVIDENCE":
-        raise _input_error("Manual review accepts CONFIRM_EVIDENCE; the deterministic evaluator sets the outcome and amount.")
+    if str(disposition.get("decision") or "").upper() != "REVIEW_ISSUE":
+        raise _input_error("Manual review accepts REVIEW_ISSUE; the deterministic workflow sets the outcome and amount.")
+    if "approved_amount" in disposition or "approved_amount_paise" in disposition:
+        raise _input_error("Reviewers cannot select a payable amount.")
     reason_code = str(disposition.get("reason_code") or "").strip().upper()
     reason_text = str(disposition.get("reason_text") or "").strip()
     evidence_summary = str(disposition.get("evidence_summary") or "").strip()
-    confirmed_codes = disposition.get("confirmed_issue_codes")
-    if not isinstance(confirmed_codes, list) or not confirmed_codes:
-        raise _input_error("confirmed_issue_codes must name the reviewed document or duplicate signal.")
-    confirmed_codes = sorted({str(code).strip().upper() for code in confirmed_codes})
-    permitted_codes = {"DUPLICATE_BILL", "DUPLICATE_STAMP", "DOCUMENT_ALTERATION"}
-    if not set(confirmed_codes) <= permitted_codes or not re.fullmatch(r"[A-Z0-9_]{3,60}", reason_code) or not reason_text or not evidence_summary:
+    reviewed = disposition.get("reviewed_issue")
+    if not isinstance(reviewed, dict):
+        raise _input_error("reviewed_issue must identify the current issue instance and finding.")
+    issue_id = str(reviewed.get("issue_id") or "").strip()
+    issue_code = str(reviewed.get("code") or "").strip().upper()
+    evidence_digest = str(reviewed.get("evidence_digest") or "").strip().lower()
+    finding = str(reviewed.get("reviewer_finding") or "").strip().upper()
+    if (
+        not re.fullmatch(r"[0-9a-f]{32}", issue_id)
+        or not re.fullmatch(r"[0-9a-f]{64}", evidence_digest)
+        or not re.fullmatch(r"[A-Z0-9_]{3,60}", issue_code)
+        or not re.fullmatch(r"[A-Z0-9_]{3,60}", reason_code)
+        or not reason_text or not evidence_summary
+    ):
         raise _input_error("Reviewer reason_code, reason_text, and evidence_summary are required.")
+    rerun = finding in CLEARING_FINDINGS or finding == "RETRY_PROCESSING"
     with _connect() as connection:
         connection.execute("BEGIN IMMEDIATE")
         row = connection.execute("SELECT state, request_json, result_json FROM claims WHERE id=?", (claim_id,)).fetchone()
@@ -1460,21 +1564,62 @@ def resolve_manual_review(request: Request, claim_id: str, disposition: dict[str
             raise HTTPException(status_code=404, detail="Claim not found")
         if row["state"] != "MANUAL_REVIEW":
             raise HTTPException(status_code=409, detail="Only a manual-review claim can receive a reviewer disposition.")
-        request_data = json.loads(row["request_json"])
         before = json.loads(row["result_json"] or "{}")
-        request_data["review_confirmation"] = {"confirmed_issue_codes": confirmed_codes, "reviewer_id": reviewer_id}
-        connection.execute("UPDATE claims SET request_json=? WHERE id=?", (json.dumps(request_data, default=str), claim_id))
-        result = dict(before)
-        result.setdefault("trace", []).append({
-            "stage": "manual_review", "rule_id": "evidence_confirmation", "status": "CONFIRMED",
-            "evidence": {"reviewer_id": reviewer_id, "reason_code": reason_code, "confirmed_issue_codes": confirmed_codes, "evidence_summary": evidence_summary},
-        })
+        current_issues = before.get("review_issues") or _review_issue_instances(claim_id, before, connection)
+        current = next((item for item in current_issues if item.get("issue_id") == issue_id), None)
+        if current is None or current.get("code") != issue_code or current.get("evidence_digest") != evidence_digest:
+            raise HTTPException(status_code=409, detail="The reviewed issue is stale or is not present on the current claim. Refresh and review the current evidence.")
+        allowed = set(current.get("allowed_findings") or REVIEW_FINDINGS.get(issue_code, DEFAULT_REVIEW_FINDINGS))
+        if finding not in allowed:
+            raise _input_error(f"{finding or 'The finding'} is not valid for {issue_code}.")
+        action_trace = {
+            "stage": "manual_review", "rule_id": "issue_finding", "status": finding,
+            "evidence": {
+                "reviewer_id": reviewer_id, "reason_code": reason_code, "issue_id": issue_id,
+                "issue_code": issue_code, "evidence_digest": evidence_digest,
+                "reviewer_finding": finding, "evidence_summary": evidence_summary,
+            },
+            "details": reason_text,
+        }
+        if rerun:
+            result = dict(before)
+            result.setdefault("trace", []).append(action_trace)
+            target_state, adjudicated = "QUEUED", False
+        elif finding in ADVERSE_FINDINGS:
+            result = {
+                "state": "DECIDED", "decision": "REJECTED", "approved_amount": 0,
+                "approved_amount_paise": 0, "confidence_score": None, "ledger": [],
+                "correction_requests": [],
+                "reasons": [{
+                    "code": "DUPLICATE_CLAIM" if finding in {"CONFIRMED_DUPLICATE", "DUPLICATE_CONFIRMED"} else f"{issue_code}_CONFIRMED",
+                    "message": reason_text,
+                }],
+                "trace": list(before.get("trace") or []) + [action_trace],
+            }
+            target_state, adjudicated = "DECIDED", True
+        else:
+            result = {
+                "state": "DOCUMENT_CORRECTION_REQUIRED", "decision": None,
+                "approved_amount": None, "approved_amount_paise": None,
+                "confidence_score": None, "ledger": [],
+                "reasons": [{"code": "REQUEST_ORIGINAL", "message": reason_text}],
+                "correction_requests": [{"code": "REQUEST_ORIGINAL", "message": reason_text, "file_name": None, "required_type": None}],
+                "trace": list(before.get("trace") or []) + [action_trace],
+            }
+            target_state, adjudicated = "DOCUMENT_CORRECTION_REQUIRED", False
         connection.execute(
-            "INSERT INTO reviewer_actions (claim_id, occurred_at, reviewer_id, reason_code, reason_text, evidence_summary, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (claim_id, _now(), reviewer_id, reason_code, reason_text, evidence_summary, json.dumps(before, default=str), json.dumps(result, default=str)),
+            "INSERT INTO reviewer_actions (claim_id, occurred_at, reviewer_id, reason_code, reason_text, evidence_summary, "
+            "issue_id, issue_code, evidence_digest, reviewer_finding, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (claim_id, _now(), reviewer_id, reason_code, reason_text, evidence_summary, issue_id, issue_code,
+             evidence_digest, finding, json.dumps(before, default=str), json.dumps(result, default=str)),
         )
-        _set_state_in_connection(connection, claim_id, "QUEUED", result=result, detail={"source": "reviewer_evidence_confirmation", "reviewer_id": reviewer_id})
-    process_claim(claim_id)
+        _set_state_in_connection(
+            connection, claim_id, target_state, result=result,
+            detail={"source": "reviewer_issue_finding", "reviewer_id": reviewer_id, "issue_id": issue_id, "finding": finding},
+            adjudicated=adjudicated,
+        )
+    if rerun:
+        process_claim(claim_id)
     return _load_claim(claim_id) or result
 
 

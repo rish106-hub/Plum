@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw
 from claims.documents import (
     SarvamDocumentProvider,
     _classify_text,
+    _provider_result,
     _text_content,
     normal_name,
     parse_document_date,
@@ -142,6 +143,27 @@ Grand Total: 1650.00"""
     assert not any(issue["code"] == "BILL_ARITHMETIC_CONFLICT" for issue in result["issues"])
 
 
+def test_split_gst_reconciles_and_combined_gst_is_not_double_counted() -> None:
+    split = """HOSPITAL BILL
+Patient: Rajesh Kumar
+Date: 01-Nov-2024
+Consultation Fee 1000.00
+CGST @ 9%: 90.00
+SGST @ 9%: 90.00
+Grand Total: 1180.00"""
+    split_content, _ = _text_content(split, "HOSPITAL_BILL")
+    assert "gst_amount" not in split_content
+    assert split_content["cgst_amount"] == split_content["sgst_amount"] == 90
+    result = process_uploads([{"file_name": "split-gst.pdf", "data": pdf_bytes(split.splitlines())}], "DENTAL", "Rajesh Kumar", POLICY)
+    assert not any(issue["code"] == "BILL_ARITHMETIC_CONFLICT" for issue in result["issues"])
+
+    combined = split.replace("Grand Total: 1180.00", "GST: 180.00\nGrand Total: 1180.00")
+    combined_content, _ = _text_content(combined, "HOSPITAL_BILL")
+    assert combined_content["gst_amount"] == 180
+    result = process_uploads([{"file_name": "combined-gst.pdf", "data": pdf_bytes(combined.splitlines())}], "DENTAL", "Rajesh Kumar", POLICY)
+    assert not any(issue["code"] == "BILL_ARITHMETIC_CONFLICT" for issue in result["issues"])
+
+
 def test_dental_report_is_classified_from_dental_specific_evidence() -> None:
     assert _classify_text("Dental examination\nDiagnosis: irreversible pulpitis\nTooth 36\nProcedure recommended: root canal treatment") == "DENTAL_REPORT"
 
@@ -167,6 +189,20 @@ def test_reconciled_sarvam_hospital_items_replace_bad_local_candidates() -> None
         {**item, "brand_status": "UNKNOWN", "brand_evidence": ""}
         for item in fixture["line_items"]
     ]
+
+
+def test_provider_bill_merge_uses_adjusted_arithmetic() -> None:
+    provider = StubProvider(
+        "HOSPITAL BILL\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\nCharges are shown in an obscured table.\nGrand Total: 1580.00",
+        {
+            "total": 1580, "subtotal": 1500, "discount": 100, "gst_amount": 0,
+            "cgst_amount": 90, "sgst_amount": 90, "round_off": 0,
+            "line_items": [{"description": "Consultation", "amount": 1000}, {"description": "Procedure", "amount": 500}],
+        },
+    )
+    result = process_uploads([{"file_name": "adjusted.png", "data": image_bytes()}], "DENTAL", "Rajesh Kumar", POLICY, provider)
+    assert result["issues"] == []
+    assert [item["description"] for item in result["documents"][0]["content"]["line_items"]] == ["Consultation", "Procedure"]
 
 
 def test_wrong_document_names_uploaded_and_required_type() -> None:
@@ -374,6 +410,22 @@ def test_sarvam_extract_only_when_ocr_lacks_material_bill_fields() -> None:
     assert result["documents"][0]["content"]["total"] == 1500
 
 
+@pytest.mark.parametrize(
+    ("kind", "ocr", "fields"),
+    [
+        ("LAB_REPORT", "LAB REPORT\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\nResults are tabulated below.", {"test_name": "CBC"}),
+        ("DIAGNOSTIC_REPORT", "DIAGNOSTIC REPORT\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\nFindings are tabulated below.", {"test_name": "MRI Lumbar Spine"}),
+        ("DENTAL_REPORT", "DENTAL REPORT\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\nTooth 36 examined.", {"diagnosis": "Irreversible pulpitis"}),
+    ],
+)
+def test_structured_extract_recovers_missing_material_report_field(kind: str, ocr: str, fields: dict) -> None:
+    provider = StubProvider(ocr, fields)
+    policy = {"document_requirements": {"REPORT": {"required": [kind], "optional": []}}}
+    result = process_uploads([{"file_name": "report.png", "data": image_bytes()}], "REPORT", "Rajesh Kumar", policy, provider)
+    assert provider.extract_calls == 1
+    assert not any(issue["code"] == "MATERIAL_FIELD_UNVERIFIED" for issue in result["issues"])
+
+
 def test_pharmacy_brand_status_is_extracted_only_with_matching_printed_evidence() -> None:
     bill = pdf_bytes([
         "PHARMACY BILL",
@@ -528,6 +580,31 @@ def test_sarvam_extract_schema_describes_every_nested_field() -> None:
     schema = captured["schema"]
     assert isinstance(schema, dict)
     assert_descriptions(schema)
+    properties = schema["properties"]
+    assert {"tests_ordered", "medicines", "patient_age", "patient_gender", "subtotal", "cgst_amount", "sgst_amount", "igst_amount", "round_off"} <= properties.keys()
+
+
+def test_provider_result_preserves_clinical_and_pharmacy_details() -> None:
+    _, _, content, _ = _provider_result({
+        "document_type": "PHARMACY_BILL",
+        "quality": "GOOD",
+        "fields": {
+            "patient_age": "42 years", "patient_gender": "Female",
+            "tests_ordered": ["MRI Lumbar Spine"], "medicines": ["Paracetamol 650mg twice daily for 3 days"],
+            "line_items": [{
+                "description": "Paracetamol 650mg", "amount": 120, "batch_number": "B-1042",
+                "expiry": "08/2027", "quantity": 10, "mrp": 12,
+            }],
+        },
+    })
+    assert content["patient_age"] == "42 years"
+    assert content["patient_gender"] == "Female"
+    assert content["tests_ordered"] == ["MRI Lumbar Spine"]
+    assert content["medicines"] == ["Paracetamol 650mg twice daily for 3 days"]
+    assert content["line_items"][0] == {
+        "description": "Paracetamol 650mg", "amount": 120, "brand_status": "UNKNOWN", "brand_evidence": "",
+        "batch_number": "B-1042", "expiry": "08/2027", "quantity": 10, "mrp": 12,
+    }
 
 
 # --- Audit round 2: mandatory bill date, shared helpers, money rounding ---------

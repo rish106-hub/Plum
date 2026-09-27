@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Review queue · Plum</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260926">
-  <script src="/static/ops.js?v=20260925" defer></script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260927">
+  <script src="/static/ops.js?v=20260927" defer></script>
 </head>
 <body data-page="ops">
   <header class="site-header">
@@ -82,15 +82,16 @@
             <p id="ops-escalation-reason"></p>
           </section>
           <section id="ops-review-action" class="ops-decision-explanation" aria-labelledby="ops-review-action-title" hidden>
-            <strong id="ops-review-action-title">Record reviewer decision</strong>
-            <p>Confirm the final outcome after inspecting the documents and trace.</p>
+            <strong id="ops-review-action-title">Resolve a review issue</strong>
+            <p>Record what you found for one current issue. The policy engine determines the outcome and payable amount.</p>
             <form id="ops-review-form" class="ops-review-form">
-              <label><span>Decision</span><select id="ops-review-decision"><option value="APPROVED">Approve</option><option value="PARTIAL">Partially approve</option><option value="REJECTED">Reject</option></select></label>
-              <label><span>Approved amount INR</span><input id="ops-review-amount" type="number" min="0" step="0.01" required></label>
-              <label><span>Reason code</span><input id="ops-review-reason-code" type="text" pattern="[A-Z0-9_]{3,60}" maxlength="60" placeholder="DUPLICATE_CONFIRMED" required></label>
-              <label class="ops-review-form__wide"><span>Decision reason</span><textarea id="ops-review-reason-text" rows="2" maxlength="500" placeholder="State why this outcome is correct." required></textarea></label>
+              <label class="ops-review-form__wide"><span>Issue to review</span><select id="ops-review-issue" required></select></label>
+              <div id="ops-review-issue-detail" class="ops-review-issue-detail ops-review-form__wide" role="note"></div>
+              <label><span>Reviewer finding</span><select id="ops-review-finding" required></select></label>
+              <label><span>Reason code</span><input id="ops-review-reason-code" type="text" pattern="[A-Z0-9_]{3,60}" maxlength="60" placeholder="DUPLICATE_REVIEWED" required></label>
+              <label class="ops-review-form__wide"><span>Finding rationale</span><textarea id="ops-review-reason-text" rows="2" maxlength="500" placeholder="Explain why the selected finding is supported." required></textarea></label>
               <label class="ops-review-form__wide"><span>Evidence inspected</span><textarea id="ops-review-evidence" rows="2" maxlength="500" placeholder="Summarize the documents and trace checked." required></textarea></label>
-              <button class="button button--primary" type="submit">Save decision</button>
+              <button class="button button--primary" type="submit">Save finding</button>
               <p id="ops-review-error" class="form-error" role="alert" hidden></p>
             </form>
           </section>
