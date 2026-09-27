@@ -1,12 +1,12 @@
 {
   "schema": "plum.verification_summary.v1",
-  "started_at": "2026-09-27T06:47:57+00:00",
-  "finished_at": "2026-09-27T06:48:07+00:00",
+  "started_at": "2026-09-27T11:20:21+00:00",
+  "finished_at": "2026-09-27T11:20:29+00:00",
   "git": {
-    "head": "fab211d5f454463d262ec80dc6f943e61af0aceb",
-    "branch": "main",
-    "worktree_dirty": false,
-    "changed_paths": 0
+    "head": "31354de61e228b18516863ce9fc8ce5cace31510",
+    "branch": "codex/audit-wrap-up",
+    "worktree_dirty": true,
+    "changed_paths": 11
   },
   "python": "3.14.2",
   "platform": "Darwin arm64",
@@ -46,14 +46,14 @@
       "command": "python -m ruff check .",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.08
+      "seconds": 0.06
     },
     {
       "name": "mypy",
       "command": "python -m mypy claims scripts tools",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.54
+      "seconds": 0.81
     },
     {
       "name": "compileall",
@@ -67,41 +67,41 @@
       "command": "python -m pytest -q -p no:cacheprovider",
       "exit_code": 0,
       "ok": true,
-      "seconds": 7.8
+      "seconds": 6.14
     },
     {
       "name": "supplied-case evaluation",
       "command": "python -m scripts.evaluate",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.19
+      "seconds": 0.12
     },
     {
       "name": "offline document suites",
       "command": "python -m scripts.evaluate_documents",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.6
+      "seconds": 0.38
     },
     {
       "name": "live OCR status (keys stripped)",
       "command": "python -m scripts.evaluate_documents --providers live",
       "exit_code": 2,
       "ok": true,
-      "seconds": 0.24
+      "seconds": 0.16
     }
   ],
   "lint_ok": true,
   "typecheck_ok": true,
   "compile_ok": true,
   "tests": {
-    "passed": 293,
+    "passed": 303,
     "failed": 0,
     "errors": 0,
     "skipped": 0,
     "subtests_passed": 105,
     "subtests_failed": 0,
-    "warnings": 43
+    "warnings": 44
   },
   "fixture_evaluation": {
     "report": "docs/reports/evaluation.md",
