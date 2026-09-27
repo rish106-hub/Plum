@@ -63,4 +63,4 @@ jobs:
           name: browser-qa-failure
           path: |
             /tmp/plum-browser-server.log
-            /tmp/plum-browser-screenshots/
+            ${{ env.PLUM_SCREENSHOT_DIR }}/
