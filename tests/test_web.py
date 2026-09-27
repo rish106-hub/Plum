@@ -69,8 +69,12 @@ def test_demo_clock_is_applied_and_traced_in_development(tmp_path, monkeypatch, 
     _wire_inspection(monkeypatch, complete=True)
     with _client(tmp_path, monkeypatch) as client:
         home = client.get("/").text
-        saved = client.get(f"/api/claims/{_submit(client, _text_pdf('bill')).json()['id']}").json()
+        claim_id = _submit(client, _text_pdf("bill")).json()["id"]
+        saved = client.get(f"/api/claims/{claim_id}").json()
+        claim_page = client.get(f"/claims/{claim_id}").text
     assert 'id="demo-clock-banner"' in home and "PLUM_DEMO_CLOCK" in home
+    assert "Development test date" in claim_page
+    assert "Demo clock submission" not in claim_page
     assert saved["request"]["submission_date"] == "2024-11-05"
     assert saved["request"]["submission_clock"]["source"] == "PLUM_DEMO_CLOCK"
     clock_step = saved["result"]["trace"][0]

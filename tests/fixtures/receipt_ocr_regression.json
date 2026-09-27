@@ -1,0 +1,14 @@
+{
+  "description": "Synthetic, redacted hospital-bill OCR regression. It contains no uploaded document bytes or personal medical data.",
+  "patient_name": "Mira Shah",
+  "date": "01-Nov-2024",
+  "address_like_line": "12 Market Road, Mumbai 400001",
+  "bill_number": "CMC/2024/08321",
+  "total": 1500.0,
+  "previous_total": 1200.0,
+  "line_items": [
+    {"description": "Consultation Fee (OPD)", "amount": 1000.0},
+    {"description": "CBC (Complete Blood Count)", "amount": 200.0},
+    {"description": "Dengue NS1 Antigen Test", "amount": 300.0}
+  ]
+}

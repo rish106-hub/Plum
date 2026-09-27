@@ -31,6 +31,9 @@ POLICY = {
         "DENTAL": {"required": ["HOSPITAL_BILL"], "optional": ["DENTAL_REPORT"]},
     }
 }
+RECEIPT_OCR_REGRESSION = json.loads(
+    (Path(__file__).parent / "fixtures" / "receipt_ocr_regression.json").read_text(encoding="utf-8")
+)
 
 
 @pytest.fixture(autouse=True)
@@ -82,31 +85,31 @@ class StubProvider:
 
 
 def test_html_bill_table_beats_address_like_loose_line_and_ignores_embedded_image() -> None:
-    text = """HOSPITAL BILL
-Patient: Rajesh Kumar
-Date: 01-Nov-2024
-12 MG Road, Bengaluru 560001
-![Image](data:image/jpeg;base64,MS OewXtTik)
-<table><tr><td>S.No.</td><td>Description</td><td>Amount (₹)</td></tr>
-<tr><td>1</td><td>Consultation Fee (OPD)</td><td>1,000.00</td></tr>
-<tr><td>2</td><td>CBC (Complete Blood Count)</td><td>200.00</td></tr>
-<tr><td>3</td><td>Dengue NS1 Antigen Test</td><td>300.00</td></tr></table>
-Final Total Amount (₹): 1,500.00"""
+    fixture = RECEIPT_OCR_REGRESSION
+    rows = "\n".join(
+        f"<tr><td>{index}</td><td>{item['description']}</td><td>{item['amount']:,.2f}</td></tr>"
+        for index, item in enumerate(fixture["line_items"], 1)
+    )
+    text = (
+        "HOSPITAL BILL\n"
+        f"Patient: {fixture['patient_name']}\nDate: {fixture['date']}\n"
+        f"{fixture['address_like_line']}\n"
+        "![Image](data:image/jpeg;base64,MS OewXtTik)\n"
+        "<table><tr><td>S.No.</td><td>Description</td><td>Amount (₹)</td></tr>\n"
+        f"{rows}</table>\nFinal Total Amount (₹): {fixture['total']:,.2f}"
+    )
 
     content, _ = _text_content(text, "HOSPITAL_BILL")
 
-    assert content["line_items"] == [
-        {"description": "Consultation Fee (OPD)", "amount": 1000},
-        {"description": "CBC (Complete Blood Count)", "amount": 200},
-        {"description": "Dengue NS1 Antigen Test", "amount": 300},
-    ]
+    assert content["line_items"] == fixture["line_items"]
     assert "doctor_specialization" not in content
 
 
 def test_loose_bill_parser_rejects_address_like_bare_integer() -> None:
+    fixture = RECEIPT_OCR_REGRESSION
     content, _ = _text_content(
-        "HOSPITAL BILL\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\n"
-        "12 MG Road, Bengaluru 560001\nFinal Total Amount: 1500.00",
+        f"HOSPITAL BILL\nPatient: {fixture['patient_name']}\nDate: {fixture['date']}\n"
+        f"{fixture['address_like_line']}\nFinal Total Amount: {fixture['total']:.2f}",
         "HOSPITAL_BILL",
     )
 
@@ -114,29 +117,25 @@ def test_loose_bill_parser_rejects_address_like_bare_integer() -> None:
 
 
 def test_reconciled_sarvam_hospital_items_replace_bad_local_candidates() -> None:
+    fixture = RECEIPT_OCR_REGRESSION
     provider = StubProvider(
-        "HOSPITAL BILL\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\n"
-        "12 MG Road, Bengaluru 560001\nTotal Amount: 1500.00",
+        f"HOSPITAL BILL\nPatient: {fixture['patient_name']}\nDate: {fixture['date']}\n"
+        f"{fixture['address_like_line']}\nTotal Amount: {fixture['total']:.2f}",
         {
-            "total": 1500,
-            "line_items": [
-                {"description": "Consultation Fee (OPD)", "amount": 1000},
-                {"description": "CBC (Complete Blood Count)", "amount": 200},
-                {"description": "Dengue NS1 Antigen Test", "amount": 300},
-            ],
+            "total": fixture["total"],
+            "line_items": fixture["line_items"],
         },
     )
 
     result = process_uploads(
-        [{"file_name": "bill.png", "data": image_bytes()}], "DENTAL", "Rajesh Kumar", POLICY, provider
+        [{"file_name": "bill.png", "data": image_bytes()}], "DENTAL", fixture["patient_name"], POLICY, provider
     )
 
     assert provider.extract_calls == 1
     assert result["issues"] == []
     assert result["documents"][0]["content"]["line_items"] == [
-        {"description": "Consultation Fee (OPD)", "amount": 1000, "brand_status": "UNKNOWN", "brand_evidence": ""},
-        {"description": "CBC (Complete Blood Count)", "amount": 200, "brand_status": "UNKNOWN", "brand_evidence": ""},
-        {"description": "Dengue NS1 Antigen Test", "amount": 300, "brand_status": "UNKNOWN", "brand_evidence": ""},
+        {**item, "brand_status": "UNKNOWN", "brand_evidence": ""}
+        for item in fixture["line_items"]
     ]
 
 
@@ -285,14 +284,15 @@ def test_provider_setup_failure_falls_back_to_actionable_issue(monkeypatch: pyte
 
 
 def test_conflicting_previous_total_routes_to_manual_review() -> None:
+    fixture = RECEIPT_OCR_REGRESSION
     provider = StubProvider(
-        "HOSPITAL BILL\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\n"
-        "Previous Total: 1200.00\nFinal Total Amount: 1500.00\n"
-        "Consultation Fee 1500.00",
+        f"HOSPITAL BILL\nPatient: {fixture['patient_name']}\nDate: {fixture['date']}\n"
+        f"Previous Total: {fixture['previous_total']:.2f}\nFinal Total Amount: {fixture['total']:.2f}\n"
+        f"Consultation Fee {fixture['total']:.2f}",
     )
 
     result = process_uploads(
-        [{"file_name": "corrected-bill.png", "data": image_bytes()}], "DENTAL", "Rajesh Kumar", POLICY, provider
+        [{"file_name": "corrected-bill.png", "data": image_bytes()}], "DENTAL", fixture["patient_name"], POLICY, provider
     )
 
     assert any(issue["code"] == "DOCUMENT_ALTERATION" for issue in result["issues"])
@@ -300,13 +300,14 @@ def test_conflicting_previous_total_routes_to_manual_review() -> None:
 
 
 def test_colored_bill_annotation_routes_to_manual_review() -> None:
+    fixture = RECEIPT_OCR_REGRESSION
     provider = StubProvider(
-        "HOSPITAL BILL\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\n"
-        "Consultation Fee 1500.00\nFinal Total Amount: 1500.00",
+        f"HOSPITAL BILL\nPatient: {fixture['patient_name']}\nDate: {fixture['date']}\n"
+        f"Consultation Fee {fixture['total']:.2f}\nFinal Total Amount: {fixture['total']:.2f}",
     )
 
     result = process_uploads(
-        [{"file_name": "annotated-bill.png", "data": annotated_image_bytes()}], "DENTAL", "Rajesh Kumar", POLICY, provider
+        [{"file_name": "annotated-bill.png", "data": annotated_image_bytes()}], "DENTAL", fixture["patient_name"], POLICY, provider
     )
 
     assert any(issue["code"] == "DOCUMENT_ALTERATION" for issue in result["issues"])
