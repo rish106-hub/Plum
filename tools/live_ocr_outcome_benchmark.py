@@ -18,6 +18,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 PDF_DIR = ROOT / "output" / "pdf" / "live-ocr-outcomes"
 ARTIFACT_DIR = ROOT / "output" / "live-ocr-benchmark"
+REPORT_PATH = ROOT / "docs" / "reports" / "live-ocr-outcome-benchmark.md"
 PAGE_SIZE = (1240, 1754)
 
 
@@ -395,6 +396,11 @@ def _evidence_checks(scenario: Scenario, claim: dict[str, Any]) -> list[dict[str
 def run(base_url: str, timeout_seconds: int) -> None:
     from playwright.sync_api import sync_playwright
 
+    review_token = os.getenv("PLUM_REVIEW_TOKEN", "")
+    if not review_token:
+        raise RuntimeError(
+            "PLUM_REVIEW_TOKEN is required so the benchmark can verify and screenshot the review queue."
+        )
     responses = ARTIFACT_DIR / "responses"
     screenshots = ARTIFACT_DIR / "screenshots"
     responses.mkdir(parents=True, exist_ok=True)
@@ -466,19 +472,20 @@ def run(base_url: str, timeout_seconds: int) -> None:
             record["matched"] = record["matched"] and not record["browser_errors"]
             results.append(record)
             print(json.dumps(record, ensure_ascii=False), flush=True)
-        review_token = os.getenv("PLUM_REVIEW_TOKEN", "")
-        if review_token:
-            review_context = browser.new_context(
-                viewport={"width": 1440, "height": 1100},
-                extra_http_headers={
-                    "X-Reviewer-ID": "live-ocr-benchmark",
-                    "X-Reviewer-Token": review_token,
-                },
-            )
-            review_page = review_context.new_page()
-            review_page.goto(f"{base_url}/ops", wait_until="networkidle")
-            review_page.screenshot(path=str(screenshots / "review-queue.png"), full_page=True)
-            review_context.close()
+        review_context = browser.new_context(
+            viewport={"width": 1440, "height": 1100},
+            extra_http_headers={
+                "X-Reviewer-ID": "live-ocr-benchmark",
+                "X-Reviewer-Token": review_token,
+            },
+        )
+        review_page = review_context.new_page()
+        review_response = review_page.goto(f"{base_url}/ops", wait_until="networkidle")
+        if review_response is None or not review_response.ok:
+            status = "no response" if review_response is None else str(review_response.status)
+            raise RuntimeError(f"Authenticated review queue returned {status}")
+        review_page.screenshot(path=str(screenshots / "review-queue.png"), full_page=True)
+        review_context.close()
         browser.close()
     summary = {
         "schema": "plum.live_ocr_outcome_results.v1",
@@ -491,30 +498,7 @@ def run(base_url: str, timeout_seconds: int) -> None:
     (ARTIFACT_DIR / "benchmark-results.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
-    lines = [
-        "# Live Sarvam outcome benchmark",
-        "",
-        f"Status: **{summary['status']}** ({summary['passed']}/{summary['total']} scenarios matched).",
-        "",
-        "All inputs are synthetic image-only PDFs. A returned extraction therefore exercised the live Sarvam path.",
-        "",
-        "| Scenario | Expected | State | Decision | Reasons | Provider calls/failures | Seconds | Match |",
-        "| --- | --- | --- | --- | --- | --- | ---: | --- |",
-    ]
-    for item in results:
-        metrics = item.get("document_metrics") or {}
-        calls = f"{metrics.get('provider_calls', 0)}/{metrics.get('provider_failures', 0)}"
-        lines.append(
-            f"| {item['scenario']} | {item['expected']} | {item['state']} | {item['decision']} | "
-            f"{', '.join(item['reason_codes']) or 'none'} | {calls} | {item['elapsed_seconds']} | "
-            f"{'Yes' if item['matched'] else 'NO'} |"
-        )
-    lines += [
-        "",
-        "Every claim was submitted through the website controls and verified through the local API.",
-        "Raw API responses are retained under `responses/`; input, form, outcome, and review-queue screenshots are retained under `screenshots/`.",
-    ]
-    (ARTIFACT_DIR / "benchmark-summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _write_summary(summary)
     print(
         json.dumps(
             {"status": summary["status"], "passed": summary["passed"], "total": summary["total"]}
@@ -524,16 +508,77 @@ def run(base_url: str, timeout_seconds: int) -> None:
         raise SystemExit(1)
 
 
+def _summary_markdown(summary: dict[str, Any]) -> str:
+    lines = [
+        "# Live Sarvam outcome benchmark",
+        "",
+        f"Status: **{summary['status']}** ({summary['passed']}/{summary['total']} scenarios matched).",
+        "",
+        "All inputs are synthetic image-only PDFs. Each claim was submitted through the website controls, polled through the local API, and visually retained as screenshots.",
+        "",
+        "**Scope boundary:** this is a bounded end-to-end outcome regression. It verifies these four synthetic workflows and selected critical fields; it is not a production OCR-accuracy, handwriting, multilingual, calibration, or population-level benchmark.",
+        "",
+        "| Scenario | Expected | State | Decision | Reasons | Provider calls/failures | Browser errors | Seconds | Match |",
+        "| --- | --- | --- | --- | --- | --- | ---: | ---: | --- |",
+    ]
+    for item in summary["results"]:
+        metrics = item.get("document_metrics") or {}
+        calls = f"{metrics.get('provider_calls', 0)}/{metrics.get('provider_failures', 0)}"
+        lines.append(
+            f"| {item['scenario']} | {item['expected']} | {item['state']} | {item['decision']} | "
+            f"{', '.join(item['reason_codes']) or 'none'} | {calls} | {len(item.get('browser_errors') or [])} | "
+            f"{item['elapsed_seconds']} | {'Yes' if item['matched'] else 'NO'} |"
+        )
+    total_calls = sum(
+        int((item.get("document_metrics") or {}).get("provider_calls", 0))
+        for item in summary["results"]
+    )
+    total_failures = sum(
+        int((item.get("document_metrics") or {}).get("provider_failures", 0))
+        for item in summary["results"]
+    )
+    total_browser_errors = sum(len(item.get("browser_errors") or []) for item in summary["results"])
+    lines += [
+        "",
+        f"Provider verification: **{total_calls} calls, {total_failures} failures**. Browser verification: **{total_browser_errors} page errors**.",
+        "",
+        "Raw API responses are under `output/live-ocr-benchmark/responses/`; input, filled-form, outcome, and authenticated review-queue screenshots are under `output/live-ocr-benchmark/screenshots/`.",
+        "",
+        "The broader labelled dirty-document accuracy benchmark remains `scripts.evaluate_documents --providers live`; its latest offline verification status is reported separately and must not be inferred from this outcome run.",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _write_summary(summary: dict[str, Any]) -> None:
+    markdown = _summary_markdown(summary)
+    ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    (ARTIFACT_DIR / "benchmark-summary.md").write_text(markdown, encoding="utf-8")
+    REPORT_PATH.write_text(markdown, encoding="utf-8")
+
+
+def render() -> None:
+    results_path = ARTIFACT_DIR / "benchmark-results.json"
+    if not results_path.exists():
+        raise FileNotFoundError(f"Run the benchmark first; missing {results_path}")
+    summary = json.loads(results_path.read_text(encoding="utf-8"))
+    _write_summary(summary)
+    print(json.dumps({"status": summary["status"], "report": str(REPORT_PATH)}))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("generate")
+    subparsers.add_parser("render")
     runner = subparsers.add_parser("run")
     runner.add_argument("--base-url", default="http://127.0.0.1:8000")
     runner.add_argument("--timeout-seconds", type=int, default=300)
     args = parser.parse_args()
     if args.command == "generate":
         generate()
+    elif args.command == "render":
+        render()
     else:
         run(args.base_url, args.timeout_seconds)
 

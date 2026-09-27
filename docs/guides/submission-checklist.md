@@ -7,7 +7,7 @@ Use this checklist immediately before sharing the repository.
 - [ ] `git status --short` contains only intentional submission changes.
 - [ ] No `.env`, `.data/`, virtual environment, API key, or real health document is tracked.
 - [ ] The README and local runbook contain no personal absolute filesystem path.
-- [ ] `docs/reports/feedback-audit.md` and `docs/reports/edge-case-audit.md` describe the current submission, not historical PR state.
+- [ ] Generated verification reports and `docs/reports/live-ocr-outcome-benchmark.md` describe the current code and do not claim historical PR state as current evidence.
 
 ## Reproducible evidence
 
@@ -20,11 +20,13 @@ Use this checklist immediately before sharing the repository.
 
 - [ ] Run the pytest, Ruff, mypy, compileall, fixture-evaluation, and document-evaluation commands in the local runbook.
 - [ ] Run `scripts.browser_check` separately against the fixed-clock local server.
-- [ ] State the distinction accurately: GitHub Actions runs automated checks; the browser flow is local verification and is not part of CI.
+- [ ] If provider-backed evidence is being delivered, run `make live-outcome-generate` and `make live-outcome-run` against a fresh configured server and retain its report/screenshots.
+- [ ] State the distinction accurately: GitHub Actions runs offline and provider-free checks; browser/provider-backed evidence is local verification and paid live OCR is not part of CI.
 
 ## Claims to keep precise
 
 - [ ] The fixture report proves deterministic policy behavior, not OCR quality.
-- [ ] The document benchmark proves safe routing for its six synthetic cases, not handwriting, multilingual, or production OCR accuracy.
+- [ ] The offline document suites prove routing and fail-closed behavior, not OCR accuracy.
+- [ ] The four-scenario website/API live regression proves only its clean synthetic outcomes; the labelled dirty-corpus run is the separate accuracy benchmark, and neither is a production sample.
 - [ ] Local claim/benefit history is not insurer remittance history.
 - [ ] Gemini may recover cited evidence when explicitly enabled; it never decides coverage or payment.
