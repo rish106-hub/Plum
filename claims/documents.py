@@ -192,6 +192,11 @@ def _classify_text(text: str) -> str:
         return "LAB_REPORT" if "diagnostic report" not in t else "DIAGNOSTIC_REPORT"
     if re.search(r"(?:bill|invoice|receipt|subtotal|total\s+amount|net\s+amount)", t) and re.search(r"(?:patient|clinic|hospital|amount|total)", t):
         return "HOSPITAL_BILL"
+    if re.search(
+        r"(?:tooth\s*(?:no\.?|number)?\s*\d+|dental\s+(?:report|examination|diagnosis)|odontogram|root\s+canal|periodontal)",
+        t,
+    ):
+        return "DENTAL_REPORT"
     if re.search(r"(?:prescription|\brx\b|diagnosis|medicines|investigations)", t) and re.search(r"(?:doctor|\bdr\.?\b|reg\.?\s*no|patient)", t):
         return "PRESCRIPTION"
     return "UNKNOWN"
@@ -211,12 +216,17 @@ def _html_table_line_items(text: str) -> list[dict[str, Any]]:
             [html.unescape(re.sub(r"<[^>]+>", "", cell)).strip() for cell in re.findall(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", row, flags=re.IGNORECASE | re.DOTALL)]
             for row in rows
         ]
-        header_index = next((index for index, row in enumerate(parsed_rows) if any("description" in cell.casefold() for cell in row)), None)
+        description_headers = {"description", "particulars", "service", "services", "procedure", "item"}
+        amount_headers = {"amount", "charges", "charge", "value", "price", "net amount", "rate"}
+        def header_matches(cell: str, choices: set[str]) -> bool:
+            normalized = " ".join(cell.casefold().split())
+            return any(normalized == choice or normalized.startswith(f"{choice} ") for choice in choices)
+        header_index = next((index for index, row in enumerate(parsed_rows) if any(header_matches(cell, description_headers) for cell in row)), None)
         if header_index is None:
             continue
         header = parsed_rows[header_index]
-        description_index = next((index for index, cell in enumerate(header) if "description" in cell.casefold()), None)
-        amount_index = next((index for index, cell in enumerate(header) if cell.casefold().startswith("amount")), None)
+        description_index = next((index for index, cell in enumerate(header) if header_matches(cell, description_headers)), None)
+        amount_index = next((index for index, cell in enumerate(header) if header_matches(cell, amount_headers)), None)
         if description_index is None or amount_index is None:
             continue
         for row in parsed_rows[header_index + 1:]:
@@ -274,11 +284,11 @@ def _text_content(text: str, kind: str) -> tuple[dict[str, Any], list[dict[str, 
     evidence: list[dict[str, Any]] = []
     lines = [" ".join(line.split()) for line in text.splitlines() if line.strip()]
 
-    def field(name: str, pattern: str, transform: Any = None) -> None:
+    def field(name: str, pattern: str, transform: Any = None, trim: str = " :;,-") -> None:
         for page_line in lines:
             match = re.search(pattern, page_line, re.IGNORECASE)
             if match:
-                value: Any = match.group(1).strip(" :;,-")
+                value: Any = match.group(1).strip(trim)
                 if transform:
                     value = transform(value)
                 content[name] = value
@@ -307,6 +317,10 @@ def _text_content(text: str, kind: str) -> tuple[dict[str, Any], list[dict[str, 
     field("gstin", r"\bGSTIN\s*[:\-]?\s*([A-Z0-9]{10,20})")
     field("drug_license_number", r"\bdrug\s+lic(?:en[cs]e)?\s*(?:no\.?|number|#)?\s*[:\-]?\s*([\w/-]{3,50})")
     if kind in {"HOSPITAL_BILL", "PHARMACY_BILL"}:
+        field("subtotal", r"\bsub\s*-?\s*total\s*[:₹Rs. ]+([\d,]+(?:\.\d{1,2})?)", _amount)
+        field("discount", r"\b(?:discount|less)\s*[:₹Rs. -]+([\d,]+(?:\.\d{1,2})?)", _amount)
+        field("gst_amount", r"\b(?:gst|cgst|sgst|igst|tax)(?:\s*@\s*\d+(?:\.\d+)?%?)?\s*[:₹Rs. ]+([\d,]+(?:\.\d{1,2})?)", _amount)
+        field("round_off", r"\bround\s*-?\s*off\s*[:₹Rs. ]*([+-]?[\d,]+(?:\.\d{1,2})?)", _amount, " :;,")
         field("total", r"\b(?:final\s+total(?:\s+amount)?|grand\s+total|net\s+amount|total\s+amount)\s*[:₹Rs. ]+([\d,]+(?:\.\d{1,2})?)", _amount)
         if "total" not in content:
             field("total", r"\btotal\s*[:₹Rs. ]+([\d,]+(?:\.\d{1,2})?)", _amount)
@@ -341,6 +355,33 @@ def _reconciles_line_items(items: Any, total: Any) -> bool:
         return sum(to_paise(item.get("amount")) for item in items if isinstance(item, dict)) == to_paise(total)
     except (InvalidOperation, TypeError, ValueError):
         return False
+
+
+def _reconciles_bill_arithmetic(fields: dict[str, Any]) -> bool:
+    """Reconcile itemized bill arithmetic, including printed tax and reductions.
+
+    A subtotal is informative, but a final amount is only accepted when the item
+    lines reconcile after the bill's explicit discount, GST/tax, and round-off.
+    Missing adjustment fields mean zero; an unreadable adjustment is not guessed.
+    """
+    items, total = fields.get("line_items"), fields.get("total")
+    if not isinstance(items, list) or not items or total is None:
+        return False
+    try:
+        item_total = sum(to_paise(item.get("amount")) for item in items if isinstance(item, dict))
+        if "subtotal" in fields and to_paise(fields["subtotal"]) != item_total:
+            return False
+        adjustments = to_paise(fields.get("gst_amount", 0)) - to_paise(fields.get("discount", 0))
+        adjustments += to_paise(fields.get("round_off", 0), allow_negative=True)
+        return item_total + adjustments == to_paise(total)
+    except (InvalidOperation, TypeError, ValueError):
+        return False
+
+
+def _duplicate_stamp_in_text(text: str) -> bool:
+    """Recognise explicit duplicate/reprint contexts, never ordinary copy labels."""
+    normalized = _normalized_words(text)
+    return bool(re.search(r"\b(?:duplicate(?:\s+bill)?|copy\s+duplicate|reprint)\b", normalized))
 
 
 def _has_conflicting_previous_total(text: str, total: Any) -> bool:
@@ -510,7 +551,7 @@ class SarvamDocumentProvider:
                 "alteration_detected": {"type": "boolean", "description": "True only when a crossed-out, overwritten, erased, or handwritten-corrected financial amount is visibly present"},
                 "crossed_out_amount": {"type": "boolean", "description": "True only when a financial amount is visibly crossed out"},
                 "handwritten_amount_correction": {"type": "boolean", "description": "True only when a financial amount has a visible handwritten correction"},
-                "duplicate_stamp_detected": {"type": "boolean", "description": "True only when a DUPLICATE or COPY stamp is visibly present"},
+                "duplicate_stamp_detected": {"type": "boolean", "description": "True only for a visible DUPLICATE, DUPLICATE BILL, COPY/DUPLICATE, or REPRINT stamp. False for ordinary labels such as Customer Copy, Patient Copy, or Office Copy."},
                 "original_stamp_detected": {"type": "boolean", "description": "True only when an ORIGINAL stamp is visibly present"},
                 "alteration_confidence": {"type": "number", "description": "Confidence from 0 to 1 for the visible alteration signals; 0 when none"},
                 "test_results": {
@@ -570,7 +611,7 @@ def _provider_result(value: Any) -> tuple[str, str, dict[str, Any], list[str]]:
     if quality not in {"GOOD", "PARTIAL", "UNREADABLE"}:
         quality = "PARTIAL"
     fields: dict[str, Any] = value["fields"] if isinstance(value.get("fields"), dict) else value
-    allowed = {"patient_name", "doctor_name", "doctor_registration", "doctor_specialization", "diagnosis", "treatment", "date", "sample_date", "report_date", "hospital_name", "provider_address", "total", "approved_amount", "line_items", "test_name", "test_results", "medicines", "tests_ordered", "bill_number", "approval_reference", "gstin", "gst_amount", "nabl_status", "pathologist_name", "pathologist_registration", "drug_license_number", "discount", "alteration_detected", "crossed_out_amount", "handwritten_amount_correction", "duplicate_stamp_detected", "original_stamp_detected", "alteration_confidence"}
+    allowed = {"patient_name", "doctor_name", "doctor_registration", "doctor_specialization", "diagnosis", "treatment", "date", "sample_date", "report_date", "hospital_name", "provider_address", "total", "subtotal", "round_off", "approved_amount", "line_items", "test_name", "test_results", "medicines", "tests_ordered", "bill_number", "approval_reference", "gstin", "gst_amount", "nabl_status", "pathologist_name", "pathologist_registration", "drug_license_number", "discount", "alteration_detected", "crossed_out_amount", "handwritten_amount_correction", "duplicate_stamp_detected", "original_stamp_detected", "alteration_confidence"}
     content = {key: fields[key] for key in allowed if key in fields and fields[key] not in (None, "")}
     for flag in ("alteration_detected", "crossed_out_amount", "handwritten_amount_correction", "duplicate_stamp_detected", "original_stamp_detected"):
         if flag in content:
@@ -693,9 +734,7 @@ def revalidate_documents(
                 ))
         if kind in {"HOSPITAL_BILL", "PHARMACY_BILL"} and fields.get("total") is not None and fields.get("line_items"):
             try:
-                total_paise = to_paise(fields["total"], allow_negative=True)
-                items_paise = sum(to_paise(item.get("amount"), allow_negative=True) for item in fields["line_items"])
-                conflict = total_paise != items_paise
+                conflict = not _reconciles_bill_arithmetic(fields)
             except (InvalidOperation, TypeError, ValueError):
                 conflict = True
             if conflict:
@@ -921,7 +960,7 @@ def process_uploads(
             content, evidence = _text_content(text, kind)
             if kind in BILL_TYPES:
                 normalized_text = _normalized_words(text)
-                content["duplicate_stamp_detected"] = bool(re.search(r"\b(?:duplicate|copy)\b", normalized_text))
+                content["duplicate_stamp_detected"] = _duplicate_stamp_in_text(normalized_text)
                 content["original_stamp_detected"] = bool(re.search(r"\boriginal\b", normalized_text))
             quality = "GOOD" if kind != "UNKNOWN" else "PARTIAL"
             source = "pdf_text"
@@ -940,7 +979,7 @@ def process_uploads(
                     content, evidence = _text_content(recognized, kind)
                     if kind in BILL_TYPES:
                         normalized_text = _normalized_words(recognized)
-                        content["duplicate_stamp_detected"] = bool(re.search(r"\b(?:duplicate|copy)\b", normalized_text))
+                        content["duplicate_stamp_detected"] = _duplicate_stamp_in_text(normalized_text)
                         content["original_stamp_detected"] = bool(re.search(r"\boriginal\b", normalized_text))
                     quality = "GOOD" if kind != "UNKNOWN" else "PARTIAL"
                     evidence = [{**entry, "source": "sarvam_digitise", "confidence": min(entry["confidence"], 0.75)} for entry in evidence]

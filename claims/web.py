@@ -1197,9 +1197,11 @@ def process_claim(claim_id: str) -> None:
         # Duplicate detection runs before the correction gate: a resubmitted bill that
         # was already paid must reach a reviewer, not be sent back for a fresh date.
         documents = inspection.get("documents", [])
+        confirmation = request_data.get("review_confirmation") if isinstance(request_data.get("review_confirmation"), dict) else {}
+        confirmed_codes = {str(code).upper() for code in confirmation.get("confirmed_issue_codes", [])}
         _save_bill_fingerprints(claim_id, _bill_fingerprints(documents))
         duplicate_hits = _duplicate_bill_hits(claim_id, documents)
-        if duplicate_hits:
+        if duplicate_hits and "DUPLICATE_BILL" not in confirmed_codes:
             result = _duplicate_review_result(duplicate_hits, inspection.get("metrics", {}))
             result["trace"].extend(gemini_trace)
             _set_state(
@@ -1219,11 +1221,16 @@ def process_claim(claim_id: str) -> None:
                 detail={"issue_count": len(issues), "gemini_status": ai_result.get("status")},
             )
             return
-        if any(issue.get("code") in {"DOCUMENT_ALTERATION", "DUPLICATE_STAMP"} for issue in issues):
+        risk_issues = [issue for issue in issues if issue.get("code") in {"DOCUMENT_ALTERATION", "DUPLICATE_STAMP"}]
+        unconfirmed_risk_issues = [issue for issue in risk_issues if str(issue.get("code")) not in confirmed_codes]
+        if unconfirmed_risk_issues:
             result = _document_risk_review_result(issues, inspection.get("metrics", {}))
             result["trace"].extend(gemini_trace)
             _set_state(claim_id, "MANUAL_REVIEW", result=result, detail={"document_risk_signal_count": len(result["reasons"])})
             return
+        if confirmed_codes:
+            issues = [issue for issue in issues if str(issue.get("code")) not in confirmed_codes]
+            inspection["issues"] = issues
         if issues:
             metrics = inspection.get("metrics", {})
             if any(issue.get("code") == "EXTRACTION_UNAVAILABLE" for issue in issues):
@@ -1427,22 +1434,24 @@ def get_claim(claim_id: str) -> dict[str, Any]:
 
 @app.post("/api/claims/{claim_id}/review-decision")
 def resolve_manual_review(request: Request, claim_id: str, disposition: dict[str, Any] = Body(...)) -> dict[str, Any]:
-    """Record an authenticated, attributable reviewer disposition and benefit reservation."""
+    """Record evidence confirmation, then re-run deterministic adjudication.
+
+    A reviewer can confirm a narrowly scoped review signal, but cannot pick an
+    approval amount. The stored files are read again and the ordinary document
+    gate, policy reducer, and atomic benefit reservation decide the outcome.
+    """
     reviewer_id = _require_reviewer(request)
-    decision = str(disposition.get("decision") or "").upper()
-    if decision not in {"APPROVED", "PARTIAL", "REJECTED"}:
-        raise _input_error("Reviewer decision must be APPROVED, PARTIAL, or REJECTED.")
-    try:
-        raw_amount = disposition.get("approved_amount", 0)
-        if has_subpaise_precision(raw_amount):
-            raise ValueError("more than two decimal places")
-        amount_paise = to_paise(raw_amount, allow_negative=True)
-    except ValueError as exc:
-        raise _input_error("Reviewer approved amount must be a valid amount.") from exc
+    if str(disposition.get("decision") or "").upper() != "CONFIRM_EVIDENCE":
+        raise _input_error("Manual review accepts CONFIRM_EVIDENCE; the deterministic evaluator sets the outcome and amount.")
     reason_code = str(disposition.get("reason_code") or "").strip().upper()
     reason_text = str(disposition.get("reason_text") or "").strip()
     evidence_summary = str(disposition.get("evidence_summary") or "").strip()
-    if not re.fullmatch(r"[A-Z0-9_]{3,60}", reason_code) or not reason_text or not evidence_summary:
+    confirmed_codes = disposition.get("confirmed_issue_codes")
+    if not isinstance(confirmed_codes, list) or not confirmed_codes:
+        raise _input_error("confirmed_issue_codes must name the reviewed document or duplicate signal.")
+    confirmed_codes = sorted({str(code).strip().upper() for code in confirmed_codes})
+    permitted_codes = {"DUPLICATE_BILL", "DUPLICATE_STAMP", "DOCUMENT_ALTERATION"}
+    if not set(confirmed_codes) <= permitted_codes or not re.fullmatch(r"[A-Z0-9_]{3,60}", reason_code) or not reason_text or not evidence_summary:
         raise _input_error("Reviewer reason_code, reason_text, and evidence_summary are required.")
     with _connect() as connection:
         connection.execute("BEGIN IMMEDIATE")
@@ -1453,49 +1462,19 @@ def resolve_manual_review(request: Request, claim_id: str, disposition: dict[str
             raise HTTPException(status_code=409, detail="Only a manual-review claim can receive a reviewer disposition.")
         request_data = json.loads(row["request_json"])
         before = json.loads(row["result_json"] or "{}")
-        claimed_paise = to_paise(request_data["claimed_amount"])
-        if amount_paise < 0 or amount_paise > claimed_paise or (decision == "REJECTED" and amount_paise != 0) or (decision != "REJECTED" and amount_paise <= 0):
-            raise _input_error("Reviewer amount is inconsistent with the requested decision or claim amount.")
-        policy = _read_policy()
-        if decision in {"APPROVED", "PARTIAL"}:
-            usage = _member_claim_history(claim_id, request_data, policy, connection)
-            limits = policy["limits"]
-            available = min(
-                max(0, limits["annual_opd_limit_paise"] - usage["family_approved_paise"]),
-                max(0, limits["sum_insured_per_employee_paise"] - usage["family_approved_paise"]),
-                max(0, limits["family_floater"]["combined_limit_paise"] - usage["family_approved_paise"]),
-            )
-            category_limit = policy["categories"][request_data["claim_category"]]["sub_limit_paise"]
-            category_used = int(usage["member_category_sub_limit_paise"] or 0)
-            category_available = max(0, category_limit - category_used)
-            available = min(available, category_available)
-            if amount_paise > available:
-                raise HTTPException(status_code=409, detail=f"Only {to_rupees(available)} remains available for this member and category.")
-            member = _member(policy, request_data["member_id"]) or {}
-            family_account_id = str(member.get("primary_member_id") or request_data["member_id"])
-            holder = policy.get("policy_holder", {})
-            now = _now()
-            connection.execute(
-                """INSERT INTO benefit_reservations
-                   (claim_id, family_account_id, member_id, category, policy_start, policy_end,
-                    amount_paise, category_amount_paise, status, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'RESERVED', ?, ?)""",
-                (claim_id, family_account_id, request_data["member_id"], request_data["claim_category"],
-                 holder.get("policy_start_date", "0001-01-01"), holder.get("policy_end_date", "9999-12-31"),
-                 amount_paise, amount_paise, now, now),
-            )
+        request_data["review_confirmation"] = {"confirmed_issue_codes": confirmed_codes, "reviewer_id": reviewer_id}
+        connection.execute("UPDATE claims SET request_json=? WHERE id=?", (json.dumps(request_data, default=str), claim_id))
         result = dict(before)
-        result.update({"state": "DECIDED", "decision": decision, "approved_amount_paise": amount_paise, "approved_amount": to_rupees(amount_paise)})
-        result.setdefault("reasons", []).append({"code": "REVIEWER_DISPOSITION", "message": reason_text})
         result.setdefault("trace", []).append({
-            "stage": "manual_review", "rule_id": "reviewer_disposition", "status": decision,
-            "evidence": {"approved_amount_paise": amount_paise, "reviewer_id": reviewer_id, "reason_code": reason_code, "evidence_summary": evidence_summary},
+            "stage": "manual_review", "rule_id": "evidence_confirmation", "status": "CONFIRMED",
+            "evidence": {"reviewer_id": reviewer_id, "reason_code": reason_code, "confirmed_issue_codes": confirmed_codes, "evidence_summary": evidence_summary},
         })
         connection.execute(
             "INSERT INTO reviewer_actions (claim_id, occurred_at, reviewer_id, reason_code, reason_text, evidence_summary, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (claim_id, _now(), reviewer_id, reason_code, reason_text, evidence_summary, json.dumps(before, default=str), json.dumps(result, default=str)),
         )
-        _set_state_in_connection(connection, claim_id, "DECIDED", result=result, detail={"decision": decision, "source": "reviewer_disposition", "reviewer_id": reviewer_id})
+        _set_state_in_connection(connection, claim_id, "QUEUED", result=result, detail={"source": "reviewer_evidence_confirmation", "reviewer_id": reviewer_id})
+    process_claim(claim_id)
     return _load_claim(claim_id) or result
 
 

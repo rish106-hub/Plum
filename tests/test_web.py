@@ -538,7 +538,7 @@ def test_logical_bill_duplicate_routes_to_review(tmp_path, monkeypatch):
     assert calls["count"] == 1
 
 
-def test_reviewer_can_resolve_manual_review(tmp_path, monkeypatch):
+def test_reviewer_confirmation_retries_deterministic_adjudication_without_choosing_amount(tmp_path, monkeypatch):
     monkeypatch.setattr(web, "process_uploads", lambda *_args, **_kwargs: {"documents": [], "issues": [{"code": "EXTRACTION_UNAVAILABLE", "file_name": "claim.pdf", "message": "Unavailable"}], "metrics": {}})
     with _client(tmp_path, monkeypatch) as client:
         claim_id = _submit(client).json()["id"]
@@ -550,42 +550,34 @@ def test_reviewer_can_resolve_manual_review(tmp_path, monkeypatch):
             f"/api/claims/{claim_id}/review-decision",
             headers=REVIEW_HEADERS,
             json={
-                "decision": "APPROVED", "approved_amount": 1000,
+                "decision": "CONFIRM_EVIDENCE",
+                "confirmed_issue_codes": ["DUPLICATE_STAMP"],
                 "reason_code": "EVIDENCE_CONFIRMED", "reason_text": "Documents support the claim.",
                 "evidence_summary": "Reviewed the bill, prescription, and policy trace.",
             },
         )
     assert response.status_code == 200
-    assert response.json()["state"] == "DECIDED"
-    assert response.json()["result"]["decision"] == "APPROVED"
-    assert response.json()["benefit_reservation"]["status"] == "RESERVED"
+    # Provider unavailability cannot be overridden: the retry remains on review.
+    assert response.json()["state"] == "MANUAL_REVIEW"
+    assert response.json()["result"]["decision"] == "MANUAL_REVIEW"
+    assert response.json()["benefit_reservation"] is None
     assert response.json()["reviewer_actions"][0]["reviewer_id"] == "test-reviewer"
 
 
-def test_settlement_release_returns_reserved_benefit_to_availability(tmp_path, monkeypatch):
+def test_manual_review_rejects_reviewer_selected_payment_amount(tmp_path, monkeypatch):
     monkeypatch.setattr(web, "process_uploads", lambda *_args, **_kwargs: {"documents": [], "issues": [{"code": "EXTRACTION_UNAVAILABLE", "file_name": "claim.pdf", "message": "Unavailable"}], "metrics": {}})
     with _client(tmp_path, monkeypatch) as client:
         claim_id = _submit(client).json()["id"]
-        decided = client.post(
+        response = client.post(
             f"/api/claims/{claim_id}/review-decision", headers=REVIEW_HEADERS,
             json={
                 "decision": "APPROVED", "approved_amount": 1000,
                 "reason_code": "EVIDENCE_CONFIRMED", "reason_text": "Documents support the claim.",
                 "evidence_summary": "Reviewed the bill, prescription, and policy trace.",
             },
-        ).json()
-        assert decided["benefit_reservation"]["status"] == "RESERVED"
-        paid = client.post(
-            f"/api/claims/{claim_id}/settlement", headers=REVIEW_HEADERS,
-            json={"status": "PAID", "reason_code": "REMITTANCE_MATCH", "reason_text": "Insurer remittance matched."},
-        ).json()
-        assert paid["benefit_reservation"]["status"] == "PAID"
-        released = client.post(
-            f"/api/claims/{claim_id}/settlement", headers=REVIEW_HEADERS,
-            json={"status": "RELEASED", "reason_code": "PAYMENT_REVERSED", "reason_text": "Insurer reversed the settlement."},
-        ).json()
-    assert released["benefit_reservation"]["status"] == "RELEASED"
-    assert [(event["from_status"], event["to_status"]) for event in released["settlement_events"]] == [("RESERVED", "PAID"), ("PAID", "RELEASED")]
+        )
+    assert response.status_code == 422
+    assert "deterministic evaluator" in response.json()["detail"]
 
 
 def test_concurrent_workers_cannot_overspend_category_balance(tmp_path, monkeypatch):

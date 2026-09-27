@@ -14,6 +14,7 @@ from PIL import Image, ImageDraw
 
 from claims.documents import (
     SarvamDocumentProvider,
+    _classify_text,
     _text_content,
     normal_name,
     parse_document_date,
@@ -114,6 +115,35 @@ def test_loose_bill_parser_rejects_address_like_bare_integer() -> None:
     )
 
     assert "line_items" not in content
+
+
+def test_bill_table_accepts_common_indian_header_variants_and_reconciles_adjustments() -> None:
+    text = """HOSPITAL BILL
+Patient: Rajesh Kumar
+Date: 01-Nov-2024
+<table><tr><th>Particulars</th><th>Charges</th></tr>
+<tr><td>Consultation</td><td>1,000.00</td></tr>
+<tr><td>Procedure</td><td>500.00</td></tr></table>
+Subtotal: 1500.00
+Discount: 100.00
+GST: 252.00
+Round Off: -2.00
+Grand Total: 1650.00"""
+    content, _ = _text_content(text, "HOSPITAL_BILL")
+
+    assert content["line_items"] == [
+        {"description": "Consultation", "amount": 1000.0},
+        {"description": "Procedure", "amount": 500.0},
+    ]
+    assert {key: content[key] for key in ("subtotal", "discount", "gst_amount", "round_off", "total")} == {
+        "subtotal": 1500.0, "discount": 100.0, "gst_amount": 252.0, "round_off": -2.0, "total": 1650.0,
+    }
+    result = process_uploads([{"file_name": "bill.pdf", "data": pdf_bytes(text.splitlines())}], "DENTAL", "Rajesh Kumar", POLICY)
+    assert not any(issue["code"] == "BILL_ARITHMETIC_CONFLICT" for issue in result["issues"])
+
+
+def test_dental_report_is_classified_from_dental_specific_evidence() -> None:
+    assert _classify_text("Dental examination\nDiagnosis: irreversible pulpitis\nTooth 36\nProcedure recommended: root canal treatment") == "DENTAL_REPORT"
 
 
 def test_reconciled_sarvam_hospital_items_replace_bad_local_candidates() -> None:
@@ -241,6 +271,16 @@ def test_document_alteration_and_duplicate_stamp_are_review_signals() -> None:
     )
     assert {issue["code"] for issue in result["issues"]} >= {"DOCUMENT_ALTERATION", "DUPLICATE_STAMP"}
     assert result["documents"][0]["document_signals"]["alteration_confidence"] == 0.91
+
+
+@pytest.mark.parametrize("label", ["Customer Copy", "Patient Copy", "Office Copy"])
+def test_ordinary_copy_labels_are_not_duplicate_stamps(label: str) -> None:
+    provider = StubProvider(
+        f"HOSPITAL BILL / RECEIPT\n{label}\nPatient: Rajesh Kumar\nConsultation Fee 1500.00\nTotal Amount: 1500.00",
+        {"date": "01-Nov-2024", "total": 1500, "line_items": [{"description": "Consultation Fee", "amount": 1500}], "duplicate_stamp_detected": False},
+    )
+    result = process_uploads([{"file_name": "customer-copy.png", "data": image_bytes()}], "DENTAL", "Rajesh Kumar", POLICY, provider)
+    assert not any(issue["code"] == "DUPLICATE_STAMP" for issue in result["issues"])
 
 
 def test_blurry_or_tiny_image_gets_specific_correction() -> None:
