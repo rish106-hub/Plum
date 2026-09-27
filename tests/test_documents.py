@@ -14,6 +14,7 @@ from PIL import Image, ImageDraw
 
 from claims.documents import (
     SarvamDocumentProvider,
+    _text_content,
     normal_name,
     parse_document_date,
     process_uploads,
@@ -55,6 +56,14 @@ def image_bytes(width: int = 1000, height: int = 1000) -> bytes:
     return output.getvalue()
 
 
+def annotated_image_bytes() -> bytes:
+    image = Image.open(io.BytesIO(image_bytes())).convert("RGB")
+    ImageDraw.Draw(image).line((650, 600, 850, 610), fill=(40, 60, 180), width=8)
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+    return output.getvalue()
+
+
 class StubProvider:
     def __init__(self, ocr: str, fields: dict | None = None):
         self.ocr = ocr
@@ -70,6 +79,65 @@ class StubProvider:
         self.extract_calls += 1
         assert self.fields is not None
         return {"document_type": document_type, "quality": "GOOD", "fields": self.fields}
+
+
+def test_html_bill_table_beats_address_like_loose_line_and_ignores_embedded_image() -> None:
+    text = """HOSPITAL BILL
+Patient: Rajesh Kumar
+Date: 01-Nov-2024
+12 MG Road, Bengaluru 560001
+![Image](data:image/jpeg;base64,MS OewXtTik)
+<table><tr><td>S.No.</td><td>Description</td><td>Amount (₹)</td></tr>
+<tr><td>1</td><td>Consultation Fee (OPD)</td><td>1,000.00</td></tr>
+<tr><td>2</td><td>CBC (Complete Blood Count)</td><td>200.00</td></tr>
+<tr><td>3</td><td>Dengue NS1 Antigen Test</td><td>300.00</td></tr></table>
+Final Total Amount (₹): 1,500.00"""
+
+    content, _ = _text_content(text, "HOSPITAL_BILL")
+
+    assert content["line_items"] == [
+        {"description": "Consultation Fee (OPD)", "amount": 1000},
+        {"description": "CBC (Complete Blood Count)", "amount": 200},
+        {"description": "Dengue NS1 Antigen Test", "amount": 300},
+    ]
+    assert "doctor_specialization" not in content
+
+
+def test_loose_bill_parser_rejects_address_like_bare_integer() -> None:
+    content, _ = _text_content(
+        "HOSPITAL BILL\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\n"
+        "12 MG Road, Bengaluru 560001\nFinal Total Amount: 1500.00",
+        "HOSPITAL_BILL",
+    )
+
+    assert "line_items" not in content
+
+
+def test_reconciled_sarvam_hospital_items_replace_bad_local_candidates() -> None:
+    provider = StubProvider(
+        "HOSPITAL BILL\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\n"
+        "12 MG Road, Bengaluru 560001\nTotal Amount: 1500.00",
+        {
+            "total": 1500,
+            "line_items": [
+                {"description": "Consultation Fee (OPD)", "amount": 1000},
+                {"description": "CBC (Complete Blood Count)", "amount": 200},
+                {"description": "Dengue NS1 Antigen Test", "amount": 300},
+            ],
+        },
+    )
+
+    result = process_uploads(
+        [{"file_name": "bill.png", "data": image_bytes()}], "DENTAL", "Rajesh Kumar", POLICY, provider
+    )
+
+    assert provider.extract_calls == 1
+    assert result["issues"] == []
+    assert result["documents"][0]["content"]["line_items"] == [
+        {"description": "Consultation Fee (OPD)", "amount": 1000, "brand_status": "UNKNOWN", "brand_evidence": ""},
+        {"description": "CBC (Complete Blood Count)", "amount": 200, "brand_status": "UNKNOWN", "brand_evidence": ""},
+        {"description": "Dengue NS1 Antigen Test", "amount": 300, "brand_status": "UNKNOWN", "brand_evidence": ""},
+    ]
 
 
 def test_wrong_document_names_uploaded_and_required_type() -> None:
@@ -191,7 +259,8 @@ def test_provider_failure_is_visible_and_never_fabricates_evidence() -> None:
 
     result = process_uploads([{"file_name": "bill.png", "data": image_bytes()}], "DENTAL", "Rajesh Kumar", POLICY, FailingProvider())
     assert result["metrics"]["provider_failures"] == 1
-    assert any(issue["code"] == "EXTRACTION_UNAVAILABLE" for issue in result["issues"])
+    issue = next(issue for issue in result["issues"] if issue["code"] == "EXTRACTION_UNAVAILABLE")
+    assert issue["provider_reason"] == "TIMEOUT"
     assert result["documents"][0]["content"] == {}
     assert result["documents"][0]["actual_type"] == "UNKNOWN"
 
@@ -212,7 +281,36 @@ def test_provider_setup_failure_falls_back_to_actionable_issue(monkeypatch: pyte
 
     assert result["metrics"]["provider_failures"] == 1
     assert any(issue["code"] == "EXTRACTION_UNAVAILABLE" for issue in result["issues"])
-    assert result["documents"][0]["warnings"] == ["Document extraction setup failed: RuntimeError"]
+    assert result["documents"][0]["warnings"] == ["Document extraction setup failed: PROVIDER_ERROR"]
+
+
+def test_conflicting_previous_total_routes_to_manual_review() -> None:
+    provider = StubProvider(
+        "HOSPITAL BILL\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\n"
+        "Previous Total: 1200.00\nFinal Total Amount: 1500.00\n"
+        "Consultation Fee 1500.00",
+    )
+
+    result = process_uploads(
+        [{"file_name": "corrected-bill.png", "data": image_bytes()}], "DENTAL", "Rajesh Kumar", POLICY, provider
+    )
+
+    assert any(issue["code"] == "DOCUMENT_ALTERATION" for issue in result["issues"])
+    assert result["documents"][0]["content"]["alteration_detected"] is True
+
+
+def test_colored_bill_annotation_routes_to_manual_review() -> None:
+    provider = StubProvider(
+        "HOSPITAL BILL\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\n"
+        "Consultation Fee 1500.00\nFinal Total Amount: 1500.00",
+    )
+
+    result = process_uploads(
+        [{"file_name": "annotated-bill.png", "data": annotated_image_bytes()}], "DENTAL", "Rajesh Kumar", POLICY, provider
+    )
+
+    assert any(issue["code"] == "DOCUMENT_ALTERATION" for issue in result["issues"])
+    assert result["documents"][0]["content"]["alteration_confidence"] == 0.4
 
 
 def test_provider_unreadable_bill_names_file_and_type() -> None:

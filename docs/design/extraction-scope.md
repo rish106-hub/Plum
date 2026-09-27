@@ -25,7 +25,7 @@ These are the `material_fields` in `claims/documents.py::revalidate_documents`. 
 | Rubber stamp over registration | Registration is not adjudication material for a consultation, so an obscured number is left empty and the document still counts. |
 | Multilingual (Hindi + English) | English fields are extracted; Devanagari-only lines are not adjudication material. |
 | Partial / cropped page | Missing material fields hold the claim (`MATERIAL_FIELD_UNVERIFIED`, `AMOUNT_UNVERIFIED`); nothing is inferred. |
-| Amounts crossed out and rewritten | No dedicated alteration detector yet. Protection comes from arithmetic reconciliation (`BILL_ARITHMETIC_CONFLICT`) and the duplicate-bill check. The corpus includes a struck-through bill labelled `abstain` so the live benchmark shows whether this gap matters. |
+| Amounts crossed out and rewritten | Any provider alteration signal, conflicting printed `Previous Total`, or visible blue/purple annotation in the bill body raises `DOCUMENT_ALTERATION` and routes to human review. The image signal is intentionally conservative: stamps and signatures can create false holds, but it never permits automatic payment. The labelled struck-through corpus case measures both missed alterations and these false holds. |
 | Scanned / multi-page PDF | A PDF with no text layer is sent to OCR as a whole; up to 10 pages. Line items are parsed from every page's text. |
 
 ## Mandatory vs optional providers
@@ -74,6 +74,13 @@ There are two separate reports, and neither one stands in for the other.
 | lab_report_scan | NABL lab report table | extract |
 | pharmacy_bill_scan | pharmacy bill with Generic/Branded markers | extract |
 | non_medical_receipt | restaurant receipt | classify UNKNOWN, re-upload |
+
+The provider-backed report records document-type and per-field exact accuracy, wrong-total rate, line-item reconciliation rate, missed-alteration count, false holds, provider call/page counts, p50/max latency, and an optional configured rupee estimate. Supply the rate used for an actual run rather than assuming a vendor price:
+
+```bash
+PYTHONPATH=. .venv/bin/python -m scripts.evaluate_documents --providers live \
+  --digitise-cost-inr-per-page <rate> --extract-cost-inr-per-page <rate>
+```
 
 ### Limits
 

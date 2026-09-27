@@ -442,6 +442,19 @@ def _field_value(content: dict[str, Any], field: str) -> Any:
     return None if value in (None, "", []) else value
 
 
+def _line_items_reconcile(content: dict[str, Any]) -> bool | None:
+    """Return whether observed bill items exactly reconcile to its observed total.
+
+    A missing total or no readable item amounts is deliberately ``None`` rather
+    than a pass: the report distinguishes unavailable evidence from bad maths.
+    """
+    total = _amount(content.get("total"))
+    amounts = _field_value(content, "line_item_amounts")
+    if total is None or not amounts:
+        return None
+    return round(sum(amounts), 2) == total
+
+
 def _matches(field: str, truth: Any, observed: Any) -> bool:
     if field == "line_item_amounts":
         return sorted(round(float(x), 2) for x in truth) == observed
@@ -491,6 +504,7 @@ def score_document(label: dict[str, Any], result: dict[str, Any]) -> dict[str, A
     forbidden = _forbidden_hit(content, label.get("forbidden_values", {}))
     held = behavior != "extract"
     expected_hold = label["expected_behavior"] != "extract"
+    expects_alteration_hold = bool({"struck_through_amount", "handwritten_correction"} & set(label["conditions"]))
     critical_errors = [name for name in label.get("critical_fields", []) if fields.get(name, {}).get("outcome") in {"wrong", "hallucinated"}]
     observed_type = document["actual_type"] if document else None
     return {
@@ -511,6 +525,11 @@ def score_document(label: dict[str, Any], result: dict[str, Any]) -> dict[str, A
         "forbidden_values_used": forbidden,
         "unsafe_confident_error": not held and bool(critical_errors or forbidden),
         "critical_field_errors": critical_errors,
+        "wrong_total": fields.get("total", {}).get("outcome") in {"wrong", "hallucinated"},
+        "line_item_reconciles": _line_items_reconcile(content),
+        "expects_alteration_hold": expects_alteration_hold,
+        "alteration_detected": "DOCUMENT_ALTERATION" in codes,
+        "missed_alteration": expects_alteration_hold and not held,
         "quality": document["quality"] if document else None,
         "extraction_source": document["extraction_source"] if document else None,
     }
@@ -520,7 +539,12 @@ def _rate(numerator: int, denominator: int) -> float | None:
     return round(numerator / denominator, 4) if denominator else None
 
 
-def _aggregate(records: list[dict[str, Any]]) -> dict[str, Any]:
+def _aggregate(
+    records: list[dict[str, Any]],
+    *,
+    digitise_cost_inr_per_page: float | None = None,
+    extract_cost_inr_per_page: float | None = None,
+) -> dict[str, Any]:
     typed = [r for r in records if r["classification_correct"] is not None]
     outcomes = [f for r in records for f in r["fields"].values()]
     scored_fields = [f for f in outcomes if f["outcome"] != "abstained"]
@@ -532,6 +556,10 @@ def _aggregate(records: list[dict[str, Any]]) -> dict[str, Any]:
     latencies = [r["latency_seconds"] for r in records]
     expected_extract = [r for r in records if r["expected_behavior"] == "extract"]
     expected_hold = [r for r in records if r["expected_behavior"] != "extract"]
+    observed_reconciliation = [r for r in records if r["line_item_reconciles"] is not None]
+    costs_configured = digitise_cost_inr_per_page is not None and extract_cost_inr_per_page is not None
+    digitise_pages = sum(r["metrics"].get("sarvam_digitise_pages", 0) for r in records)
+    extract_pages = sum(r["metrics"].get("sarvam_extract_pages", 0) for r in records)
     return {
         "documents": len(records),
         "classification_accuracy": _rate(sum(r["classification_correct"] for r in typed), len(typed)),
@@ -541,16 +569,28 @@ def _aggregate(records: list[dict[str, Any]]) -> dict[str, Any]:
         "behavior_acceptable_rate": _rate(sum(r["behavior_acceptable"] for r in records), len(records)),
         "false_hold_rate": _rate(sum(r["observed_behavior"] != "extract" for r in expected_extract), len(expected_extract)),
         "missed_hold_count": sum(r["observed_behavior"] == "extract" for r in expected_hold),
+        "wrong_total_rate": _rate(sum(r["wrong_total"] for r in records), len(records)),
+        "line_item_reconciliation_rate": _rate(sum(r["line_item_reconciles"] is True for r in observed_reconciliation), len(observed_reconciliation)),
+        "line_item_reconciliation_unavailable_count": sum(r["line_item_reconciles"] is None for r in records),
+        "missed_alteration_count": sum(r["missed_alteration"] for r in records),
+        "alteration_false_hold_count": sum(
+            r["alteration_detected"] and not r["expects_alteration_hold"] for r in records
+        ),
         "unsafe_confident_errors": sum(r["unsafe_confident_error"] for r in records),
         "provider_calls": sum(r["metrics"].get("provider_calls", 0) for r in records),
         "provider_failures": sum(r["metrics"].get("provider_failures", 0) for r in records),
         "sarvam_digitise_calls": sum(r["metrics"].get("sarvam_digitise_calls", 0) for r in records),
-        "sarvam_digitise_pages": sum(r["metrics"].get("sarvam_digitise_pages", 0) for r in records),
+        "sarvam_digitise_pages": digitise_pages,
         "sarvam_extract_calls": sum(r["metrics"].get("sarvam_extract_calls", 0) for r in records),
-        "sarvam_extract_pages": sum(r["metrics"].get("sarvam_extract_pages", 0) for r in records),
+        "sarvam_extract_pages": extract_pages,
         "gemini_calls": sum(int((r.get("gemini") or {}).get("calls", 0) or 0) for r in records),
         "latency_seconds_p50": round(statistics.median(latencies), 3) if latencies else None,
         "latency_seconds_max": round(max(latencies), 3) if latencies else None,
+        "configured_cost_inr": (
+            round(digitise_pages * digitise_cost_inr_per_page + extract_pages * extract_cost_inr_per_page, 2)
+            if costs_configured else None
+        ),
+        "cost_rate_source": "CLI supplied per-page rates" if costs_configured else "NOT_CONFIGURED",
     }
 
 
@@ -560,6 +600,8 @@ def evaluate_live(
     *,
     gemini: bool = False,
     provider_factory: Callable[[], DocumentProvider] | None = None,
+    digitise_cost_inr_per_page: float | None = None,
+    extract_cost_inr_per_page: float | None = None,
 ) -> dict[str, Any]:
     """Provider-backed OCR benchmark over the labelled dirty corpus.
 
@@ -626,7 +668,11 @@ def evaluate_live(
         "status": "RUN",
         "provider": provider_name,
         "gemini": "enabled" if resolver else (gemini_blocker or "disabled"),
-        "metrics": _aggregate(records),
+        "metrics": _aggregate(
+            records,
+            digitise_cost_inr_per_page=digitise_cost_inr_per_page,
+            extract_cost_inr_per_page=extract_cost_inr_per_page,
+        ),
         "records": records,
     }
     _write_live(report_dir, summary)
@@ -654,8 +700,11 @@ def _write_live(report_dir: Path, summary: dict[str, Any]) -> None:
         "| --- | --- |",
     ]
     for key in ("documents", "unsafe_confident_errors", "classification_accuracy", "field_accuracy", "abstention_accuracy",
-                "behavior_acceptable_rate", "false_hold_rate", "missed_hold_count", "provider_calls", "provider_failures",
-                "sarvam_digitise_calls", "sarvam_extract_calls", "gemini_calls", "latency_seconds_p50", "latency_seconds_max"):
+                "behavior_acceptable_rate", "false_hold_rate", "missed_hold_count", "wrong_total_rate",
+                "line_item_reconciliation_rate", "line_item_reconciliation_unavailable_count", "missed_alteration_count",
+                "alteration_false_hold_count", "provider_calls", "provider_failures", "sarvam_digitise_calls",
+                "sarvam_digitise_pages", "sarvam_extract_calls", "sarvam_extract_pages", "gemini_calls",
+                "latency_seconds_p50", "latency_seconds_max", "configured_cost_inr", "cost_rate_source"):
         lines.append(f"| {key} | {metrics[key]} |")
     lines += ["", "| Scenario | Type (exp / got) | Behaviour (exp / got) | Fields correct | Unsafe | Latency s |", "| --- | --- | --- | --- | --- | --- |"]
     for r in summary["records"]:
@@ -664,7 +713,11 @@ def _write_live(report_dir: Path, summary: dict[str, Any]) -> None:
             f"| {r['scenario']} | {r['expected_type']} / {r['observed_type']} | {r['expected_behavior']} / {r['observed_behavior']} | "
             f"{correct}/{len(r['fields'])} | {'YES' if r['unsafe_confident_error'] else 'no'} | {r['latency_seconds']} |"
         )
-    lines += ["", "An unsafe confident error is a document that would proceed to adjudication with a wrong or fabricated critical field. The target is zero."]
+    lines += [
+        "",
+        "An unsafe confident error is a document that would proceed to adjudication with a wrong or fabricated critical field. The target is zero.",
+        "Configured cost is an estimate only, using the per-page rates passed to this run; it is omitted until rates are supplied.",
+    ]
     (report_dir / "document-ocr-evaluation.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -675,9 +728,17 @@ def main() -> int:
     parser.add_argument("--corpus-dir", type=Path, default=CORPUS_DIR)
     parser.add_argument("--output-dir", type=Path, default=ROOT / ".data" / "document-evaluation")
     parser.add_argument("--report-dir", type=Path, default=ROOT / "docs" / "reports")
+    parser.add_argument("--digitise-cost-inr-per-page", type=float, help="live mode: measured or current rate for each Sarvam Digitise page")
+    parser.add_argument("--extract-cost-inr-per-page", type=float, help="live mode: measured or current rate for each Sarvam Extract page")
     args = parser.parse_args()
     if args.providers == "live":
-        live = evaluate_live(args.report_dir, args.corpus_dir, gemini=args.gemini)
+        live = evaluate_live(
+            args.report_dir,
+            args.corpus_dir,
+            gemini=args.gemini,
+            digitise_cost_inr_per_page=args.digitise_cost_inr_per_page,
+            extract_cost_inr_per_page=args.extract_cost_inr_per_page,
+        )
         if live["status"] != "RUN":
             print(f"{live['reason']}: {len(live['records'])} live OCR scenarios not run; no metrics were produced.")
             return 2

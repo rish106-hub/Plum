@@ -692,7 +692,7 @@ def _provider_review_result(issues: list[dict[str, Any]], metrics: dict[str, Any
                 "stage": "document_extraction",
                 "status": "DEGRADED",
                 "rule_id": str(issue.get("code", "EXTRACTION_UNAVAILABLE")),
-                "evidence": {"file_name": issue.get("file_name")},
+                "evidence": {"file_name": issue.get("file_name"), "provider_reason": issue.get("provider_reason")},
                 "reason": issue.get("message"),
             }
             for issue in issues

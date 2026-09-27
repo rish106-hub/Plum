@@ -8,6 +8,7 @@ describe visible facts; this module never asks it to decide insurance coverage.
 from __future__ import annotations
 
 import hashlib
+import html
 import io
 import json
 import os
@@ -196,8 +197,79 @@ def _classify_text(text: str) -> str:
     return "UNKNOWN"
 
 
+def _strip_embedded_images(text: str) -> str:
+    """Remove OCR Markdown data URIs before parsing or retaining source text."""
+    return re.sub(r"!\[[^\]]*\]\(data:image/[^;\s]+;base64,[^)]+\)", "", text, flags=re.IGNORECASE)
+
+
+def _html_table_line_items(text: str) -> list[dict[str, Any]]:
+    """Read item rows from Sarvam's Markdown HTML tables, if present."""
+    items: list[dict[str, Any]] = []
+    for table in re.findall(r"<table\b[^>]*>(.*?)</table>", text, flags=re.IGNORECASE | re.DOTALL):
+        rows = re.findall(r"<tr\b[^>]*>(.*?)</tr>", table, flags=re.IGNORECASE | re.DOTALL)
+        parsed_rows = [
+            [html.unescape(re.sub(r"<[^>]+>", "", cell)).strip() for cell in re.findall(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", row, flags=re.IGNORECASE | re.DOTALL)]
+            for row in rows
+        ]
+        header_index = next((index for index, row in enumerate(parsed_rows) if any("description" in cell.casefold() for cell in row)), None)
+        if header_index is None:
+            continue
+        header = parsed_rows[header_index]
+        description_index = next((index for index, cell in enumerate(header) if "description" in cell.casefold()), None)
+        amount_index = next((index for index, cell in enumerate(header) if cell.casefold().startswith("amount")), None)
+        if description_index is None or amount_index is None:
+            continue
+        for row in parsed_rows[header_index + 1:]:
+            if len(row) <= max(description_index, amount_index):
+                continue
+            description = " ".join(row[description_index].split())
+            amount = _amount(row[amount_index])
+            if description and amount is not None and amount > 0:
+                items.append({"description": description[:160], "amount": amount})
+    return items
+
+
+_NON_CHARGE_LINE = re.compile(
+    r"\b(?:address|road|street|lane|nagar|city|phone|email|gstin|patient\s+name|bill\s*no|receipt\s*no|visit\s+type|department)\b",
+    re.IGNORECASE,
+)
+_CHARGE_CUE = re.compile(
+    r"\b(?:consult(?:ation)?|fee|charge|test|medicine|tablet|capsule|syrup|injection|scan|x[ -]?ray|procedure|treatment|service|room|lab|diagnostic)\b",
+    re.IGNORECASE,
+)
+
+
+def _loose_line_item(line: str) -> dict[str, Any] | None:
+    """Parse a deliberately narrow non-table item line.
+
+    A bare trailing integer is often an address, postal code, account number or
+    header value. It is not enough evidence for a financial charge. Tables are
+    preferred; this fallback accepts a currency symbol or a decimal amount only.
+    """
+    if _NON_CHARGE_LINE.search(line):
+        return None
+    match = re.match(
+        r"\s*(?:\d+[.)]\s*)?(.{4,70}?)\s+(?:\d+\s+)?(?:₹|Rs\.?\s*)?([\d,]+(?:\.\d{1,2})?)\s*$",
+        line,
+    )
+    if match is None:
+        return None
+    raw_amount = match.group(2)
+    if (
+        "." not in raw_amount
+        and not re.search(r"(?:₹|Rs\.?)", line, re.IGNORECASE)
+        and not _CHARGE_CUE.search(match.group(1))
+    ):
+        return None
+    amount = _amount(raw_amount)
+    if amount is None or amount <= 0:
+        return None
+    return {"description": match.group(1).strip(), "amount": amount}
+
+
 def _text_content(text: str, kind: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Conservative extraction for clear digital text, with source snippets."""
+    text = _strip_embedded_images(text)
     content: dict[str, Any] = {}
     evidence: list[dict[str, Any]] = []
     lines = [" ".join(line.split()) for line in text.splitlines() if line.strip()]
@@ -235,16 +307,17 @@ def _text_content(text: str, kind: str) -> tuple[dict[str, Any], list[dict[str, 
     field("gstin", r"\bGSTIN\s*[:\-]?\s*([A-Z0-9]{10,20})")
     field("drug_license_number", r"\bdrug\s+lic(?:en[cs]e)?\s*(?:no\.?|number|#)?\s*[:\-]?\s*([\w/-]{3,50})")
     if kind in {"HOSPITAL_BILL", "PHARMACY_BILL"}:
-        field("total", r"\b(?:grand\s+total|total\s+amount|net\s+amount|total)\s*[:₹Rs. ]+([\d,]+(?:\.\d{1,2})?)", _amount)
-        items: list[dict[str, Any]] = []
-        for line in lines:
-            if re.search(r"\b(?:total|subtotal|discount|gst|tax|date|bill\s*no)\b", line, re.IGNORECASE):
-                continue
-            match = re.match(r"\s*(?:\d+[.)]\s*)?(.{4,70}?)\s+(?:\d+\s+)?(?:₹|Rs\.?\s*)?([\d,]+(?:\.\d{1,2})?)\s*$", line)
-            if match:
-                amount = _amount(match.group(2))
-                if amount is not None and amount > 0:
-                    items.append({"description": match.group(1).strip(), "amount": amount})
+        field("total", r"\b(?:final\s+total(?:\s+amount)?|grand\s+total|net\s+amount|total\s+amount)\s*[:₹Rs. ]+([\d,]+(?:\.\d{1,2})?)", _amount)
+        if "total" not in content:
+            field("total", r"\btotal\s*[:₹Rs. ]+([\d,]+(?:\.\d{1,2})?)", _amount)
+        items = _html_table_line_items(text)
+        if not items:
+            for line in lines:
+                if "<table" in line.casefold() or re.search(r"\b(?:total|subtotal|discount|gst|tax|date|bill\s*no)\b", line, re.IGNORECASE):
+                    continue
+                item = _loose_line_item(line)
+                if item is not None:
+                    items.append(item)
         if items:
             content["line_items"] = items
             evidence.append({"field": "line_items", "source": "pdf_text", "snippet": f"{len(items)} item lines", "confidence": 0.75})
@@ -258,6 +331,99 @@ def _amount(value: str) -> float | None:
         return float(Decimal(value.replace(",", "")))
     except InvalidOperation:
         return None
+
+
+def _reconciles_line_items(items: Any, total: Any) -> bool:
+    """Return true only when typed item amounts equal a typed bill total exactly."""
+    if not isinstance(items, list) or not items or total is None:
+        return False
+    try:
+        return sum(to_paise(item.get("amount")) for item in items if isinstance(item, dict)) == to_paise(total)
+    except (InvalidOperation, TypeError, ValueError):
+        return False
+
+
+def _has_conflicting_previous_total(text: str, total: Any) -> bool:
+    """Flag a prior-total value that conflicts with the claimed final total.
+
+    This is intentionally narrow: a receipt that labels a different amount as
+    ``Previous Total`` can reflect a crossed-out or handwritten correction. It
+    is a review signal, not a fraud determination.
+    """
+    if total is None:
+        return False
+    match = re.search(
+        r"\bprevious\s+total\b[^\d₹]{0,24}(?:₹|Rs\.?\s*)?([\d,]+(?:\.\d{1,2})?)",
+        text,
+        re.IGNORECASE,
+    )
+    if match is None:
+        return False
+    previous = _amount(match.group(1))
+    try:
+        return previous is not None and to_paise(previous) != to_paise(total)
+    except (InvalidOperation, TypeError, ValueError):
+        return False
+
+
+def _has_colored_bill_annotation(data: bytes) -> bool:
+    """Detect likely blue/purple pen marks on a photographed bill.
+
+    It is deliberately a review-only signal. We cannot reliably distinguish a
+    handwritten correction from a signature or stamp without field bounding
+    boxes, so any material coloured annotation in the bill body holds the claim
+    for an operator instead of making a financial decision.
+    """
+    from PIL import Image
+
+    try:
+        with Image.open(io.BytesIO(data)) as source:
+            image = source.convert("RGB")
+            image.thumbnail((900, 1200))
+            top, bottom = int(image.height * 0.12), int(image.height * 0.85)
+            pixels = list(image.crop((0, top, image.width, bottom)).getdata())
+    except (OSError, ValueError):
+        return False
+    if not pixels:
+        return False
+    annotation_pixels = sum(
+        blue >= red + 20 and blue >= green + 10 and blue >= 60
+        for red, green, blue in pixels
+    )
+    return annotation_pixels >= max(12, int(len(pixels) * 0.0002))
+
+
+def _provider_failure_reason(exc: Exception) -> str:
+    """Classify provider failures without retaining provider response text."""
+    body = getattr(exc, "body", None)
+    code = str(body.get("code", "")) if isinstance(body, dict) else ""
+    status = getattr(exc, "status_code", None)
+    message = str(exc).casefold()
+    if code == "SCHEMA_INVALID" or "schema_invalid" in message:
+        return "SCHEMA_INVALID"
+    if status in {401, 403} or "authentication" in message or "api key" in message:
+        return "AUTHENTICATION_FAILED"
+    if status == 429 or "rate limit" in message:
+        return "RATE_LIMITED"
+    if isinstance(exc, TimeoutError) or "timeout" in message or "timed out" in message:
+        return "TIMEOUT"
+    if isinstance(exc, ConnectionError) or "connection" in message:
+        return "CONNECTION_ERROR"
+    if status is not None and int(status) >= 500:
+        return "PROVIDER_UNAVAILABLE"
+    return "PROVIDER_ERROR"
+
+
+_PROVIDER_FAILURE_MESSAGES = {
+    "SCHEMA_INVALID": "the extraction schema needs a service-configuration fix",
+    "AUTHENTICATION_FAILED": "provider authentication needs configuration",
+    "RATE_LIMITED": "the provider is rate-limiting requests",
+    "TIMEOUT": "the provider did not finish in time",
+    "CONNECTION_ERROR": "the provider could not be reached",
+    "PROVIDER_UNAVAILABLE": "the provider is temporarily unavailable",
+    "PROVIDER_ERROR": "the provider returned an unexpected error",
+    "PROVIDER_NOT_CONFIGURED": "document extraction is not configured",
+}
 
 
 class SarvamDocumentProvider:
@@ -680,6 +846,7 @@ def process_uploads(
     issues: list[dict[str, Any]] = []
     ocr_text_by_file_id: dict[str, str] = {}
     provider_setup_warning: str | None = None
+    provider_setup_reason: str | None = None
     metrics: dict[str, Any] = {
         "files": len(files), "pages": 0, "provider_calls": 0, "provider_failures": 0,
         "sarvam_digitise_calls": 0, "sarvam_digitise_pages": 0,
@@ -700,7 +867,8 @@ def process_uploads(
             provider = SarvamDocumentProvider()
         except Exception as exc:  # noqa: BLE001 - optional provider setup must not abort intake
             metrics["provider_failures"] += 1
-            provider_setup_warning = f"Document extraction setup failed: {type(exc).__name__}"
+            provider_setup_reason = _provider_failure_reason(exc)
+            provider_setup_warning = f"Document extraction setup failed: {provider_setup_reason}"
 
     for index, raw in enumerate(files, 1):
         try:
@@ -745,7 +913,9 @@ def process_uploads(
         content: dict[str, Any] = {}
         evidence: list[dict[str, Any]] = []
         warnings = [provider_setup_warning] if provider_setup_warning else []
+        provider_failure_reason = provider_setup_reason
         source = "unavailable"
+        text = _strip_embedded_images(text)
         if len(text.strip()) >= 80:
             kind = _classify_text(text)
             content, evidence = _text_content(text, kind)
@@ -760,7 +930,7 @@ def process_uploads(
                 metrics["provider_calls"] += 1
                 metrics["sarvam_digitise_calls"] += 1
                 metrics["sarvam_digitise_pages"] += pages
-                recognized = provider.digitise(data, mime)
+                recognized = _strip_embedded_images(provider.digitise(data, mime))
                 text = recognized
                 if len(recognized.strip()) < 30:
                     kind, quality = "UNKNOWN", "UNREADABLE"
@@ -777,7 +947,8 @@ def process_uploads(
                     source = "sarvam_digitise"
             except Exception as exc:  # noqa: BLE001 - provider/network failures become traceable issues
                 metrics["provider_failures"] += 1
-                warnings.append(f"Document extraction failed: {type(exc).__name__}")
+                provider_failure_reason = _provider_failure_reason(exc)
+                warnings.append(f"Document extraction failed: {provider_failure_reason}")
         if (
             provider
             and source in {"pdf_text", "sarvam_digitise"}
@@ -798,6 +969,14 @@ def process_uploads(
                 parsed = provider.extract_fields(data, mime, kind)
                 _, _, additional, provider_warnings = _provider_result(parsed)
                 merged_content = {**additional, **content}
+                extracted_total = additional.get("total")
+                local_total = content.get("total")
+                if kind in BILL_TYPES and _reconciles_line_items(additional.get("line_items"), extracted_total):
+                    try:
+                        if local_total is None or to_paise(local_total) == to_paise(extracted_total):
+                            merged_content["line_items"] = additional["line_items"]
+                    except (InvalidOperation, TypeError, ValueError):
+                        pass
                 for signal in (
                     "alteration_detected", "crossed_out_amount", "handwritten_amount_correction",
                     "duplicate_stamp_detected", "original_stamp_detected",
@@ -813,7 +992,7 @@ def process_uploads(
                         (_normalized_words(str(item.get("description", ""))), item.get("amount")): item
                         for item in additional["line_items"]
                     }
-                    merged_content["line_items"] = [
+                    local_items_with_brand_evidence = [
                         {
                             **local_item,
                             "brand_status": extracted_by_key.get(
@@ -825,6 +1004,8 @@ def process_uploads(
                         }
                         for local_item in content["line_items"]
                     ]
+                    if not _reconciles_line_items(merged_content.get("line_items"), merged_content.get("total")):
+                        merged_content["line_items"] = local_items_with_brand_evidence
                 content = merged_content
                 warnings.extend(provider_warnings)
                 evidence.extend(
@@ -834,11 +1015,22 @@ def process_uploads(
                 source = "sarvam_extract" if source == "pdf_text" else "sarvam_digitise+extract"
             except Exception as exc:  # noqa: BLE001 - provider/network failures become traceable issues
                 metrics["provider_failures"] += 1
-                warnings.append(f"Structured extraction failed: {type(exc).__name__}")
+                provider_failure_reason = _provider_failure_reason(exc)
+                warnings.append(f"Structured extraction failed: {provider_failure_reason}")
         if source == "unavailable":
-            issues.append(_issue("EXTRACTION_UNAVAILABLE", name, f"{name} needs image reading, but document extraction is unavailable. Ask an operator to review it or retry when extraction is restored."))
+            reason = provider_failure_reason or "PROVIDER_NOT_CONFIGURED"
+            issues.append(_issue(
+                "EXTRACTION_UNAVAILABLE", name,
+                f"{name} needs image reading, but document extraction is unavailable because {_PROVIDER_FAILURE_MESSAGES[reason]}. Ask an operator to review it or retry later.",
+                provider_reason=reason,
+            ))
         elif any(warning.startswith("Structured extraction failed:") for warning in warnings):
-            issues.append(_issue("EXTRACTION_UNAVAILABLE", name, f"Structured extraction for {name} is temporarily unavailable. An operator must inspect the uploaded document or retry later."))
+            reason = provider_failure_reason or "PROVIDER_ERROR"
+            issues.append(_issue(
+                "EXTRACTION_UNAVAILABLE", name,
+                f"Structured extraction for {name} is unavailable because {_PROVIDER_FAILURE_MESSAGES[reason]}. An operator must inspect the uploaded document or retry later.",
+                provider_reason=reason,
+            ))
         elif quality == "UNREADABLE":
             descriptor = TYPE_NAMES[kind] if kind != "UNKNOWN" else "document"
             issues.append(_issue("UNREADABLE_DOCUMENT", name, f"The {descriptor} in {name} cannot be read. Re-upload a clear image of that document."))
@@ -848,6 +1040,12 @@ def process_uploads(
             issues.append(_issue("PARTIAL_DOCUMENT", name, f"The {TYPE_NAMES[kind]} in {name} is partly unreadable. Re-upload the full page with names and amounts visible."))
         if kind in {"HOSPITAL_BILL", "PHARMACY_BILL"} and not content.get("line_items") and quality == "GOOD":
             issues.append(_issue("DETAILS_UNVERIFIED", name, f"The itemized charges on {name} could not be verified. Upload a clearer bill showing each charged item."))
+        if kind in BILL_TYPES and _has_conflicting_previous_total(text, content.get("total")):
+            content["alteration_detected"] = True
+            content["alteration_confidence"] = max(float(content.get("alteration_confidence") or 0), 0.6)
+        if kind in BILL_TYPES and _has_colored_bill_annotation(data):
+            content["alteration_detected"] = True
+            content["alteration_confidence"] = max(float(content.get("alteration_confidence") or 0), 0.4)
         doc = {
             "file_id": f"UPLOAD-{index}",
             "file_name": name,

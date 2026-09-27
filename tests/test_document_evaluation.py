@@ -198,7 +198,13 @@ class _MisreadingOCR:
 
 
 def test_live_scoring_flags_unsafe_confident_errors_with_an_injected_provider(tmp_path: Path) -> None:
-    result = evaluate_live(tmp_path, provider_factory=_MisreadingOCR, gemini=True)
+    result = evaluate_live(
+        tmp_path,
+        provider_factory=_MisreadingOCR,
+        gemini=True,
+        digitise_cost_inr_per_page=0.5,
+        extract_cost_inr_per_page=1.0,
+    )
     assert result["status"] == "RUN"
     assert result["provider"] == "injected_test_provider"
     assert result["gemini"] == "NOT_RUN (missing GEMINI_API_KEY)"
@@ -216,4 +222,10 @@ def test_live_scoring_flags_unsafe_confident_errors_with_an_injected_provider(tm
     assert metrics["unsafe_confident_errors"] >= 2
     assert metrics["sarvam_digitise_calls"] == len(LABELS) - 1  # the blank page is rejected locally
     assert metrics["latency_seconds_p50"] is not None
+    assert metrics["wrong_total_rate"] is not None
+    assert metrics["line_item_reconciliation_rate"] is not None
+    assert records["bill_struck_correction"]["alteration_detected"] is True
+    assert metrics["missed_alteration_count"] == 0
+    assert metrics["configured_cost_inr"] is not None
+    assert metrics["cost_rate_source"] == "CLI supplied per-page rates"
     assert all(record["provider_call_log"] or record["scenario"] == "blank_page" for record in result["records"])
