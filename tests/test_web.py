@@ -46,6 +46,10 @@ def test_operations_worklist_page_is_available(tmp_path, monkeypatch) -> None:
         response = client.get("/ops", headers=REVIEW_HEADERS)
     assert response.status_code == 200
     assert "Review" in response.text
+    assert "Issue to review" in response.text
+    assert "Reviewer finding" in response.text
+    assert "Approved amount INR" not in response.text
+    assert 'id="ops-review-amount"' not in response.text
 
 
 def test_submission_uses_real_clock_by_default(tmp_path, monkeypatch) -> None:
@@ -538,10 +542,26 @@ def test_logical_bill_duplicate_routes_to_review(tmp_path, monkeypatch):
     assert calls["count"] == 1
 
 
-def test_reviewer_confirmation_retries_deterministic_adjudication_without_choosing_amount(tmp_path, monkeypatch):
+def _review_payload(issue: dict[str, Any], finding: str) -> dict[str, Any]:
+    return {
+        "decision": "REVIEW_ISSUE",
+        "reviewed_issue": {
+            "issue_id": issue["issue_id"], "code": issue["code"],
+            "evidence_digest": issue["evidence_digest"], "reviewer_finding": finding,
+        },
+        "reason_code": "EVIDENCE_REVIEWED", "reason_text": "The current evidence was reviewed.",
+        "evidence_summary": "Reviewed the uploaded file and the current decision trace.",
+    }
+
+
+def test_reviewer_retry_is_bound_to_current_issue_and_does_not_mutate_member_request(tmp_path, monkeypatch):
     monkeypatch.setattr(web, "process_uploads", lambda *_args, **_kwargs: {"documents": [], "issues": [{"code": "EXTRACTION_UNAVAILABLE", "file_name": "claim.pdf", "message": "Unavailable"}], "metrics": {}})
     with _client(tmp_path, monkeypatch) as client:
         claim_id = _submit(client).json()["id"]
+        before = client.get(f"/api/claims/{claim_id}").json()
+        issue = before["result"]["review_issues"][0]
+        assert issue["code"] == "EXTRACTION_UNAVAILABLE"
+        assert issue["allowed_findings"] == ["REQUEST_ORIGINAL", "RETRY_PROCESSING"]
         assert client.post(
             f"/api/claims/{claim_id}/review-decision",
             json={"decision": "APPROVED", "approved_amount": 1000},
@@ -549,19 +569,27 @@ def test_reviewer_confirmation_retries_deterministic_adjudication_without_choosi
         response = client.post(
             f"/api/claims/{claim_id}/review-decision",
             headers=REVIEW_HEADERS,
-            json={
-                "decision": "CONFIRM_EVIDENCE",
-                "confirmed_issue_codes": ["DUPLICATE_STAMP"],
-                "reason_code": "EVIDENCE_CONFIRMED", "reason_text": "Documents support the claim.",
-                "evidence_summary": "Reviewed the bill, prescription, and policy trace.",
-            },
+            json=_review_payload(issue, "RETRY_PROCESSING"),
         )
     assert response.status_code == 200
-    # Provider unavailability cannot be overridden: the retry remains on review.
     assert response.json()["state"] == "MANUAL_REVIEW"
     assert response.json()["result"]["decision"] == "MANUAL_REVIEW"
     assert response.json()["benefit_reservation"] is None
     assert response.json()["reviewer_actions"][0]["reviewer_id"] == "test-reviewer"
+    assert response.json()["reviewer_actions"][0]["issue_id"] == issue["issue_id"]
+    assert response.json()["request"] == before["request"]
+
+
+def test_reviewer_cannot_confirm_a_code_that_is_not_the_current_issue(tmp_path, monkeypatch):
+    monkeypatch.setattr(web, "process_uploads", lambda *_args, **_kwargs: {"documents": [], "issues": [{"code": "EXTRACTION_UNAVAILABLE", "file_name": "claim.pdf", "message": "Unavailable"}], "metrics": {}})
+    with _client(tmp_path, monkeypatch) as client:
+        claim_id = _submit(client).json()["id"]
+        issue = client.get(f"/api/claims/{claim_id}").json()["result"]["review_issues"][0]
+        payload = _review_payload(issue, "RETRY_PROCESSING")
+        payload["reviewed_issue"]["code"] = "DUPLICATE_STAMP"
+        response = client.post(f"/api/claims/{claim_id}/review-decision", headers=REVIEW_HEADERS, json=payload)
+    assert response.status_code == 409
+    assert "stale or is not present" in response.json()["detail"]
 
 
 def test_manual_review_rejects_reviewer_selected_payment_amount(tmp_path, monkeypatch):
@@ -577,7 +605,88 @@ def test_manual_review_rejects_reviewer_selected_payment_amount(tmp_path, monkey
             },
         )
     assert response.status_code == 422
-    assert "deterministic evaluator" in response.json()["detail"]
+    assert "deterministic workflow" in response.json()["detail"]
+
+
+def test_confirmed_duplicate_maps_to_zero_payment_rejection(tmp_path, monkeypatch):
+    def inspect(files, *_args, **_kwargs):
+        return {"documents": [{
+            "file_id": "UPLOAD-1", "sha256": hashlib.sha256(files[0]["data"]).hexdigest(),
+            "actual_type": "HOSPITAL_BILL", "quality": "GOOD",
+            "content": {"bill_number": "INV-900", "hospital_name": "City Clinic", "date": "2024-11-01", "patient_name": "Aarav Mehta", "total": 1500, "line_items": [{"description": "Consultation", "amount": 1500}]},
+        }], "issues": [], "metrics": {}}
+
+    monkeypatch.setattr(web, "process_uploads", inspect)
+    monkeypatch.setattr(web, "evaluate_claim", lambda *_args: _mock_decision())
+    with _client(tmp_path, monkeypatch) as client:
+        first = _submit(client).json()["id"]
+        assert client.get(f"/api/claims/{first}").json()["state"] == "DECIDED"
+        second = _submit(client).json()["id"]
+        before = client.get(f"/api/claims/{second}").json()
+        issue = before["result"]["review_issues"][0]
+        assert issue["code"] == "DUPLICATE_BILL"
+        response = client.post(
+            f"/api/claims/{second}/review-decision", headers=REVIEW_HEADERS,
+            json=_review_payload(issue, "CONFIRMED_DUPLICATE"),
+        )
+    assert response.status_code == 200
+    saved = response.json()
+    assert saved["state"] == "DECIDED"
+    assert saved["result"]["decision"] == "REJECTED"
+    assert saved["result"]["approved_amount_paise"] == 0
+    assert saved["result"]["reasons"][0]["code"] == "DUPLICATE_CLAIM"
+    assert saved["request"] == before["request"]
+    assert saved["reviewer_actions"][0]["reviewer_finding"] == "CONFIRMED_DUPLICATE"
+
+
+def test_duplicate_false_positive_clears_only_the_bound_instance_and_reruns_policy(tmp_path, monkeypatch):
+    calls = {"count": 0}
+
+    def inspect(files, *_args, **_kwargs):
+        return {"documents": [{
+            "file_id": "UPLOAD-1", "sha256": hashlib.sha256(files[0]["data"]).hexdigest(),
+            "actual_type": "HOSPITAL_BILL", "quality": "GOOD",
+            "content": {"bill_number": "INV-901", "hospital_name": "City Clinic", "date": "2024-11-01", "patient_name": "Aarav Mehta", "total": 1500, "line_items": [{"description": "Consultation", "amount": 1500}]},
+        }], "issues": [], "metrics": {}}
+
+    def decide(*_args):
+        calls["count"] += 1
+        return _mock_decision()
+
+    monkeypatch.setattr(web, "process_uploads", inspect)
+    monkeypatch.setattr(web, "evaluate_claim", decide)
+    with _client(tmp_path, monkeypatch) as client:
+        _submit(client)
+        second = _submit(client).json()["id"]
+        before = client.get(f"/api/claims/{second}").json()
+        issue = before["result"]["review_issues"][0]
+        response = client.post(
+            f"/api/claims/{second}/review-decision", headers=REVIEW_HEADERS,
+            json=_review_payload(issue, "FALSE_POSITIVE"),
+        )
+    assert response.status_code == 200
+    assert response.json()["state"] == "DECIDED"
+    assert response.json()["result"]["decision"] == "APPROVED"
+    assert response.json()["result"]["approved_amount_paise"] == 135000
+    assert response.json()["request"] == before["request"]
+    assert calls["count"] == 2
+
+
+def test_request_original_maps_to_correction_without_a_payment_decision(tmp_path, monkeypatch):
+    monkeypatch.setattr(web, "process_uploads", lambda *_args, **_kwargs: {"documents": [], "issues": [{"code": "EXTRACTION_UNAVAILABLE", "file_name": "claim.pdf", "message": "Unavailable"}], "metrics": {}})
+    with _client(tmp_path, monkeypatch) as client:
+        claim_id = _submit(client).json()["id"]
+        before = client.get(f"/api/claims/{claim_id}").json()
+        issue = before["result"]["review_issues"][0]
+        response = client.post(
+            f"/api/claims/{claim_id}/review-decision", headers=REVIEW_HEADERS,
+            json=_review_payload(issue, "REQUEST_ORIGINAL"),
+        )
+    saved = response.json()
+    assert saved["state"] == "DOCUMENT_CORRECTION_REQUIRED"
+    assert saved["result"]["decision"] is None
+    assert saved["result"]["approved_amount_paise"] is None
+    assert saved["request"] == before["request"]
 
 
 def test_concurrent_workers_cannot_overspend_category_balance(tmp_path, monkeypatch):

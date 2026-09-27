@@ -2,7 +2,7 @@
   "use strict";
 
   const byId = (id) => document.getElementById(id);
-  const state = { claims: [], filter: "attention", query: "", selectedId: null, request: null };
+  const state = { claims: [], filter: "attention", query: "", selectedId: null, selectedClaim: null, request: null };
 
   function make(tag, className, text) {
     const node = document.createElement(tag);
@@ -154,6 +154,54 @@
     if (!reason || typeof reason !== "object") return "A reviewer must inspect the complete record.";
     const code = reason.code ? `${friendlyLabel(reason.code)}: ` : "";
     return `${code}${reason.message || reason.reason || humanValue(reason)}`;
+  }
+
+  const FINDING_LABELS = {
+    FALSE_POSITIVE: "False positive — not a duplicate",
+    CONFIRMED_DUPLICATE: "Confirmed duplicate bill",
+    VALID_ORIGINAL_CONFIRMED: "Valid original — stamp is not a duplicate",
+    DUPLICATE_CONFIRMED: "Confirmed duplicate stamp",
+    BENIGN_ANNOTATION: "Benign annotation — amount unchanged",
+    FINANCIAL_AMOUNT_CHANGED: "Financial amount was changed",
+    CONFIRMED_ADVERSE: "Confirmed adverse finding",
+    REQUEST_ORIGINAL: "Request an original document",
+    RETRY_PROCESSING: "Retry processing without clearing the issue",
+  };
+
+  function reviewIssues(claim) {
+    return Array.isArray(claim?.result?.review_issues) ? claim.result.review_issues : [];
+  }
+
+  function selectedReviewIssue() {
+    const issueId = byId("ops-review-issue").value;
+    return reviewIssues(state.selectedClaim).find((issue) => issue.issue_id === issueId) || null;
+  }
+
+  function renderReviewFindingOptions() {
+    const issue = selectedReviewIssue();
+    const finding = byId("ops-review-finding");
+    finding.replaceChildren();
+    (issue?.allowed_findings || []).forEach((value) => {
+      const option = make("option", "", FINDING_LABELS[value] || titleCase(value));
+      option.value = value;
+      finding.append(option);
+    });
+    const detail = byId("ops-review-issue-detail");
+    detail.replaceChildren();
+    if (issue) {
+      detail.append(make("strong", "", friendlyLabel(issue.code)), make("span", "", issue.message || "Inspect the issue evidence before recording a finding."));
+    }
+  }
+
+  function renderReviewIssues(claim) {
+    const select = byId("ops-review-issue");
+    select.replaceChildren();
+    reviewIssues(claim).forEach((issue) => {
+      const option = make("option", "", `${friendlyLabel(issue.code)} — ${String(issue.issue_id || "").slice(0, 10)}`);
+      option.value = issue.issue_id;
+      select.append(option);
+    });
+    renderReviewFindingOptions();
   }
 
   function showError(message) {
@@ -399,6 +447,7 @@
   }
 
   function renderDetail(claim) {
+    state.selectedClaim = claim;
     const result = claim.result || {};
     const status = claimStatus(claim);
     byId("ops-detail-loading").hidden = true;
@@ -435,9 +484,10 @@
     renderLedger(result);
     renderFilesAndEvents(claim);
     const action = byId("ops-review-action");
-    action.hidden = claim.state !== "MANUAL_REVIEW";
+    const issues = reviewIssues(claim);
+    action.hidden = claim.state !== "MANUAL_REVIEW" || !issues.length;
     if (!action.hidden) {
-      byId("ops-review-amount").value = "";
+      renderReviewIssues(claim);
       byId("ops-review-reason-code").value = "";
       byId("ops-review-reason-text").value = "";
       byId("ops-review-evidence").value = "";
@@ -515,18 +565,19 @@
   });
 
   byId("ops-retry").addEventListener("click", loadClaims);
+  byId("ops-review-issue").addEventListener("change", renderReviewFindingOptions);
   byId("ops-review-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const error = byId("ops-review-error");
     error.hidden = true;
     if (!state.selectedId) return;
-    const decision = byId("ops-review-decision").value;
-    const approvedAmount = Number(byId("ops-review-amount").value);
+    const issue = selectedReviewIssue();
+    const reviewerFinding = byId("ops-review-finding").value;
     const reasonCode = byId("ops-review-reason-code").value.trim().toUpperCase();
     const reasonText = byId("ops-review-reason-text").value.trim();
     const evidenceSummary = byId("ops-review-evidence").value.trim();
-    if (!Number.isFinite(approvedAmount) || approvedAmount < 0 || (decision !== "REJECTED" && approvedAmount <= 0)) {
-      error.textContent = "Enter a valid approved amount for the selected decision.";
+    if (!issue || !(issue.allowed_findings || []).includes(reviewerFinding)) {
+      error.textContent = "Select a current issue and one of its available findings.";
       error.hidden = false;
       return;
     }
@@ -539,7 +590,12 @@
       const response = await fetch(`/api/claims/${encodeURIComponent(state.selectedId)}/review-decision`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          decision, approved_amount: approvedAmount, reason_code: reasonCode,
+          decision: "REVIEW_ISSUE",
+          reviewed_issue: {
+            issue_id: issue.issue_id, code: issue.code,
+            evidence_digest: issue.evidence_digest, reviewer_finding: reviewerFinding,
+          },
+          reason_code: reasonCode,
           reason_text: reasonText, evidence_summary: evidenceSummary,
         }),
       });

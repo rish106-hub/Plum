@@ -186,6 +186,8 @@ a { color: inherit; }
 .ops-review-form select, .ops-review-form input, .ops-review-form textarea { min-height: 38px; border: 1px solid var(--line); border-radius: 5px; padding: 8px 10px; background: var(--paper); color: var(--ink); font: inherit; }
 .ops-review-form textarea { resize: vertical; line-height: 1.45; }
 .ops-review-form__wide { grid-column: span 3; }
+.ops-review-issue-detail { border-left: 3px solid var(--warn); padding: 9px 12px; background: var(--warn-wash); color: var(--ink); font-size: 12px; line-height: 1.5; }
+.ops-review-issue-detail strong { display: block; margin-bottom: 2px; }
 .ops-review-form .form-error { grid-column: 1 / -1; margin: 0; }
 .aside-block--facts { border: 1px solid var(--line); border-radius: 9px; padding: 18px 20px; background: var(--paper); }
 .aside-block--facts h2 { font-size: 13px; margin: 0 0 13px; }
