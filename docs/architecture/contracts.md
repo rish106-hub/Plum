@@ -15,6 +15,7 @@ All amounts in external claim inputs and `approved_amount` are INR rupees. Inter
 | Operation | Input | Output | Errors |
 | --- | --- | --- | --- |
 | `POST /api/claims` | Multipart `member_id`, `claim_category`, `treatment_date`, `claimed_amount`, optional `pre_authorization_obtained`, `pre_authorization_issued_date`, `pre_authorization_reference`, and 1–6 PDF/JPEG/PNG/WebP `files` | HTTP 202 `{id,state:"QUEUED",url}`; files saved under private local storage; claim and event rows committed | HTTP 422 for invalid category/member/date/money/media, empty file, per-file 10 MB or total 30 MB excess; HTTP 503 `{detail:{code:"POLICY_CONFIGURATION_INVALID"}}` if the policy file has become invalid; storage/database failures surface as server errors |
+| `POST /api/claims/prefill` | One to six PDF/JPEG/PNG/WebP `files`; no member or claim is persisted | `{suggestions,documents,issues,metrics}` with bounded document-backed suggestions; raw OCR text and bytes are removed | HTTP 422 for invalid upload count/media/size; extraction failures stay in `issues` and never become guessed suggestions |
 | `GET /api/claims/{id}` | Claim ID | Stored claim request, state, result, file metadata and ordered events | 404 unknown ID |
 | `GET /api/claims` | Optional `limit` 1–100 plus reviewer authentication | Recent claim summaries | 401 invalid/missing reviewer credentials; 422 invalid limit |
 | `POST /api/claims/{id}/retry` | Failed claim ID | HTTP 202 queued retry | 404 unknown ID; 409 unless state is `PROCESSING_FAILED` |
@@ -85,7 +86,11 @@ class DocumentProvider(Protocol):
     def extract_fields(self, data: bytes, mime_type: str, document_type: str) -> dict: ...
 ```
 
-`SarvamDocumentProvider` starts an asynchronous job, polls until completion with a 90-second deadline, and downloads a bounded result. Both PDF and ZIP inputs are capped at ten pages by the provider contract. A timeout, invalid result or failed job is caught by the adapter, counted in `provider_failures`, and surfaced as an issue. The adapter does not return a made-up field to keep the pipeline moving.
+`SarvamDocumentProvider` starts an asynchronous job, polls until completion with a 90-second deadline, and downloads a bounded result. Both PDF and ZIP inputs are capped at ten pages by the provider contract. A timeout, invalid result or failed job is caught by the adapter, counted in `provider_failures`, and surfaced as an issue. A material Extract field (`patient_name`, document date, diagnosis/test name, bill total or bill lines as applicable) is merged only when Digitise output from the same file contains that value. Every accepted material Extract field retains `source: sarvam_extract`, a one-based `page`, and a bounded `quote`/`snippet`. Every bill line must ground on a page and bill arithmetic must reconcile. An ungrounded field is discarded, its warning is retained, and revalidation emits the ordinary material-field or arithmetic issue. The adapter does not return a made-up field to keep the pipeline moving.
+
+## Optional Gemini resolver (`claims.ai_review`)
+
+`resolve_evidence(context) -> dict` is disabled unless both `GEMINI_EVIDENCE_REVIEW_ENABLED=true` and `GEMINI_API_KEY` are present. It accepts only unresolved, allowlisted evidence gaps plus at most three source files/four selected pages. Output is a versioned envelope with `status`, candidate fields, and evidence citations. Each citation requires a claim-local `file_id`, a page within that file, and a bounded exact quote. Amounts and dates must appear in the quote; patient names must be on the covered roster. It can propose document facts only: it cannot set eligibility, decision, approved amount, confidence, reservations or settlement. Configuration absence, SDK/provider exceptions, invalid JSON/schema, citation mismatch, page/file mismatch and budget excess all produce `ABSTAINED` or a degraded trace, never an unvalidated adjudication fact.
 
 ## Live outcome benchmark (`tools.live_ocr_outcome_benchmark`)
 

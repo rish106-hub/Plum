@@ -181,7 +181,9 @@ def test_reconciled_sarvam_hospital_items_replace_bad_local_candidates() -> None
     fixture = RECEIPT_OCR_REGRESSION
     provider = StubProvider(
         f"HOSPITAL BILL\nPatient: {fixture['patient_name']}\nDate: {fixture['date']}\n"
-        f"{fixture['address_like_line']}\nTotal Amount: {fixture['total']:.2f}",
+            f"{fixture['address_like_line']}\nConsultation Fee (OPD) 1000.00; "
+            "CBC (Complete Blood Count) 200.00; Dengue NS1 Antigen Test 300.00\n"
+        f"Total Amount: {fixture['total']:.2f}",
         {
             "total": fixture["total"],
             "line_items": fixture["line_items"],
@@ -202,7 +204,8 @@ def test_reconciled_sarvam_hospital_items_replace_bad_local_candidates() -> None
 
 def test_provider_bill_merge_uses_adjusted_arithmetic() -> None:
     provider = StubProvider(
-        "HOSPITAL BILL\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\nCharges are shown in an obscured table.\nGrand Total: 1580.00",
+        "HOSPITAL BILL\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\n"
+        "Charges: Consultation 1000.00; Procedure 500.00\nGrand Total: 1580.00",
         {
             "total": 1580, "subtotal": 1500, "discount": 100, "gst_amount": 0,
             "cgst_amount": 90, "sgst_amount": 90, "round_off": 0,
@@ -407,7 +410,8 @@ def test_provider_unreadable_bill_names_file_and_type() -> None:
 
 def test_sarvam_extract_only_when_ocr_lacks_material_bill_fields() -> None:
     provider = StubProvider(
-        "HOSPITAL BILL / RECEIPT\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\nCity Clinic Bengaluru\nConsultation and CBC charges are in an obscured table.",
+        "HOSPITAL BILL / RECEIPT\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\nCity Clinic Bengaluru\n"
+        "Charges: Consultation Fee 1000.00; CBC Test 500.00; payable 1500.00",
         {"total": 1500, "line_items": [{"description": "Consultation Fee", "amount": 1000}, {"description": "CBC Test", "amount": 500}]},
     )
     result = process_uploads([{"file_name": "bill.png", "data": image_bytes()}], "DENTAL", "Rajesh Kumar", POLICY, provider)
@@ -422,9 +426,9 @@ def test_sarvam_extract_only_when_ocr_lacks_material_bill_fields() -> None:
 @pytest.mark.parametrize(
     ("kind", "ocr", "fields"),
     [
-        ("LAB_REPORT", "LAB REPORT\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\nResults are tabulated below.", {"test_name": "CBC"}),
-        ("DIAGNOSTIC_REPORT", "DIAGNOSTIC REPORT\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\nFindings are tabulated below.", {"test_name": "MRI Lumbar Spine"}),
-        ("DENTAL_REPORT", "DENTAL REPORT\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\nTooth 36 examined.", {"diagnosis": "Irreversible pulpitis"}),
+        ("LAB_REPORT", "LAB REPORT\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\nCBC results are tabulated below.", {"test_name": "CBC"}),
+        ("DIAGNOSTIC_REPORT", "DIAGNOSTIC REPORT\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\nMRI Lumbar Spine findings are tabulated below.", {"test_name": "MRI Lumbar Spine"}),
+        ("DENTAL_REPORT", "DENTAL REPORT\nPatient: Rajesh Kumar\nDate: 01-Nov-2024\nIrreversible pulpitis at tooth 36.", {"diagnosis": "Irreversible pulpitis"}),
     ],
 )
 def test_structured_extract_recovers_missing_material_report_field(kind: str, ocr: str, fields: dict) -> None:
@@ -472,7 +476,7 @@ def test_pharmacy_brand_status_is_extracted_only_with_matching_printed_evidence(
 
 def test_sarvam_extract_recovers_patient_name_before_identity_gate() -> None:
     provider = StubProvider(
-        "HOSPITAL BILL / RECEIPT\nDate: 01-Nov-2024\nConsultation Fee 1500.00\nTotal Amount: 1500.00\nCity Clinic Bengaluru",
+        "HOSPITAL BILL / RECEIPT\nFor Rajesh Kumar\nDate: 01-Nov-2024\nConsultation Fee 1500.00\nTotal Amount: 1500.00\nCity Clinic Bengaluru",
         {
             "patient_name": "Rajesh Kumar",
             "total": 1500,
@@ -634,13 +638,31 @@ def test_undated_or_unreadable_bill_date_is_a_member_correction() -> None:
 
 def test_undated_ocr_bill_asks_structured_extraction_for_the_date() -> None:
     provider = StubProvider(
-        "HOSPITAL BILL / RECEIPT\nPatient: Rajesh Kumar\nConsultation Fee 1500.00\nTotal Amount: 1500.00\nCity Clinic Bengaluru",
+        "HOSPITAL BILL / RECEIPT\nPatient: Rajesh Kumar\nRendered 01/11/2024\nConsultation Fee 1500.00\nTotal Amount: 1500.00\nCity Clinic Bengaluru",
         {"date": "01/11/2024"},
     )
     result = process_uploads([{"file_name": "bill.png", "data": image_bytes()}], "DENTAL", "Rajesh Kumar", POLICY, provider)
     assert provider.extract_calls == 1
     assert result["issues"] == []
     assert result["documents"][0]["content"]["date"] == "01/11/2024"
+    date_evidence = next(item for item in result["documents"][0]["evidence"] if item["field"] == "date")
+    assert date_evidence["source"] == "sarvam_extract"
+    assert date_evidence["page"] == 1
+    assert "01/11/2024" in date_evidence["quote"]
+
+
+def test_ungrounded_sarvam_material_field_is_discarded() -> None:
+    provider = StubProvider(
+        "HOSPITAL BILL / RECEIPT\nPatient: Rajesh Kumar\nConsultation Fee is obscured\nCity Clinic Bengaluru",
+        {"date": "01/11/2024", "total": 1500, "line_items": [{"description": "Consultation Fee", "amount": 1500}]},
+    )
+    result = process_uploads([{"file_name": "bill.png", "data": image_bytes()}], "DENTAL", "Rajesh Kumar", POLICY, provider)
+    fields = {(issue["code"], issue.get("field")) for issue in result["issues"]}
+    assert ("MATERIAL_FIELD_UNVERIFIED", "date") in fields
+    assert ("MATERIAL_FIELD_UNVERIFIED", "total") in fields
+    assert result["documents"][0]["content"].get("date") is None
+    assert result["documents"][0]["content"].get("total") is None
+    assert any("discarded because Digitise did not provide matching page evidence" in warning for warning in result["documents"][0]["warnings"])
 
 
 def test_document_date_parser_matches_engine_formats() -> None:

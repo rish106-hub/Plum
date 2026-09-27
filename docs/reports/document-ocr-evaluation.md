@@ -1,20 +1,62 @@
 # Provider-backed OCR evaluation (dirty synthetic corpus)
 
-**NOT_RUN (missing SARVAM_API_KEY).** No provider was called and no accuracy, abstention or latency figures exist for this run.
+Provider: `sarvam_document_ai`; Gemini evidence review: disabled.
 
-| Scenario | Conditions | Status |
-| --- | --- | --- |
-| rx_clean_scan | image_only, clean_scan | NOT_RUN (missing SARVAM_API_KEY) |
-| rx_handwritten | image_only, handwriting, preprinted_template | NOT_RUN (missing SARVAM_API_KEY) |
-| rx_stamp_over_registration | image_only, rubber_stamp, obscured_registration | NOT_RUN (missing SARVAM_API_KEY) |
-| rx_hindi_english | image_only, multilingual, devanagari | NOT_RUN (missing SARVAM_API_KEY) |
-| rx_scanned_pdf | scanned_pdf, no_text_layer, scan_noise | NOT_RUN (missing SARVAM_API_KEY) |
-| bill_phone_photo_skewed | image_only, phone_photo, skew, uneven_lighting, blur, noise | NOT_RUN (missing SARVAM_API_KEY) |
-| bill_multipage_scan | scanned_pdf, multi_page, no_text_layer | NOT_RUN (missing SARVAM_API_KEY) |
-| bill_cropped_partial | image_only, partial_page, cropped | NOT_RUN (missing SARVAM_API_KEY) |
-| bill_struck_correction | image_only, struck_through_amount, handwritten_correction | NOT_RUN (missing SARVAM_API_KEY) |
-| bill_low_contrast | image_only, very_low_contrast, faded_photocopy | NOT_RUN (missing SARVAM_API_KEY) |
-| blank_page | image_only, blank, no_content | NOT_RUN (missing SARVAM_API_KEY) |
-| lab_report_scan | image_only, scan_noise, tabular | NOT_RUN (missing SARVAM_API_KEY) |
-| pharmacy_bill_scan | image_only, scan_noise, tabular | NOT_RUN (missing SARVAM_API_KEY) |
-| non_medical_receipt | image_only, wrong_document, non_medical | NOT_RUN (missing SARVAM_API_KEY) |
+| Metric | Value |
+| --- | --- |
+| documents | 14 |
+| unsafe_confident_errors | 0 |
+| classification_accuracy | 0.9231 |
+| field_accuracy | 0.8909 |
+| abstention_accuracy | 0.9286 |
+| behavior_acceptable_rate | 0.9286 |
+| false_hold_rate | 0.1111 |
+| missed_hold_count | 0 |
+| wrong_total_rate | 0.0714 |
+| line_item_reconciliation_rate | 0.8333 |
+| line_item_reconciliation_unavailable_count | 8 |
+| missed_alteration_count | 0 |
+| alteration_false_hold_count | 0 |
+| provider_calls | 22 |
+| provider_failures | 0 |
+| sarvam_digitise_calls | 13 |
+| sarvam_digitise_pages | 14 |
+| sarvam_extract_calls | 9 |
+| sarvam_extract_pages | 9 |
+| gemini_calls | 0 |
+| latency_seconds_p50 | 10.436 |
+| latency_seconds_max | 13.531 |
+| configured_cost_inr | None |
+| cost_rate_source | NOT_CONFIGURED |
+
+| Scenario | Type (exp / got) | Behaviour (exp / got) | Fields correct | Unsafe | Latency s |
+| --- | --- | --- | --- | --- | --- |
+| rx_clean_scan | PRESCRIPTION / PRESCRIPTION | extract / extract | 4/5 | no | 3.944 |
+| rx_handwritten | PRESCRIPTION / PRESCRIPTION | extract / extract | 4/5 | no | 10.436 |
+| rx_stamp_over_registration | PRESCRIPTION / PRESCRIPTION | extract / extract | 5/5 | no | 10.479 |
+| rx_hindi_english | PRESCRIPTION / PRESCRIPTION | extract / extract | 4/5 | no | 13.531 |
+| rx_scanned_pdf | PRESCRIPTION / PRESCRIPTION | extract / extract | 4/5 | no | 3.964 |
+| bill_phone_photo_skewed | HOSPITAL_BILL / HOSPITAL_BILL | extract / extract | 5/5 | no | 4.242 |
+| bill_multipage_scan | HOSPITAL_BILL / HOSPITAL_BILL | extract / extract | 5/5 | no | 3.88 |
+| bill_cropped_partial | HOSPITAL_BILL / HOSPITAL_BILL | request_reupload / request_reupload | 3/3 | no | 10.516 |
+| bill_struck_correction | HOSPITAL_BILL / HOSPITAL_BILL | abstain / request_reupload | 2/3 | no | 10.565 |
+| bill_low_contrast | HOSPITAL_BILL / HOSPITAL_BILL | request_reupload / request_reupload | 3/3 | no | 10.274 |
+| blank_page | None / None | request_reupload / request_reupload | 2/2 | no | 0.001 |
+| lab_report_scan | LAB_REPORT / LAB_REPORT | extract / extract | 3/3 | no | 13.381 |
+| pharmacy_bill_scan | PHARMACY_BILL / PHARMACY_BILL | extract / request_reupload | 4/5 | no | 13.31 |
+| non_medical_receipt | UNKNOWN / HOSPITAL_BILL | request_reupload / request_reupload | 1/1 | no | 10.436 |
+
+## Observed discrepancies
+
+- **rx_clean_scan**: `doctor_name` missing (expected 'Dr. Arun Sharma'; observed None). Safety result: held/routed as `ADJUDICATION_ELIGIBLE`; not an unsafe confident error.
+- **rx_handwritten**: `doctor_name` wrong (expected 'Dr. S. Iyer'; observed 'Dr. S. Iyer, MBBS, MD (Pulmonology)'). Safety result: held/routed as `ADJUDICATION_ELIGIBLE`; not an unsafe confident error.
+- **rx_hindi_english**: `doctor_name` wrong (expected 'Dr. R. Gupta'; observed 'Dr. R. Gupta, MBBS, MD (Medicine)'). Safety result: held/routed as `ADJUDICATION_ELIGIBLE`; not an unsafe confident error.
+- **rx_scanned_pdf**: `doctor_name` missing (expected 'Dr. Arun Sharma'; observed None). Safety result: held/routed as `ADJUDICATION_ELIGIBLE`; not an unsafe confident error.
+- **bill_struck_correction**: `total` wrong (expected 1300.0; observed 1500.0). Safety result: held/routed as `DOCUMENT_CORRECTION_REQUIRED`; not an unsafe confident error.
+- **pharmacy_bill_scan**: behaviour expected `extract`, observed `request_reupload`; `line_item_amounts` wrong (expected [37.5, 40.0]; observed [77.5]). Safety result: held/routed as `DOCUMENT_CORRECTION_REQUIRED`; not an unsafe confident error.
+- **non_medical_receipt**: type expected `UNKNOWN`, observed `HOSPITAL_BILL`. Safety result: held/routed as `DOCUMENT_CORRECTION_REQUIRED`; not an unsafe confident error.
+
+These results describe this fixed, generated 14-document corpus only. They do not estimate performance on real claims, demographic groups, unseen providers, or adversarial documents.
+
+An unsafe confident error is a document that would proceed to adjudication with a wrong or fabricated critical field. The target is zero.
+Configured cost is an estimate only, using the per-page rates passed to this run; it is omitted until rates are supplied.

@@ -1,9 +1,99 @@
 {
   "kind": "live_document_ocr_benchmark",
-  "status": "NOT_RUN",
-  "reason": "NOT_RUN (missing SARVAM_API_KEY)",
-  "provider": null,
-  "metrics": null,
+  "status": "RUN",
+  "provider": "sarvam_document_ai",
+  "gemini": "disabled",
+  "metrics": {
+    "documents": 14,
+    "classification_accuracy": 0.9231,
+    "field_accuracy": 0.8909,
+    "per_field": {
+      "patient_name": {
+        "correct": 14,
+        "wrong": 0,
+        "missing": 0,
+        "abstained": 0,
+        "hallucinated": 0
+      },
+      "doctor_name": {
+        "correct": 1,
+        "wrong": 2,
+        "missing": 2,
+        "abstained": 0,
+        "hallucinated": 0
+      },
+      "doctor_registration": {
+        "correct": 5,
+        "wrong": 0,
+        "missing": 0,
+        "abstained": 0,
+        "hallucinated": 0
+      },
+      "date": {
+        "correct": 11,
+        "wrong": 0,
+        "missing": 0,
+        "abstained": 0,
+        "hallucinated": 0
+      },
+      "diagnosis": {
+        "correct": 5,
+        "wrong": 0,
+        "missing": 0,
+        "abstained": 0,
+        "hallucinated": 0
+      },
+      "bill_number": {
+        "correct": 3,
+        "wrong": 0,
+        "missing": 0,
+        "abstained": 0,
+        "hallucinated": 0
+      },
+      "line_item_amounts": {
+        "correct": 3,
+        "wrong": 1,
+        "missing": 0,
+        "abstained": 0,
+        "hallucinated": 0
+      },
+      "total": {
+        "correct": 6,
+        "wrong": 1,
+        "missing": 0,
+        "abstained": 0,
+        "hallucinated": 0
+      },
+      "test_name": {
+        "correct": 1,
+        "wrong": 0,
+        "missing": 0,
+        "abstained": 0,
+        "hallucinated": 0
+      }
+    },
+    "abstention_accuracy": 0.9286,
+    "behavior_acceptable_rate": 0.9286,
+    "false_hold_rate": 0.1111,
+    "missed_hold_count": 0,
+    "wrong_total_rate": 0.0714,
+    "line_item_reconciliation_rate": 0.8333,
+    "line_item_reconciliation_unavailable_count": 8,
+    "missed_alteration_count": 0,
+    "alteration_false_hold_count": 0,
+    "unsafe_confident_errors": 0,
+    "provider_calls": 22,
+    "provider_failures": 0,
+    "sarvam_digitise_calls": 13,
+    "sarvam_digitise_pages": 14,
+    "sarvam_extract_calls": 9,
+    "sarvam_extract_pages": 9,
+    "gemini_calls": 0,
+    "latency_seconds_p50": 10.436,
+    "latency_seconds_max": 13.531,
+    "configured_cost_inr": null,
+    "cost_rate_source": "NOT_CONFIGURED"
+  },
   "records": [
     {
       "scenario": "rx_clean_scan",
@@ -12,7 +102,72 @@
         "image_only",
         "clean_scan"
       ],
-      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+      "status": "RUN",
+      "expected_type": "PRESCRIPTION",
+      "observed_type": "PRESCRIPTION",
+      "classification_correct": true,
+      "expected_behavior": "extract",
+      "observed_behavior": "extract",
+      "behavior_acceptable": true,
+      "abstention_correct": true,
+      "route": "ADJUDICATION_ELIGIBLE",
+      "issue_codes": [],
+      "fields": {
+        "patient_name": {
+          "expected": "Rajesh Kumar",
+          "observed": "Rajesh Kumar",
+          "outcome": "correct"
+        },
+        "doctor_name": {
+          "expected": "Dr. Arun Sharma",
+          "observed": null,
+          "outcome": "missing"
+        },
+        "doctor_registration": {
+          "expected": "KA/45678/2015",
+          "observed": "KA/45678/2015",
+          "outcome": "correct"
+        },
+        "date": {
+          "expected": "01-Nov-2024",
+          "observed": "01-Nov-2024",
+          "outcome": "correct"
+        },
+        "diagnosis": {
+          "expected": "Viral Fever",
+          "observed": "Viral Fever",
+          "outcome": "correct"
+        }
+      },
+      "forbidden_values_used": [],
+      "unsafe_confident_error": false,
+      "critical_field_errors": [],
+      "wrong_total": false,
+      "line_item_reconciles": null,
+      "expects_alteration_hold": false,
+      "alteration_detected": false,
+      "missed_alteration": false,
+      "quality": "GOOD",
+      "extraction_source": "sarvam_digitise",
+      "latency_seconds": 3.944,
+      "provider_call_log": [
+        {
+          "operation": "sarvam_digitise",
+          "seconds": 3.929,
+          "status": "ok"
+        }
+      ],
+      "metrics": {
+        "files": 1,
+        "pages": 1,
+        "provider_calls": 1,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 1,
+        "sarvam_digitise_pages": 1,
+        "sarvam_extract_calls": 0,
+        "sarvam_extract_pages": 0
+      },
+      "gemini": null
     },
     {
       "scenario": "rx_handwritten",
@@ -22,7 +177,77 @@
         "handwriting",
         "preprinted_template"
       ],
-      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+      "status": "RUN",
+      "expected_type": "PRESCRIPTION",
+      "observed_type": "PRESCRIPTION",
+      "classification_correct": true,
+      "expected_behavior": "extract",
+      "observed_behavior": "extract",
+      "behavior_acceptable": true,
+      "abstention_correct": true,
+      "route": "ADJUDICATION_ELIGIBLE",
+      "issue_codes": [],
+      "fields": {
+        "patient_name": {
+          "expected": "Priya Singh",
+          "observed": "Priya Singh",
+          "outcome": "correct"
+        },
+        "doctor_name": {
+          "expected": "Dr. S. Iyer",
+          "observed": "Dr. S. Iyer, MBBS, MD (Pulmonology)",
+          "outcome": "wrong"
+        },
+        "doctor_registration": {
+          "expected": "TN/56789/2013",
+          "observed": "TN/56789/2013",
+          "outcome": "correct"
+        },
+        "date": {
+          "expected": "12-Oct-2024",
+          "observed": "12-Oct-2024",
+          "outcome": "correct"
+        },
+        "diagnosis": {
+          "expected": "Acute Bronchitis",
+          "observed": "Acute Bronchitis",
+          "outcome": "correct"
+        }
+      },
+      "forbidden_values_used": [],
+      "unsafe_confident_error": false,
+      "critical_field_errors": [],
+      "wrong_total": false,
+      "line_item_reconciles": null,
+      "expects_alteration_hold": false,
+      "alteration_detected": false,
+      "missed_alteration": false,
+      "quality": "GOOD",
+      "extraction_source": "sarvam_digitise+extract",
+      "latency_seconds": 10.436,
+      "provider_call_log": [
+        {
+          "operation": "sarvam_digitise",
+          "seconds": 3.809,
+          "status": "ok"
+        },
+        {
+          "operation": "sarvam_extract",
+          "seconds": 6.622,
+          "status": "ok"
+        }
+      ],
+      "metrics": {
+        "files": 1,
+        "pages": 1,
+        "provider_calls": 2,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 1,
+        "sarvam_digitise_pages": 1,
+        "sarvam_extract_calls": 1,
+        "sarvam_extract_pages": 1
+      },
+      "gemini": null
     },
     {
       "scenario": "rx_stamp_over_registration",
@@ -32,7 +257,77 @@
         "rubber_stamp",
         "obscured_registration"
       ],
-      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+      "status": "RUN",
+      "expected_type": "PRESCRIPTION",
+      "observed_type": "PRESCRIPTION",
+      "classification_correct": true,
+      "expected_behavior": "extract",
+      "observed_behavior": "extract",
+      "behavior_acceptable": true,
+      "abstention_correct": true,
+      "route": "ADJUDICATION_ELIGIBLE",
+      "issue_codes": [],
+      "fields": {
+        "patient_name": {
+          "expected": "Deepak Shah",
+          "observed": "Deepak Shah",
+          "outcome": "correct"
+        },
+        "doctor_name": {
+          "expected": "Dr. Venkat Rao",
+          "observed": "Dr. Venkat Rao",
+          "outcome": "correct"
+        },
+        "doctor_registration": {
+          "expected": "AP/67890/2017",
+          "observed": "AP/67890/2017",
+          "outcome": "correct"
+        },
+        "date": {
+          "expected": "05-Nov-2024",
+          "observed": "05-Nov-2024",
+          "outcome": "correct"
+        },
+        "diagnosis": {
+          "expected": "Migraine",
+          "observed": "Migraine",
+          "outcome": "correct"
+        }
+      },
+      "forbidden_values_used": [],
+      "unsafe_confident_error": false,
+      "critical_field_errors": [],
+      "wrong_total": false,
+      "line_item_reconciles": null,
+      "expects_alteration_hold": false,
+      "alteration_detected": false,
+      "missed_alteration": false,
+      "quality": "GOOD",
+      "extraction_source": "sarvam_digitise+extract",
+      "latency_seconds": 10.479,
+      "provider_call_log": [
+        {
+          "operation": "sarvam_digitise",
+          "seconds": 3.923,
+          "status": "ok"
+        },
+        {
+          "operation": "sarvam_extract",
+          "seconds": 6.55,
+          "status": "ok"
+        }
+      ],
+      "metrics": {
+        "files": 1,
+        "pages": 1,
+        "provider_calls": 2,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 1,
+        "sarvam_digitise_pages": 1,
+        "sarvam_extract_calls": 1,
+        "sarvam_extract_pages": 1
+      },
+      "gemini": null
     },
     {
       "scenario": "rx_hindi_english",
@@ -42,7 +337,77 @@
         "multilingual",
         "devanagari"
       ],
-      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+      "status": "RUN",
+      "expected_type": "PRESCRIPTION",
+      "observed_type": "PRESCRIPTION",
+      "classification_correct": true,
+      "expected_behavior": "extract",
+      "observed_behavior": "extract",
+      "behavior_acceptable": true,
+      "abstention_correct": true,
+      "route": "ADJUDICATION_ELIGIBLE",
+      "issue_codes": [],
+      "fields": {
+        "patient_name": {
+          "expected": "Sunita Kumar",
+          "observed": "Sunita Kumar",
+          "outcome": "correct"
+        },
+        "doctor_name": {
+          "expected": "Dr. R. Gupta",
+          "observed": "Dr. R. Gupta, MBBS, MD (Medicine)",
+          "outcome": "wrong"
+        },
+        "doctor_registration": {
+          "expected": "DL/34567/2016",
+          "observed": "DL/34567/2016",
+          "outcome": "correct"
+        },
+        "date": {
+          "expected": "20-Oct-2024",
+          "observed": "20-Oct-2024",
+          "outcome": "correct"
+        },
+        "diagnosis": {
+          "expected": "Type 2 Diabetes",
+          "observed": "Type 2 Diabetes (T2DM)",
+          "outcome": "correct"
+        }
+      },
+      "forbidden_values_used": [],
+      "unsafe_confident_error": false,
+      "critical_field_errors": [],
+      "wrong_total": false,
+      "line_item_reconciles": null,
+      "expects_alteration_hold": false,
+      "alteration_detected": false,
+      "missed_alteration": false,
+      "quality": "GOOD",
+      "extraction_source": "sarvam_digitise+extract",
+      "latency_seconds": 13.531,
+      "provider_call_log": [
+        {
+          "operation": "sarvam_digitise",
+          "seconds": 3.829,
+          "status": "ok"
+        },
+        {
+          "operation": "sarvam_extract",
+          "seconds": 9.697,
+          "status": "ok"
+        }
+      ],
+      "metrics": {
+        "files": 1,
+        "pages": 1,
+        "provider_calls": 2,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 1,
+        "sarvam_digitise_pages": 1,
+        "sarvam_extract_calls": 1,
+        "sarvam_extract_pages": 1
+      },
+      "gemini": null
     },
     {
       "scenario": "rx_scanned_pdf",
@@ -52,7 +417,72 @@
         "no_text_layer",
         "scan_noise"
       ],
-      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+      "status": "RUN",
+      "expected_type": "PRESCRIPTION",
+      "observed_type": "PRESCRIPTION",
+      "classification_correct": true,
+      "expected_behavior": "extract",
+      "observed_behavior": "extract",
+      "behavior_acceptable": true,
+      "abstention_correct": true,
+      "route": "ADJUDICATION_ELIGIBLE",
+      "issue_codes": [],
+      "fields": {
+        "patient_name": {
+          "expected": "Vikram Joshi",
+          "observed": "Vikram Joshi",
+          "outcome": "correct"
+        },
+        "doctor_name": {
+          "expected": "Dr. Arun Sharma",
+          "observed": null,
+          "outcome": "missing"
+        },
+        "doctor_registration": {
+          "expected": "KA/45678/2015",
+          "observed": "KA/45678/2015",
+          "outcome": "correct"
+        },
+        "date": {
+          "expected": "15-Sep-2024",
+          "observed": "15-Sep-2024",
+          "outcome": "correct"
+        },
+        "diagnosis": {
+          "expected": "Hypertension",
+          "observed": "Hypertension (HTN)",
+          "outcome": "correct"
+        }
+      },
+      "forbidden_values_used": [],
+      "unsafe_confident_error": false,
+      "critical_field_errors": [],
+      "wrong_total": false,
+      "line_item_reconciles": null,
+      "expects_alteration_hold": false,
+      "alteration_detected": false,
+      "missed_alteration": false,
+      "quality": "GOOD",
+      "extraction_source": "sarvam_digitise",
+      "latency_seconds": 3.964,
+      "provider_call_log": [
+        {
+          "operation": "sarvam_digitise",
+          "seconds": 3.91,
+          "status": "ok"
+        }
+      ],
+      "metrics": {
+        "files": 1,
+        "pages": 1,
+        "provider_calls": 1,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 1,
+        "sarvam_digitise_pages": 1,
+        "sarvam_extract_calls": 0,
+        "sarvam_extract_pages": 0
+      },
+      "gemini": null
     },
     {
       "scenario": "bill_phone_photo_skewed",
@@ -65,7 +495,80 @@
         "blur",
         "noise"
       ],
-      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+      "status": "RUN",
+      "expected_type": "HOSPITAL_BILL",
+      "observed_type": "HOSPITAL_BILL",
+      "classification_correct": true,
+      "expected_behavior": "extract",
+      "observed_behavior": "extract",
+      "behavior_acceptable": true,
+      "abstention_correct": true,
+      "route": "ADJUDICATION_ELIGIBLE",
+      "issue_codes": [],
+      "fields": {
+        "patient_name": {
+          "expected": "Rajesh Kumar",
+          "observed": "Rajesh Kumar",
+          "outcome": "correct"
+        },
+        "date": {
+          "expected": "01-Nov-2024",
+          "observed": "01-Nov-2024",
+          "outcome": "correct"
+        },
+        "bill_number": {
+          "expected": "CMC/2024/08321",
+          "observed": "CMC/2024/08321",
+          "outcome": "correct"
+        },
+        "line_item_amounts": {
+          "expected": [
+            1000.0,
+            200.0,
+            300.0
+          ],
+          "observed": [
+            200.0,
+            300.0,
+            1000.0
+          ],
+          "outcome": "correct"
+        },
+        "total": {
+          "expected": 1500.0,
+          "observed": 1500.0,
+          "outcome": "correct"
+        }
+      },
+      "forbidden_values_used": [],
+      "unsafe_confident_error": false,
+      "critical_field_errors": [],
+      "wrong_total": false,
+      "line_item_reconciles": true,
+      "expects_alteration_hold": false,
+      "alteration_detected": false,
+      "missed_alteration": false,
+      "quality": "GOOD",
+      "extraction_source": "sarvam_digitise",
+      "latency_seconds": 4.242,
+      "provider_call_log": [
+        {
+          "operation": "sarvam_digitise",
+          "seconds": 4.132,
+          "status": "ok"
+        }
+      ],
+      "metrics": {
+        "files": 1,
+        "pages": 1,
+        "provider_calls": 1,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 1,
+        "sarvam_digitise_pages": 1,
+        "sarvam_extract_calls": 0,
+        "sarvam_extract_pages": 0
+      },
+      "gemini": null
     },
     {
       "scenario": "bill_multipage_scan",
@@ -75,7 +578,80 @@
         "multi_page",
         "no_text_layer"
       ],
-      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+      "status": "RUN",
+      "expected_type": "HOSPITAL_BILL",
+      "observed_type": "HOSPITAL_BILL",
+      "classification_correct": true,
+      "expected_behavior": "extract",
+      "observed_behavior": "extract",
+      "behavior_acceptable": true,
+      "abstention_correct": true,
+      "route": "ADJUDICATION_ELIGIBLE",
+      "issue_codes": [],
+      "fields": {
+        "patient_name": {
+          "expected": "Sneha Reddy",
+          "observed": "Sneha Reddy",
+          "outcome": "correct"
+        },
+        "date": {
+          "expected": "18-Oct-2024",
+          "observed": "18-Oct-2024",
+          "outcome": "correct"
+        },
+        "bill_number": {
+          "expected": "APL/2024/55120",
+          "observed": "APL/2024/55120",
+          "outcome": "correct"
+        },
+        "line_item_amounts": {
+          "expected": [
+            800.0,
+            700.0,
+            500.0
+          ],
+          "observed": [
+            500.0,
+            700.0,
+            800.0
+          ],
+          "outcome": "correct"
+        },
+        "total": {
+          "expected": 2000.0,
+          "observed": 2000.0,
+          "outcome": "correct"
+        }
+      },
+      "forbidden_values_used": [],
+      "unsafe_confident_error": false,
+      "critical_field_errors": [],
+      "wrong_total": false,
+      "line_item_reconciles": true,
+      "expects_alteration_hold": false,
+      "alteration_detected": false,
+      "missed_alteration": false,
+      "quality": "GOOD",
+      "extraction_source": "sarvam_digitise",
+      "latency_seconds": 3.88,
+      "provider_call_log": [
+        {
+          "operation": "sarvam_digitise",
+          "seconds": 3.822,
+          "status": "ok"
+        }
+      ],
+      "metrics": {
+        "files": 1,
+        "pages": 2,
+        "provider_calls": 1,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 1,
+        "sarvam_digitise_pages": 2,
+        "sarvam_extract_calls": 0,
+        "sarvam_extract_pages": 0
+      },
+      "gemini": null
     },
     {
       "scenario": "bill_cropped_partial",
@@ -85,7 +661,69 @@
         "partial_page",
         "cropped"
       ],
-      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+      "status": "RUN",
+      "expected_type": "HOSPITAL_BILL",
+      "observed_type": "HOSPITAL_BILL",
+      "classification_correct": true,
+      "expected_behavior": "request_reupload",
+      "observed_behavior": "request_reupload",
+      "behavior_acceptable": true,
+      "abstention_correct": true,
+      "route": "DOCUMENT_CORRECTION_REQUIRED",
+      "issue_codes": [
+        "MATERIAL_FIELD_UNVERIFIED"
+      ],
+      "fields": {
+        "patient_name": {
+          "expected": "Rajesh Kumar",
+          "observed": "Rajesh Kumar",
+          "outcome": "correct"
+        },
+        "date": {
+          "expected": "01-Nov-2024",
+          "observed": "01-Nov-2024",
+          "outcome": "correct"
+        },
+        "total": {
+          "expected": null,
+          "observed": null,
+          "outcome": "correct"
+        }
+      },
+      "forbidden_values_used": [],
+      "unsafe_confident_error": false,
+      "critical_field_errors": [],
+      "wrong_total": false,
+      "line_item_reconciles": null,
+      "expects_alteration_hold": false,
+      "alteration_detected": false,
+      "missed_alteration": false,
+      "quality": "GOOD",
+      "extraction_source": "sarvam_digitise+extract",
+      "latency_seconds": 10.516,
+      "provider_call_log": [
+        {
+          "operation": "sarvam_digitise",
+          "seconds": 3.801,
+          "status": "ok"
+        },
+        {
+          "operation": "sarvam_extract",
+          "seconds": 6.662,
+          "status": "ok"
+        }
+      ],
+      "metrics": {
+        "files": 1,
+        "pages": 1,
+        "provider_calls": 2,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 1,
+        "sarvam_digitise_pages": 1,
+        "sarvam_extract_calls": 1,
+        "sarvam_extract_pages": 1
+      },
+      "gemini": null
     },
     {
       "scenario": "bill_struck_correction",
@@ -95,7 +733,74 @@
         "struck_through_amount",
         "handwritten_correction"
       ],
-      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+      "status": "RUN",
+      "expected_type": "HOSPITAL_BILL",
+      "observed_type": "HOSPITAL_BILL",
+      "classification_correct": true,
+      "expected_behavior": "abstain",
+      "observed_behavior": "request_reupload",
+      "behavior_acceptable": true,
+      "abstention_correct": true,
+      "route": "DOCUMENT_CORRECTION_REQUIRED",
+      "issue_codes": [
+        "BILL_ARITHMETIC_CONFLICT",
+        "DOCUMENT_ALTERATION"
+      ],
+      "fields": {
+        "patient_name": {
+          "expected": "Priya Singh",
+          "observed": "Priya Singh",
+          "outcome": "correct"
+        },
+        "date": {
+          "expected": "12-Oct-2024",
+          "observed": "12-Oct-2024",
+          "outcome": "correct"
+        },
+        "total": {
+          "expected": 1300.0,
+          "observed": 1500.0,
+          "outcome": "wrong"
+        }
+      },
+      "forbidden_values_used": [
+        "total=1500.0"
+      ],
+      "unsafe_confident_error": false,
+      "critical_field_errors": [
+        "total"
+      ],
+      "wrong_total": true,
+      "line_item_reconciles": false,
+      "expects_alteration_hold": true,
+      "alteration_detected": true,
+      "missed_alteration": false,
+      "quality": "GOOD",
+      "extraction_source": "sarvam_digitise+extract",
+      "latency_seconds": 10.565,
+      "provider_call_log": [
+        {
+          "operation": "sarvam_digitise",
+          "seconds": 3.96,
+          "status": "ok"
+        },
+        {
+          "operation": "sarvam_extract",
+          "seconds": 6.525,
+          "status": "ok"
+        }
+      ],
+      "metrics": {
+        "files": 1,
+        "pages": 1,
+        "provider_calls": 2,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 1,
+        "sarvam_digitise_pages": 1,
+        "sarvam_extract_calls": 1,
+        "sarvam_extract_pages": 1
+      },
+      "gemini": null
     },
     {
       "scenario": "bill_low_contrast",
@@ -105,7 +810,77 @@
         "very_low_contrast",
         "faded_photocopy"
       ],
-      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+      "status": "RUN",
+      "expected_type": "HOSPITAL_BILL",
+      "observed_type": "HOSPITAL_BILL",
+      "classification_correct": true,
+      "expected_behavior": "request_reupload",
+      "observed_behavior": "request_reupload",
+      "behavior_acceptable": true,
+      "abstention_correct": true,
+      "route": "DOCUMENT_CORRECTION_REQUIRED",
+      "issue_codes": [
+        "BILL_ARITHMETIC_CONFLICT"
+      ],
+      "fields": {
+        "patient_name": {
+          "expected": "Rajesh Kumar",
+          "observed": "Rajesh Kumar",
+          "outcome": "correct"
+        },
+        "total": {
+          "expected": 1500.0,
+          "observed": 1500.0,
+          "outcome": "correct"
+        },
+        "line_item_amounts": {
+          "expected": [
+            1000.0,
+            200.0,
+            300.0
+          ],
+          "observed": [
+            200.0,
+            300.0,
+            1000.0
+          ],
+          "outcome": "correct"
+        }
+      },
+      "forbidden_values_used": [],
+      "unsafe_confident_error": false,
+      "critical_field_errors": [],
+      "wrong_total": false,
+      "line_item_reconciles": true,
+      "expects_alteration_hold": false,
+      "alteration_detected": false,
+      "missed_alteration": false,
+      "quality": "GOOD",
+      "extraction_source": "sarvam_digitise+extract",
+      "latency_seconds": 10.274,
+      "provider_call_log": [
+        {
+          "operation": "sarvam_digitise",
+          "seconds": 3.69,
+          "status": "ok"
+        },
+        {
+          "operation": "sarvam_extract",
+          "seconds": 6.502,
+          "status": "ok"
+        }
+      ],
+      "metrics": {
+        "files": 1,
+        "pages": 1,
+        "provider_calls": 2,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 1,
+        "sarvam_digitise_pages": 1,
+        "sarvam_extract_calls": 1,
+        "sarvam_extract_pages": 1
+      },
+      "gemini": null
     },
     {
       "scenario": "blank_page",
@@ -115,7 +890,54 @@
         "blank",
         "no_content"
       ],
-      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+      "status": "RUN",
+      "expected_type": null,
+      "observed_type": null,
+      "classification_correct": null,
+      "expected_behavior": "request_reupload",
+      "observed_behavior": "request_reupload",
+      "behavior_acceptable": true,
+      "abstention_correct": true,
+      "route": "DOCUMENT_CORRECTION_REQUIRED",
+      "issue_codes": [
+        "PATIENT_UNVERIFIED",
+        "UNREADABLE_IMAGE"
+      ],
+      "fields": {
+        "patient_name": {
+          "expected": null,
+          "observed": null,
+          "outcome": "correct"
+        },
+        "total": {
+          "expected": null,
+          "observed": null,
+          "outcome": "correct"
+        }
+      },
+      "forbidden_values_used": [],
+      "unsafe_confident_error": false,
+      "critical_field_errors": [],
+      "wrong_total": false,
+      "line_item_reconciles": null,
+      "expects_alteration_hold": false,
+      "alteration_detected": false,
+      "missed_alteration": false,
+      "quality": null,
+      "extraction_source": null,
+      "latency_seconds": 0.001,
+      "provider_call_log": [],
+      "metrics": {
+        "files": 1,
+        "pages": 0,
+        "provider_calls": 0,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 0,
+        "sarvam_digitise_pages": 0,
+        "sarvam_extract_calls": 0,
+        "sarvam_extract_pages": 0
+      },
+      "gemini": null
     },
     {
       "scenario": "lab_report_scan",
@@ -125,7 +947,67 @@
         "scan_noise",
         "tabular"
       ],
-      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+      "status": "RUN",
+      "expected_type": "LAB_REPORT",
+      "observed_type": "LAB_REPORT",
+      "classification_correct": true,
+      "expected_behavior": "extract",
+      "observed_behavior": "extract",
+      "behavior_acceptable": true,
+      "abstention_correct": true,
+      "route": "ADJUDICATION_ELIGIBLE",
+      "issue_codes": [],
+      "fields": {
+        "patient_name": {
+          "expected": "Rajesh Kumar",
+          "observed": "Rajesh Kumar",
+          "outcome": "correct"
+        },
+        "date": {
+          "expected": "01-Nov-2024",
+          "observed": "01-Nov-2024",
+          "outcome": "correct"
+        },
+        "test_name": {
+          "expected": "Complete Blood Count",
+          "observed": "Complete Blood Count (CBC) with Dengue NS1",
+          "outcome": "correct"
+        }
+      },
+      "forbidden_values_used": [],
+      "unsafe_confident_error": false,
+      "critical_field_errors": [],
+      "wrong_total": false,
+      "line_item_reconciles": null,
+      "expects_alteration_hold": false,
+      "alteration_detected": false,
+      "missed_alteration": false,
+      "quality": "GOOD",
+      "extraction_source": "sarvam_digitise+extract",
+      "latency_seconds": 13.381,
+      "provider_call_log": [
+        {
+          "operation": "sarvam_digitise",
+          "seconds": 3.837,
+          "status": "ok"
+        },
+        {
+          "operation": "sarvam_extract",
+          "seconds": 9.54,
+          "status": "ok"
+        }
+      ],
+      "metrics": {
+        "files": 1,
+        "pages": 1,
+        "provider_calls": 2,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 1,
+        "sarvam_digitise_pages": 1,
+        "sarvam_extract_calls": 1,
+        "sarvam_extract_pages": 1
+      },
+      "gemini": null
     },
     {
       "scenario": "pharmacy_bill_scan",
@@ -135,7 +1017,86 @@
         "scan_noise",
         "tabular"
       ],
-      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+      "status": "RUN",
+      "expected_type": "PHARMACY_BILL",
+      "observed_type": "PHARMACY_BILL",
+      "classification_correct": true,
+      "expected_behavior": "extract",
+      "observed_behavior": "request_reupload",
+      "behavior_acceptable": false,
+      "abstention_correct": false,
+      "route": "DOCUMENT_CORRECTION_REQUIRED",
+      "issue_codes": [
+        "BILL_ARITHMETIC_CONFLICT"
+      ],
+      "fields": {
+        "patient_name": {
+          "expected": "Rajesh Kumar",
+          "observed": "Rajesh Kumar",
+          "outcome": "correct"
+        },
+        "date": {
+          "expected": "01-Nov-2024",
+          "observed": "01-Nov-2024",
+          "outcome": "correct"
+        },
+        "bill_number": {
+          "expected": "HFP-24-09821",
+          "observed": "HFP-24-09821",
+          "outcome": "correct"
+        },
+        "line_item_amounts": {
+          "expected": [
+            37.5,
+            40.0
+          ],
+          "observed": [
+            77.5
+          ],
+          "outcome": "wrong"
+        },
+        "total": {
+          "expected": 77.5,
+          "observed": 77.5,
+          "outcome": "correct"
+        }
+      },
+      "forbidden_values_used": [],
+      "unsafe_confident_error": false,
+      "critical_field_errors": [
+        "line_item_amounts"
+      ],
+      "wrong_total": false,
+      "line_item_reconciles": true,
+      "expects_alteration_hold": false,
+      "alteration_detected": false,
+      "missed_alteration": false,
+      "quality": "GOOD",
+      "extraction_source": "sarvam_digitise+extract",
+      "latency_seconds": 13.31,
+      "provider_call_log": [
+        {
+          "operation": "sarvam_digitise",
+          "seconds": 3.661,
+          "status": "ok"
+        },
+        {
+          "operation": "sarvam_extract",
+          "seconds": 9.565,
+          "status": "ok"
+        }
+      ],
+      "metrics": {
+        "files": 1,
+        "pages": 1,
+        "provider_calls": 2,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 1,
+        "sarvam_digitise_pages": 1,
+        "sarvam_extract_calls": 1,
+        "sarvam_extract_pages": 1
+      },
+      "gemini": null
     },
     {
       "scenario": "non_medical_receipt",
@@ -145,7 +1106,61 @@
         "wrong_document",
         "non_medical"
       ],
-      "status": "NOT_RUN (missing SARVAM_API_KEY)"
+      "status": "RUN",
+      "expected_type": "UNKNOWN",
+      "observed_type": "HOSPITAL_BILL",
+      "classification_correct": false,
+      "expected_behavior": "request_reupload",
+      "observed_behavior": "request_reupload",
+      "behavior_acceptable": true,
+      "abstention_correct": true,
+      "route": "DOCUMENT_CORRECTION_REQUIRED",
+      "issue_codes": [
+        "BILL_ARITHMETIC_CONFLICT",
+        "MATERIAL_FIELD_UNVERIFIED",
+        "PATIENT_UNVERIFIED"
+      ],
+      "fields": {
+        "patient_name": {
+          "expected": null,
+          "observed": null,
+          "outcome": "correct"
+        }
+      },
+      "forbidden_values_used": [],
+      "unsafe_confident_error": false,
+      "critical_field_errors": [],
+      "wrong_total": false,
+      "line_item_reconciles": true,
+      "expects_alteration_hold": false,
+      "alteration_detected": false,
+      "missed_alteration": false,
+      "quality": "GOOD",
+      "extraction_source": "sarvam_digitise+extract",
+      "latency_seconds": 10.436,
+      "provider_call_log": [
+        {
+          "operation": "sarvam_digitise",
+          "seconds": 3.828,
+          "status": "ok"
+        },
+        {
+          "operation": "sarvam_extract",
+          "seconds": 6.523,
+          "status": "ok"
+        }
+      ],
+      "metrics": {
+        "files": 1,
+        "pages": 1,
+        "provider_calls": 2,
+        "provider_failures": 0,
+        "sarvam_digitise_calls": 1,
+        "sarvam_digitise_pages": 1,
+        "sarvam_extract_calls": 1,
+        "sarvam_extract_pages": 1
+      },
+      "gemini": null
     }
   ]
 }

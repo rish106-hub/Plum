@@ -229,6 +229,17 @@ def _score(section: dict[str, Any]) -> str:
     return f"{section['passed']}/{section['total']}"
 
 
+def _live_result(live: dict[str, Any]) -> str:
+    if live["status"] != "RUN":
+        return str(live.get("reason") or "not measured")
+    metrics = live.get("metrics") or {}
+    return (
+        f"{metrics.get('documents', 0)} documents; {metrics.get('unsafe_confident_errors', 0)} unsafe confident errors; "
+        f"classification {metrics.get('classification_accuracy')}; fields {metrics.get('field_accuracy')}; "
+        f"abstention {metrics.get('abstention_accuracy')}"
+    )
+
+
 def readme_block(summary: dict[str, Any]) -> str:
     tests = summary["tests"]
     fixture = summary["fixture_evaluation"]
@@ -248,7 +259,7 @@ def readme_block(summary: dict[str, Any]) -> str:
         f"| ruff / mypy / compileall | {'pass' if summary['lint_ok'] else 'FAIL'} / {'pass' if summary['typecheck_ok'] else 'FAIL'} / {'pass' if summary['compile_ok'] else 'FAIL'} |",
         f"| Supplied cases (`scripts.evaluate`, unmodified `test_cases.json`) | **{_score(fixture)}** |",
         f"| Offline document suites (routing / fail-closed, not OCR) | **{_score(documents)}**: {suites} |",
-        f"| Live dirty-corpus OCR accuracy | **{live['status']}**: {live['reason']} |",
+        f"| Live dirty-corpus OCR accuracy | **{live['status']}**: {_live_result(live)} |",
         README_END,
     ]
     return "\n".join(rows)
@@ -353,7 +364,7 @@ def markdown(summary: dict[str, Any]) -> str:
         "",
         "## Live dirty-corpus OCR accuracy",
         "",
-        f"Status: **{live['status']}**. {live['reason']}.",
+        f"Status: **{live['status']}**. {_live_result(live)}.",
         "",
     ]
     if live["status"] == "NOT_RUN":
@@ -453,7 +464,7 @@ def main() -> int:
     print(f"pytest: {summary['tests']['passed']} passed, {summary['tests']['failed']} failed, {summary['tests']['subtests_passed']} subtests passed")
     print(f"supplied cases: {_score(summary['fixture_evaluation'])}")
     print(f"offline document suites: {_score(summary['document_evaluation'])}")
-    print(f"live dirty-corpus OCR: {live['status']} ({live['reason']})")
+    print(f"live dirty-corpus OCR: {live['status']} ({_live_result(live)})")
     for issue in summary["docs_drift"]:
         print(f"docs drift: {issue}")
     if not summary["readme_block_updated"]:

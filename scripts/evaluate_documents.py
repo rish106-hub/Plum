@@ -713,7 +713,29 @@ def _write_live(report_dir: Path, summary: dict[str, Any]) -> None:
             f"| {r['scenario']} | {r['expected_type']} / {r['observed_type']} | {r['expected_behavior']} / {r['observed_behavior']} | "
             f"{correct}/{len(r['fields'])} | {'YES' if r['unsafe_confident_error'] else 'no'} | {r['latency_seconds']} |"
         )
+    discrepancies = []
+    for record in summary["records"]:
+        field_misses = [
+            f"`{name}` {field['outcome']} (expected {field['expected']!r}; observed {field['observed']!r})"
+            for name, field in record["fields"].items()
+            if field["outcome"] not in {"correct", "abstained"}
+        ]
+        type_miss = record["classification_correct"] is False
+        behavior_miss = not record["behavior_acceptable"]
+        if type_miss or behavior_miss or field_misses:
+            parts = []
+            if type_miss:
+                parts.append(f"type expected `{record['expected_type']}`, observed `{record['observed_type']}`")
+            if behavior_miss:
+                parts.append(f"behaviour expected `{record['expected_behavior']}`, observed `{record['observed_behavior']}`")
+            parts.extend(field_misses)
+            safety = "unsafe" if record["unsafe_confident_error"] else f"held/routed as `{record['route']}`; not an unsafe confident error"
+            discrepancies.append(f"- **{record['scenario']}**: {'; '.join(parts)}. Safety result: {safety}.")
+    lines += ["", "## Observed discrepancies", ""]
+    lines += discrepancies or ["No classification, behaviour, or scored-field discrepancies were observed."]
     lines += [
+        "",
+        "These results describe this fixed, generated 14-document corpus only. They do not estimate performance on real claims, demographic groups, unseen providers, or adversarial documents.",
         "",
         "An unsafe confident error is a document that would proceed to adjudication with a wrong or fabricated critical field. The target is zero.",
         "Configured cost is an estimate only, using the per-page rates passed to this run; it is omitted until rates are supplied.",

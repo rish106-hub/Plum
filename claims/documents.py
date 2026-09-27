@@ -728,6 +728,74 @@ def _needs_extract(kind: str, content: dict[str, Any]) -> bool:
     return False
 
 
+def _source_quote(pages: list[str], *values: Any) -> tuple[int, str] | None:
+    """Find a bounded OCR quote that contains every supplied value."""
+    candidates = [value for value in values if value not in (None, "")]
+    if not candidates:
+        return None
+
+    def present(page: str, value: Any) -> bool:
+        if isinstance(value, (int, float, Decimal)):
+            expected = _amount(str(value))
+            observed = [_amount(token) for token in re.findall(r"\d[\d,]*(?:\.\d+)?", page)]
+            return expected is not None and expected in observed
+        return _evidence_in_text(page, str(value))
+
+    for page_number, page in enumerate(pages, 1):
+        if all(present(page, value) for value in candidates):
+            lines = [line.strip() for line in page.splitlines() if line.strip()]
+            matching = [line for line in lines if any(present(line, value) for value in candidates)]
+            quote = " | ".join(matching[:3]) or page.strip()
+            return page_number, quote[:300]
+    return None
+
+
+def _ground_material_extract(
+    kind: str,
+    extracted: dict[str, Any],
+    digitised_text: str,
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[str]]:
+    """Keep material Extract fields only when Digitise supplies page evidence."""
+    pages = digitised_text.split("\f") or [digitised_text]
+    grounded = dict(extracted)
+    evidence: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    for field in MATERIAL_FIELDS.get(kind, ()):
+        value = grounded.get(field)
+        if not _material_field_present(kind, field, grounded):
+            continue
+        if field == "line_items":
+            items = value if isinstance(value, list) else []
+            accepted_items = []
+            item_evidence = []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                match = _source_quote(pages, item.get("description"), item.get("amount"))
+                if match:
+                    accepted_items.append(item)
+                    item_evidence.append(match)
+            if accepted_items and len(accepted_items) == len(items):
+                page_number, quote = item_evidence[0]
+                evidence.append({
+                    "field": field, "source": "sarvam_extract", "page": page_number,
+                    "snippet": quote, "quote": quote, "confidence": 0.75,
+                })
+                continue
+        else:
+            match = _source_quote(pages, value)
+            if match:
+                page_number, quote = match
+                evidence.append({
+                    "field": field, "source": "sarvam_extract", "page": page_number,
+                    "snippet": quote, "quote": quote, "confidence": 0.75,
+                })
+                continue
+        grounded.pop(field, None)
+        warnings.append(f"Sarvam Extract field {field} was discarded because Digitise did not provide matching page evidence")
+    return grounded, evidence, warnings
+
+
 _DERIVED_ISSUE_CODES = {
     "UNIDENTIFIED_DOCUMENT", "PARTIAL_DOCUMENT", "DETAILS_UNVERIFIED", "AMOUNT_UNVERIFIED",
     "MISSING_DOCUMENT", "PATIENT_MISMATCH", "MEMBER_MISMATCH", "PATIENT_UNVERIFIED",
@@ -1060,6 +1128,7 @@ def process_uploads(
                 metrics["sarvam_extract_pages"] += pages
                 parsed = provider.extract_fields(data, mime, kind)
                 _, _, additional, provider_warnings = _provider_result(parsed)
+                additional, extract_evidence, grounding_warnings = _ground_material_extract(kind, additional, text)
                 merged_content = {**additional, **content}
                 extracted_total = additional.get("total")
                 local_total = content.get("total")
@@ -1100,10 +1169,9 @@ def process_uploads(
                         merged_content["line_items"] = local_items_with_brand_evidence
                 content = merged_content
                 warnings.extend(provider_warnings)
-                evidence.extend(
-                    {"field": key, "source": "sarvam_extract", "confidence": 0.75}
-                    for key in additional if key not in {entry["field"] for entry in evidence}
-                )
+                warnings.extend(grounding_warnings)
+                existing_fields = {entry["field"] for entry in evidence}
+                evidence.extend(entry for entry in extract_evidence if entry["field"] not in existing_fields)
                 source = "sarvam_extract" if source == "pdf_text" else "sarvam_digitise+extract"
             except Exception as exc:  # noqa: BLE001 - provider/network failures become traceable issues
                 metrics["provider_failures"] += 1

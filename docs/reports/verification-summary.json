@@ -1,12 +1,12 @@
 {
   "schema": "plum.verification_summary.v1",
-  "started_at": "2026-09-27T12:31:15+00:00",
-  "finished_at": "2026-09-27T12:31:23+00:00",
+  "started_at": "2026-09-27T16:33:17+00:00",
+  "finished_at": "2026-09-27T16:35:24+00:00",
   "git": {
-    "head": "e93661b715184c616ceee48d0b28af0f22c6dfa7",
-    "branch": "main",
+    "head": "e57695810c59defca2eb7ade576f787b113d6db4",
+    "branch": "codex/live-ocr-consistency",
     "worktree_dirty": true,
-    "changed_paths": 18
+    "changed_paths": 11
   },
   "python": "3.14.2",
   "platform": "Darwin arm64",
@@ -46,14 +46,14 @@
       "command": "python -m ruff check .",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.07
+      "seconds": 0.06
     },
     {
       "name": "mypy",
       "command": "python -m mypy claims scripts tools",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.43
+      "seconds": 0.25
     },
     {
       "name": "compileall",
@@ -67,7 +67,7 @@
       "command": "python -m pytest -q -p no:cacheprovider",
       "exit_code": 0,
       "ok": true,
-      "seconds": 6.56
+      "seconds": 6.29
     },
     {
       "name": "supplied-case evaluation",
@@ -81,14 +81,14 @@
       "command": "python -m scripts.evaluate_documents",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.4
+      "seconds": 0.42
     },
     {
-      "name": "live dirty-corpus OCR status (keys stripped)",
+      "name": "live dirty-corpus OCR accuracy",
       "command": "python -m scripts.evaluate_documents --providers live",
-      "exit_code": 2,
+      "exit_code": 0,
       "ok": true,
-      "seconds": 0.16
+      "seconds": 119.51
     }
   ],
   "lint_ok": true,
@@ -245,9 +245,99 @@
     }
   },
   "live_ocr": {
-    "status": "NOT_RUN",
-    "reason": "verification is offline by design (provider keys are stripped); SARVAM_API_KEY is not configured",
-    "metrics": null,
+    "status": "RUN",
+    "reason": null,
+    "metrics": {
+      "documents": 14,
+      "classification_accuracy": 0.9231,
+      "field_accuracy": 0.8909,
+      "per_field": {
+        "patient_name": {
+          "correct": 14,
+          "wrong": 0,
+          "missing": 0,
+          "abstained": 0,
+          "hallucinated": 0
+        },
+        "doctor_name": {
+          "correct": 1,
+          "wrong": 2,
+          "missing": 2,
+          "abstained": 0,
+          "hallucinated": 0
+        },
+        "doctor_registration": {
+          "correct": 5,
+          "wrong": 0,
+          "missing": 0,
+          "abstained": 0,
+          "hallucinated": 0
+        },
+        "date": {
+          "correct": 11,
+          "wrong": 0,
+          "missing": 0,
+          "abstained": 0,
+          "hallucinated": 0
+        },
+        "diagnosis": {
+          "correct": 5,
+          "wrong": 0,
+          "missing": 0,
+          "abstained": 0,
+          "hallucinated": 0
+        },
+        "bill_number": {
+          "correct": 3,
+          "wrong": 0,
+          "missing": 0,
+          "abstained": 0,
+          "hallucinated": 0
+        },
+        "line_item_amounts": {
+          "correct": 3,
+          "wrong": 1,
+          "missing": 0,
+          "abstained": 0,
+          "hallucinated": 0
+        },
+        "total": {
+          "correct": 6,
+          "wrong": 1,
+          "missing": 0,
+          "abstained": 0,
+          "hallucinated": 0
+        },
+        "test_name": {
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "abstained": 0,
+          "hallucinated": 0
+        }
+      },
+      "abstention_accuracy": 0.9286,
+      "behavior_acceptable_rate": 0.9286,
+      "false_hold_rate": 0.1111,
+      "missed_hold_count": 0,
+      "wrong_total_rate": 0.0714,
+      "line_item_reconciliation_rate": 0.8333,
+      "line_item_reconciliation_unavailable_count": 8,
+      "missed_alteration_count": 0,
+      "alteration_false_hold_count": 0,
+      "unsafe_confident_errors": 0,
+      "provider_calls": 22,
+      "provider_failures": 0,
+      "sarvam_digitise_calls": 13,
+      "sarvam_digitise_pages": 14,
+      "sarvam_extract_calls": 9,
+      "sarvam_extract_pages": 9,
+      "gemini_calls": 0,
+      "latency_seconds_p50": 10.436,
+      "latency_seconds_max": 13.531,
+      "configured_cost_inr": null,
+      "cost_rate_source": "NOT_CONFIGURED"
+    },
     "report": "docs/reports/document-ocr-evaluation.md",
     "command": "PYTHONPATH=. .venv/bin/python -m scripts.evaluate_documents --providers live [--gemini]"
   },
