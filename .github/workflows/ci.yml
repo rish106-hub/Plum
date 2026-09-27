@@ -30,7 +30,9 @@ jobs:
   browser:
     runs-on: ubuntu-latest
     env:
-      PLUM_SCREENSHOT_DIR: ${{ runner.temp }}/plum-browser-screenshots
+      # Job-level expressions are evaluated before a runner exists, so keep
+      # this path runner-independent. Failure artifacts use the same location.
+      PLUM_SCREENSHOT_DIR: /tmp/plum-browser-screenshots
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -61,4 +63,4 @@ jobs:
           name: browser-qa-failure
           path: |
             /tmp/plum-browser-server.log
-            ${{ runner.temp }}/plum-browser-screenshots/
+            /tmp/plum-browser-screenshots/
