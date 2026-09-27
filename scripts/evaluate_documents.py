@@ -729,7 +729,12 @@ def _write_live(report_dir: Path, summary: dict[str, Any]) -> None:
             if behavior_miss:
                 parts.append(f"behaviour expected `{record['expected_behavior']}`, observed `{record['observed_behavior']}`")
             parts.extend(field_misses)
-            safety = "unsafe" if record["unsafe_confident_error"] else f"held/routed as `{record['route']}`; not an unsafe confident error"
+            if record["unsafe_confident_error"]:
+                safety = "unsafe"
+            elif record["route"] == ADJUDICATION_ELIGIBLE:
+                safety = "proceeded, but the missed field is non-critical under this benchmark; not an unsafe confident error"
+            else:
+                safety = f"held/routed as `{record['route']}`; not an unsafe confident error"
             discrepancies.append(f"- **{record['scenario']}**: {'; '.join(parts)}. Safety result: {safety}.")
     lines += ["", "## Observed discrepancies", ""]
     lines += discrepancies or ["No classification, behaviour, or scored-field discrepancies were observed."]

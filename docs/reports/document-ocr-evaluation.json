@@ -6,7 +6,7 @@
   "metrics": {
     "documents": 14,
     "classification_accuracy": 0.9231,
-    "field_accuracy": 0.8909,
+    "field_accuracy": 0.9091,
     "per_field": {
       "patient_name": {
         "correct": 14,
@@ -16,8 +16,8 @@
         "hallucinated": 0
       },
       "doctor_name": {
-        "correct": 1,
-        "wrong": 2,
+        "correct": 2,
+        "wrong": 1,
         "missing": 2,
         "abstained": 0,
         "hallucinated": 0
@@ -89,8 +89,8 @@
     "sarvam_extract_calls": 9,
     "sarvam_extract_pages": 9,
     "gemini_calls": 0,
-    "latency_seconds_p50": 10.436,
-    "latency_seconds_max": 13.531,
+    "latency_seconds_p50": 10.513,
+    "latency_seconds_max": 19.685,
     "configured_cost_inr": null,
     "cost_rate_source": "NOT_CONFIGURED"
   },
@@ -149,11 +149,11 @@
       "missed_alteration": false,
       "quality": "GOOD",
       "extraction_source": "sarvam_digitise",
-      "latency_seconds": 3.944,
+      "latency_seconds": 4.253,
       "provider_call_log": [
         {
           "operation": "sarvam_digitise",
-          "seconds": 3.929,
+          "seconds": 4.235,
           "status": "ok"
         }
       ],
@@ -195,8 +195,8 @@
         },
         "doctor_name": {
           "expected": "Dr. S. Iyer",
-          "observed": "Dr. S. Iyer, MBBS, MD (Pulmonology)",
-          "outcome": "wrong"
+          "observed": "Dr. S. Iyer",
+          "outcome": "correct"
         },
         "doctor_registration": {
           "expected": "TN/56789/2013",
@@ -224,16 +224,16 @@
       "missed_alteration": false,
       "quality": "GOOD",
       "extraction_source": "sarvam_digitise+extract",
-      "latency_seconds": 10.436,
+      "latency_seconds": 10.438,
       "provider_call_log": [
         {
           "operation": "sarvam_digitise",
-          "seconds": 3.809,
+          "seconds": 3.923,
           "status": "ok"
         },
         {
           "operation": "sarvam_extract",
-          "seconds": 6.622,
+          "seconds": 6.507,
           "status": "ok"
         }
       ],
@@ -304,16 +304,16 @@
       "missed_alteration": false,
       "quality": "GOOD",
       "extraction_source": "sarvam_digitise+extract",
-      "latency_seconds": 10.479,
+      "latency_seconds": 10.588,
       "provider_call_log": [
         {
           "operation": "sarvam_digitise",
-          "seconds": 3.923,
+          "seconds": 3.932,
           "status": "ok"
         },
         {
           "operation": "sarvam_extract",
-          "seconds": 6.55,
+          "seconds": 6.649,
           "status": "ok"
         }
       ],
@@ -384,16 +384,16 @@
       "missed_alteration": false,
       "quality": "GOOD",
       "extraction_source": "sarvam_digitise+extract",
-      "latency_seconds": 13.531,
+      "latency_seconds": 10.609,
       "provider_call_log": [
         {
           "operation": "sarvam_digitise",
-          "seconds": 3.829,
+          "seconds": 3.853,
           "status": "ok"
         },
         {
           "operation": "sarvam_extract",
-          "seconds": 9.697,
+          "seconds": 6.751,
           "status": "ok"
         }
       ],
@@ -468,7 +468,7 @@
       "provider_call_log": [
         {
           "operation": "sarvam_digitise",
-          "seconds": 3.91,
+          "seconds": 3.898,
           "status": "ok"
         }
       ],
@@ -550,11 +550,11 @@
       "missed_alteration": false,
       "quality": "GOOD",
       "extraction_source": "sarvam_digitise",
-      "latency_seconds": 4.242,
+      "latency_seconds": 3.96,
       "provider_call_log": [
         {
           "operation": "sarvam_digitise",
-          "seconds": 4.132,
+          "seconds": 3.862,
           "status": "ok"
         }
       ],
@@ -633,11 +633,11 @@
       "missed_alteration": false,
       "quality": "GOOD",
       "extraction_source": "sarvam_digitise",
-      "latency_seconds": 3.88,
+      "latency_seconds": 3.929,
       "provider_call_log": [
         {
           "operation": "sarvam_digitise",
-          "seconds": 3.822,
+          "seconds": 3.881,
           "status": "ok"
         }
       ],
@@ -700,16 +700,16 @@
       "missed_alteration": false,
       "quality": "GOOD",
       "extraction_source": "sarvam_digitise+extract",
-      "latency_seconds": 10.516,
+      "latency_seconds": 10.437,
       "provider_call_log": [
         {
           "operation": "sarvam_digitise",
-          "seconds": 3.801,
+          "seconds": 3.847,
           "status": "ok"
         },
         {
           "operation": "sarvam_extract",
-          "seconds": 6.662,
+          "seconds": 6.544,
           "status": "ok"
         }
       ],
@@ -777,16 +777,16 @@
       "missed_alteration": false,
       "quality": "GOOD",
       "extraction_source": "sarvam_digitise+extract",
-      "latency_seconds": 10.565,
+      "latency_seconds": 13.703,
       "provider_call_log": [
         {
           "operation": "sarvam_digitise",
-          "seconds": 3.96,
+          "seconds": 3.866,
           "status": "ok"
         },
         {
           "operation": "sarvam_extract",
-          "seconds": 6.525,
+          "seconds": 9.751,
           "status": "ok"
         }
       ],
@@ -857,16 +857,16 @@
       "missed_alteration": false,
       "quality": "GOOD",
       "extraction_source": "sarvam_digitise+extract",
-      "latency_seconds": 10.274,
+      "latency_seconds": 16.593,
       "provider_call_log": [
         {
           "operation": "sarvam_digitise",
-          "seconds": 3.69,
+          "seconds": 3.829,
           "status": "ok"
         },
         {
           "operation": "sarvam_extract",
-          "seconds": 6.502,
+          "seconds": 12.695,
           "status": "ok"
         }
       ],
@@ -925,7 +925,7 @@
       "missed_alteration": false,
       "quality": null,
       "extraction_source": null,
-      "latency_seconds": 0.001,
+      "latency_seconds": 0.002,
       "provider_call_log": [],
       "metrics": {
         "files": 1,
@@ -984,16 +984,16 @@
       "missed_alteration": false,
       "quality": "GOOD",
       "extraction_source": "sarvam_digitise+extract",
-      "latency_seconds": 13.381,
+      "latency_seconds": 19.685,
       "provider_call_log": [
         {
           "operation": "sarvam_digitise",
-          "seconds": 3.837,
+          "seconds": 3.815,
           "status": "ok"
         },
         {
           "operation": "sarvam_extract",
-          "seconds": 9.54,
+          "seconds": 15.865,
           "status": "ok"
         }
       ],
@@ -1073,16 +1073,16 @@
       "missed_alteration": false,
       "quality": "GOOD",
       "extraction_source": "sarvam_digitise+extract",
-      "latency_seconds": 13.31,
+      "latency_seconds": 10.715,
       "provider_call_log": [
         {
           "operation": "sarvam_digitise",
-          "seconds": 3.661,
+          "seconds": 3.911,
           "status": "ok"
         },
         {
           "operation": "sarvam_extract",
-          "seconds": 9.565,
+          "seconds": 6.705,
           "status": "ok"
         }
       ],
@@ -1137,16 +1137,16 @@
       "missed_alteration": false,
       "quality": "GOOD",
       "extraction_source": "sarvam_digitise+extract",
-      "latency_seconds": 10.436,
+      "latency_seconds": 13.611,
       "provider_call_log": [
         {
           "operation": "sarvam_digitise",
-          "seconds": 3.828,
+          "seconds": 3.804,
           "status": "ok"
         },
         {
           "operation": "sarvam_extract",
-          "seconds": 6.523,
+          "seconds": 9.728,
           "status": "ok"
         }
       ],

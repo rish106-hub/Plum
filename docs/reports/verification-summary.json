@@ -1,12 +1,12 @@
 {
   "schema": "plum.verification_summary.v1",
-  "started_at": "2026-09-27T16:33:17+00:00",
-  "finished_at": "2026-09-27T16:35:24+00:00",
+  "started_at": "2026-09-27T16:56:53+00:00",
+  "finished_at": "2026-09-27T16:59:14+00:00",
   "git": {
-    "head": "e57695810c59defca2eb7ade576f787b113d6db4",
+    "head": "8d986b66b530d9a90936724e7cb4de2a90112b4d",
     "branch": "codex/live-ocr-consistency",
     "worktree_dirty": true,
-    "changed_paths": 11
+    "changed_paths": 2
   },
   "python": "3.14.2",
   "platform": "Darwin arm64",
@@ -67,7 +67,7 @@
       "command": "python -m pytest -q -p no:cacheprovider",
       "exit_code": 0,
       "ok": true,
-      "seconds": 6.29
+      "seconds": 6.58
     },
     {
       "name": "supplied-case evaluation",
@@ -81,27 +81,27 @@
       "command": "python -m scripts.evaluate_documents",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.42
+      "seconds": 0.4
     },
     {
       "name": "live dirty-corpus OCR accuracy",
       "command": "python -m scripts.evaluate_documents --providers live",
       "exit_code": 0,
       "ok": true,
-      "seconds": 119.51
+      "seconds": 133.04
     }
   ],
   "lint_ok": true,
   "typecheck_ok": true,
   "compile_ok": true,
   "tests": {
-    "passed": 306,
+    "passed": 307,
     "failed": 0,
     "errors": 0,
     "skipped": 0,
     "subtests_passed": 105,
     "subtests_failed": 0,
-    "warnings": 44
+    "warnings": 45
   },
   "fixture_evaluation": {
     "report": "docs/reports/evaluation.md",
@@ -250,7 +250,7 @@
     "metrics": {
       "documents": 14,
       "classification_accuracy": 0.9231,
-      "field_accuracy": 0.8909,
+      "field_accuracy": 0.9091,
       "per_field": {
         "patient_name": {
           "correct": 14,
@@ -260,8 +260,8 @@
           "hallucinated": 0
         },
         "doctor_name": {
-          "correct": 1,
-          "wrong": 2,
+          "correct": 2,
+          "wrong": 1,
           "missing": 2,
           "abstained": 0,
           "hallucinated": 0
@@ -333,8 +333,8 @@
       "sarvam_extract_calls": 9,
       "sarvam_extract_pages": 9,
       "gemini_calls": 0,
-      "latency_seconds_p50": 10.436,
-      "latency_seconds_max": 13.531,
+      "latency_seconds_p50": 10.513,
+      "latency_seconds_max": 19.685,
       "configured_cost_inr": null,
       "cost_rate_source": "NOT_CONFIGURED"
     },
