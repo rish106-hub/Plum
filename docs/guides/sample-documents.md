@@ -16,4 +16,10 @@ PYTHONPATH=. .venv/bin/python -m scripts.evaluate_documents
 
 # Live OCR on the dirty corpus. Without SARVAM_API_KEY every scenario is NOT_RUN (exit code 2).
 PYTHONPATH=. .venv/bin/python -m scripts.evaluate_documents --providers live [--gemini]
+
+# Bounded website/API outcome regression. Start a fresh configured server first.
+make live-outcome-generate
+PLUM_REVIEW_TOKEN=local-review-token make live-outcome-run
 ```
+
+The dirty-corpus command is the field/classification/abstention accuracy benchmark. The website/API command verifies four synthetic business outcomes and screenshots; it must not be reported as general OCR accuracy.

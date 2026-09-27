@@ -87,6 +87,12 @@ class DocumentProvider(Protocol):
 
 `SarvamDocumentProvider` starts an asynchronous job, polls until completion with a 90-second deadline, and downloads a bounded result. Both PDF and ZIP inputs are capped at ten pages by the provider contract. A timeout, invalid result or failed job is caught by the adapter, counted in `provider_failures`, and surfaced as an issue. The adapter does not return a made-up field to keep the pipeline moving.
 
+## Live outcome benchmark (`tools.live_ocr_outcome_benchmark`)
+
+`generate` writes seven synthetic, image-only PDFs plus source-page PNGs and a manifest. `run` requires a configured running application, `PLUM_REVIEW_TOKEN`, and the server-side Sarvam key. It fills the real form, clicks submit, polls `GET /api/claims/{id}`, fails on unexpected state/decision, failed critical-field checks, provider failures, or browser page errors, and captures each filled form and outcome plus the authenticated review queue. `render` rebuilds the Markdown summary from the retained machine-readable result without making provider calls.
+
+The benchmark expects four routes: approved, safe document correction with no invented total, deterministic rejection for an excluded cosmetic service, and manual review for a duplicate stamp. Its report is a bounded synthetic end-to-end regression. It is not the labelled dirty-corpus accuracy report and cannot be used as a production precision, recall, handwriting, multilingual, or calibration claim.
+
 ## Fixture adapter (`claims.fixtures`)
 
 `normalize_fixture(case: dict) -> dict` copies `case.input` and maps every supplied document's `actual_type`, `quality`, `content`, and `patient_name_on_doc` into the same normalized document shape accepted by the evaluator. Every mapped document carries `source="fixture_metadata"`; the source is recorded as provenance in the trace and never changes a policy rule. The function drops `case_id`, `expected`, and the harness-only `simulate_component_failure`, so no production rule can branch on a test ID. `load_cases(path)` reads the supplied cases unmodified; `load_policy(path)` delegates to `claims.policy.load_policy`.

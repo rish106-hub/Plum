@@ -19,7 +19,7 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -r requirements.txt
       # Offline by design: no provider secrets are exposed, and verify strips any
-      # provider keys from its child processes. Live OCR is recorded as NOT_RUN.
+      # provider keys from its child processes. Dirty-corpus live OCR is recorded as NOT_RUN.
       - run: make verify PYTHON=python
       - if: always()
         uses: actions/upload-artifact@v4

@@ -1,12 +1,12 @@
 {
   "schema": "plum.verification_summary.v1",
-  "started_at": "2026-09-27T11:24:30+00:00",
-  "finished_at": "2026-09-27T11:24:38+00:00",
+  "started_at": "2026-09-27T12:31:15+00:00",
+  "finished_at": "2026-09-27T12:31:23+00:00",
   "git": {
-    "head": "fab1927af3a497cc639d34ff8a0961840c52623e",
-    "branch": "codex/audit-wrap-up",
-    "worktree_dirty": false,
-    "changed_paths": 0
+    "head": "e93661b715184c616ceee48d0b28af0f22c6dfa7",
+    "branch": "main",
+    "worktree_dirty": true,
+    "changed_paths": 18
   },
   "python": "3.14.2",
   "platform": "Darwin arm64",
@@ -46,14 +46,14 @@
       "command": "python -m ruff check .",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.06
+      "seconds": 0.07
     },
     {
       "name": "mypy",
       "command": "python -m mypy claims scripts tools",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.37
+      "seconds": 0.43
     },
     {
       "name": "compileall",
@@ -67,7 +67,7 @@
       "command": "python -m pytest -q -p no:cacheprovider",
       "exit_code": 0,
       "ok": true,
-      "seconds": 6.25
+      "seconds": 6.56
     },
     {
       "name": "supplied-case evaluation",
@@ -81,10 +81,10 @@
       "command": "python -m scripts.evaluate_documents",
       "exit_code": 0,
       "ok": true,
-      "seconds": 0.39
+      "seconds": 0.4
     },
     {
-      "name": "live OCR status (keys stripped)",
+      "name": "live dirty-corpus OCR status (keys stripped)",
       "command": "python -m scripts.evaluate_documents --providers live",
       "exit_code": 2,
       "ok": true,
@@ -95,7 +95,7 @@
   "typecheck_ok": true,
   "compile_ok": true,
   "tests": {
-    "passed": 303,
+    "passed": 306,
     "failed": 0,
     "errors": 0,
     "skipped": 0,

@@ -12,8 +12,8 @@ Steps:
 1. sha256 of the four evaluator-supplied artifacts (read-only inputs).
 2. ruff, mypy, compileall, pytest.
 3. ``scripts.evaluate`` (12 supplied cases) and offline ``scripts.evaluate_documents``.
-4. Live OCR status. Verification is offline by default: provider keys are
-   stripped from every child process, and live OCR is recorded as ``NOT_RUN``
+4. Labelled dirty-corpus OCR accuracy status. Verification is offline by default: provider keys are
+   stripped from every child process, and the live corpus is recorded as ``NOT_RUN``
    with its reason. ``--live`` runs ``scripts.evaluate_documents --providers live``
    with the caller's environment (this calls paid providers).
 5. ``docs/reports/policy-audit.md`` from the canonical policy's audit trail.
@@ -174,7 +174,7 @@ def live_ocr(runner: Runner, live: bool) -> dict[str, Any]:
     report = REPORT_DIR / "document-ocr-evaluation.json"
     if live:
         env = dict(os.environ, PYTHONPATH=str(ROOT))
-        runner.run("live OCR benchmark", [PYTHON, "-m", "scripts.evaluate_documents", "--providers", "live"], env=env, ok_codes=(0, 2))
+        runner.run("live dirty-corpus OCR accuracy", [PYTHON, "-m", "scripts.evaluate_documents", "--providers", "live"], env=env, ok_codes=(0, 2))
         data = json.loads(report.read_text(encoding="utf-8"))
         return {"status": data["status"], "reason": data.get("reason"), "metrics": data.get("metrics"), "report": "docs/reports/document-ocr-evaluation.md", "command": LIVE_COMMAND}
     previous = json.loads(report.read_text(encoding="utf-8")) if report.exists() else None
@@ -187,7 +187,7 @@ def live_ocr(runner: Runner, live: bool) -> dict[str, Any]:
             "command": LIVE_COMMAND,
         }
     # Record the NOT_RUN report with provider keys stripped, so no provider is called.
-    runner.run("live OCR status (keys stripped)", [PYTHON, "-m", "scripts.evaluate_documents", "--providers", "live"], ok_codes=(2,))
+    runner.run("live dirty-corpus OCR status (keys stripped)", [PYTHON, "-m", "scripts.evaluate_documents", "--providers", "live"], ok_codes=(2,))
     reason = "verification is offline by design (provider keys are stripped); "
     reason += "SARVAM_API_KEY is set in this environment - run the live command to measure" if os.getenv("SARVAM_API_KEY") else "SARVAM_API_KEY is not configured"
     return {"status": "NOT_RUN", "reason": reason, "metrics": None, "report": "docs/reports/document-ocr-evaluation.md", "command": LIVE_COMMAND}
@@ -248,7 +248,7 @@ def readme_block(summary: dict[str, Any]) -> str:
         f"| ruff / mypy / compileall | {'pass' if summary['lint_ok'] else 'FAIL'} / {'pass' if summary['typecheck_ok'] else 'FAIL'} / {'pass' if summary['compile_ok'] else 'FAIL'} |",
         f"| Supplied cases (`scripts.evaluate`, unmodified `test_cases.json`) | **{_score(fixture)}** |",
         f"| Offline document suites (routing / fail-closed, not OCR) | **{_score(documents)}**: {suites} |",
-        f"| Live OCR accuracy | **{live['status']}**: {live['reason']} |",
+        f"| Live dirty-corpus OCR accuracy | **{live['status']}**: {live['reason']} |",
         README_END,
     ]
     return "\n".join(rows)
@@ -351,15 +351,31 @@ def markdown(summary: dict[str, Any]) -> str:
     lines += [f"| `{name}` | {_score(suite)} |" for name, suite in documents["suites"].items()]
     lines += [
         "",
-        "## Live OCR",
+        "## Live dirty-corpus OCR accuracy",
         "",
         f"Status: **{live['status']}**. {live['reason']}.",
         "",
-        "Live OCR accuracy is unmeasured until this runs with provider keys:",
-        "",
-        "```bash",
-        live["command"],
-        "```",
+    ]
+    if live["status"] == "NOT_RUN":
+        lines += [
+            "This labelled dirty-corpus accuracy run is unmeasured until it runs with provider keys:",
+            "",
+            "```bash",
+            live["command"],
+            "```",
+            "",
+        ]
+    else:
+        lines += [
+            f"Measured results are in [{Path(live['report']).name}]({Path(live['report']).name}). Re-run with:",
+            "",
+            "```bash",
+            live["command"],
+            "```",
+            "",
+        ]
+    lines += [
+        "The separate four-scenario website-driven outcome regression is documented in [live-ocr-outcome-benchmark.md](live-ocr-outcome-benchmark.md). It does not replace this labelled accuracy benchmark.",
         "",
         "## Policy interpretation audit",
         "",
@@ -374,7 +390,7 @@ def markdown(summary: dict[str, Any]) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
-    parser.add_argument("--live", action="store_true", help="also run the live OCR benchmark with the caller's provider keys (paid calls)")
+    parser.add_argument("--live", action="store_true", help="also run labelled dirty-corpus OCR accuracy with the caller's provider keys (paid calls)")
     args = parser.parse_args()
     started = _now()
     runner = Runner()
@@ -437,7 +453,7 @@ def main() -> int:
     print(f"pytest: {summary['tests']['passed']} passed, {summary['tests']['failed']} failed, {summary['tests']['subtests_passed']} subtests passed")
     print(f"supplied cases: {_score(summary['fixture_evaluation'])}")
     print(f"offline document suites: {_score(summary['document_evaluation'])}")
-    print(f"live OCR: {live['status']} ({live['reason']})")
+    print(f"live dirty-corpus OCR: {live['status']} ({live['reason']})")
     for issue in summary["docs_drift"]:
         print(f"docs drift: {issue}")
     if not summary["readme_block_updated"]:

@@ -64,6 +64,19 @@ Expected result with the demo clock: `APPROVED`, `approved_amount` 1350 (₹1,50
 
 To exercise OCR, replace the bill line with `-F 'files=@.data/samples/synthetic_hospital_bill.png;type=image/png'`. This sends the image through Sarvam OCR and can incur a small charge. It needs `SARVAM_API_KEY` set in the ignored `.env` file. Restart the app after changing `.env`. The key is read by the app at startup; never paste it into a command, commit, screenshot, or log.
 
+### Reproduce the four-outcome live website benchmark
+
+The bounded live regression generates seven synthetic image-only PDFs, fills and clicks the actual website form for four claims, polls each stored result through the local API, and captures the filled forms, outcomes, and authenticated review queue. It requires Sarvam to be configured in the running server and makes paid provider calls.
+
+Keep the fresh server from step 1 running, then use the same local reviewer token in the second terminal:
+
+```bash
+make live-outcome-generate
+PLUM_REVIEW_TOKEN=local-review-token make live-outcome-run
+```
+
+Artifacts are written under `output/live-ocr-benchmark/`; the generated human-readable report is also written to `docs/reports/live-ocr-outcome-benchmark.md`. A passing run covers approved, safe document correction, rejected, and manual-review routes with zero browser page errors and zero provider failures. It is a synthetic end-to-end regression, not a production or dirty-corpus OCR-accuracy claim.
+
 ## 3. Wait for the outcome and inspect the evidence
 
 ```bash

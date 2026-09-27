@@ -37,7 +37,7 @@ The offline `provider_failure_injection` suite and `tests/test_document_evaluati
 
 ## Benchmark design
 
-There are two separate reports, and neither one stands in for the other.
+There are three separate reports, and none stands in for another.
 
 1. **Offline intake/routing and fail-closed** (`docs/reports/document-evaluation.*`, the default command). Makes no provider calls. Contents:
    - six selectable-text PDF/image routing scenarios;
@@ -53,6 +53,14 @@ There are two separate reports, and neither one stands in for the other.
    - Sarvam digitise and extract call and page counts, provider failures, Gemini calls, per-call and per-document latency.
 
    Without `SARVAM_API_KEY`, every scenario is `NOT_RUN (missing SARVAM_API_KEY)`, `metrics` is `null`, and the exit code is 2. Nothing is estimated or carried over from earlier runs.
+3. **Website-driven live outcome regression** (`live-ocr-outcome-benchmark.md`, `tools.live_ocr_outcome_benchmark`). It generates seven synthetic image-only PDFs and submits four claims by filling and clicking the real browser UI. It then polls the stored result through the local API and captures the filled form, outcome, and authenticated review queue. It asserts selected critical fields and the expected approved, correction, rejected, and manual-review routes. This proves only those bounded end-to-end workflows; it is not an accuracy estimate for the 14-document dirty corpus or real-world documents.
+
+Reproduce the third report against an already-running fresh development server with Sarvam configured:
+
+```bash
+make live-outcome-generate
+PLUM_REVIEW_TOKEN=local-review-token make live-outcome-run
+```
 
 ### Corpus
 
