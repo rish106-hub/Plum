@@ -49,6 +49,19 @@
         <div><strong>Documents need attention</strong><p>The claim has been paused before a coverage decision. Submit a new claim with the requested documents.</p><ul id="correction-list"></ul></div>
       </div>
 
+      <div id="add-documents-panel" class="surface detail-section" aria-labelledby="add-docs-heading">
+        <div class="section-heading"><div><h2 id="add-docs-heading">Add additional documents</h2></div><span class="section-hint">Upload missing documents to reprocess this claim</span></div>
+        <form id="add-documents-form" class="form">
+          <div class="form__group">
+            <label class="form__label" for="additional-files">Select documents (PDF or images)</label>
+            <input class="form__input" type="file" id="additional-files" name="files" multiple accept=".pdf,.png,.jpg,.jpeg,.heic">
+            <small class="form__hint">You can upload up to 6 total documents per claim</small>
+          </div>
+          <button type="submit" class="button button--primary">Add documents & reprocess</button>
+        </form>
+        <div id="add-documents-status" class="notice" hidden></div>
+      </div>
+
       <section id="escalation-panel" class="escalation-panel" aria-labelledby="escalation-heading" hidden>
         <div><p class="eyebrow">Human review</p><h2 id="escalation-heading">Why this needs a person</h2><p id="escalation-reason"></p></div>
         <ul id="escalation-signals" aria-label="Review signals"></ul>

@@ -69,6 +69,20 @@ def annotated_image_bytes() -> bytes:
     return output.getvalue()
 
 
+def branded_bill_image_bytes() -> bytes:
+    """Blue letterhead + footer stamp, but no ink over the amount columns."""
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((40, 30, 960, 110), fill=(30, 70, 170))
+    draw.text((80, 150), "Hospital Bill Patient: Rajesh Kumar", fill="black")
+    draw.text((80, 220), "Final Total Amount: 1500.00", fill="black")
+    draw.ellipse((720, 820, 920, 960), outline=(30, 70, 170), width=10)
+    draw.text((760, 880), "HOSPITAL", fill=(30, 70, 170))
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+    return output.getvalue()
+
+
 class StubProvider:
     def __init__(self, ocr: str, fields: dict | None = None):
         self.ocr = ocr
@@ -400,6 +414,27 @@ def test_colored_bill_annotation_routes_to_manual_review() -> None:
 
     assert any(issue["code"] == "DOCUMENT_ALTERATION" for issue in result["issues"])
     assert result["documents"][0]["content"]["alteration_confidence"] == 0.4
+
+
+def test_blue_letterhead_and_stamp_do_not_count_as_amount_alteration() -> None:
+    fixture = RECEIPT_OCR_REGRESSION
+    provider = StubProvider(
+        "HOSPITAL BILL\nOriginal for Recipient\n"
+        f"Patient: {fixture['patient_name']}\nDate: {fixture['date']}\n"
+        f"Consultation Fee {fixture['total']:.2f}\nFinal Total Amount: {fixture['total']:.2f}",
+    )
+
+    result = process_uploads(
+        [{"file_name": "branded-bill.png", "data": branded_bill_image_bytes()}],
+        "DENTAL",
+        fixture["patient_name"],
+        POLICY,
+        provider,
+    )
+
+    assert not any(issue["code"] == "DOCUMENT_ALTERATION" for issue in result["issues"])
+    assert result["documents"][0]["content"].get("alteration_detected") is not True
+    assert result["documents"][0]["content"].get("original_stamp_detected") is not True
 
 
 def test_provider_unreadable_bill_names_file_and_type() -> None:

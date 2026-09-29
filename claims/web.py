@@ -525,16 +525,42 @@ def _normalized_name(value: Any) -> str:
 
 
 def _prefill_date(value: Any) -> str | None:
+    """Normalize a printed document date for the treatment-date form control."""
     raw = str(value or "").strip()
-    try:
-        return date.fromisoformat(raw[:10]).isoformat()
-    except ValueError:
-        pass
-    for pattern in ("%d-%b-%Y", "%d %b %Y", "%d/%m/%Y", "%d-%m-%Y"):
-        try:
-            return datetime.strptime(raw, pattern).date().isoformat()
-        except ValueError:
-            continue
+    if not raw:
+        return None
+    parsed = parse_document_date(raw)
+    if parsed is not None:
+        return parsed.isoformat()
+    # OCR often appends a clock time ("01-Nov-2024 10:30 AM"); keep the date head.
+    match = re.match(
+        r"^(\d{4}-\d{2}-\d{2}|\d{1,2}[-/]\w{2,9}[-/]\d{2,4}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4})",
+        raw,
+    )
+    if match:
+        parsed = parse_document_date(match.group(1))
+        if parsed is not None:
+            return parsed.isoformat()
+    return None
+
+
+def _prefill_claim_category(document_types: set[str]) -> str | None:
+    """Suggest a category only when document types point to one intake path."""
+    kinds = {kind for kind in document_types if kind and kind != "UNKNOWN"}
+    if not kinds:
+        return None
+    if "PHARMACY_BILL" in kinds and not kinds.intersection({"LAB_REPORT", "DIAGNOSTIC_REPORT", "DENTAL_REPORT"}):
+        return "PHARMACY"
+    if "DENTAL_REPORT" in kinds and "PHARMACY_BILL" not in kinds:
+        return "DENTAL"
+    if kinds.intersection({"LAB_REPORT", "DIAGNOSTIC_REPORT"}) and "PHARMACY_BILL" not in kinds and "DENTAL_REPORT" not in kinds:
+        return "DIAGNOSTIC"
+    # Clinic bill / prescription evidence defaults to consultation intake. Vision and
+    # alternative-medicine share the same required docs, so the member still confirms.
+    if kinds.intersection({"HOSPITAL_BILL", "PRESCRIPTION"}) and not kinds.intersection(
+        {"PHARMACY_BILL", "LAB_REPORT", "DIAGNOSTIC_REPORT", "DENTAL_REPORT"}
+    ):
+        return "CONSULTATION"
     return None
 
 
@@ -580,19 +606,9 @@ def _prefill_suggestions(inspection: dict[str, Any], policy: dict[str, Any]) -> 
                 continue
     if len(bill_totals) == 1:
         suggestions["claimed_amount"] = next(iter(bill_totals))
-    category_by_document = {
-        "DENTAL_REPORT": "DENTAL",
-        "DIAGNOSTIC_REPORT": "DIAGNOSTIC",
-        "LAB_REPORT": "DIAGNOSTIC",
-        "PHARMACY_BILL": "PHARMACY",
-    }
-    categories = {
-        category_by_document[str(document.get("actual_type") or "").upper()]
-        for document in documents
-        if str(document.get("actual_type") or "").upper() in category_by_document
-    }
-    if len(categories) == 1:
-        suggestions["claim_category"] = next(iter(categories))
+    document_types = {str(document.get("actual_type") or "").upper() for document in documents}
+    if (category := _prefill_claim_category(document_types)):
+        suggestions["claim_category"] = category
     pre_auth = next(
         (content for document, content in zip(documents, fields, strict=True)
          if str(document.get("actual_type") or "").upper() == "PRE_AUTHORIZATION"),
@@ -604,13 +620,17 @@ def _prefill_suggestions(inspection: dict[str, Any], policy: dict[str, Any]) -> 
             suggestions["pre_authorization_issued_date"] = issued_date
         if (reference := str(pre_auth.get("approval_reference") or "").strip()):
             suggestions["pre_authorization_reference"] = reference
+    # Prefill inspects files before a category is chosen, so matrix gaps against the
+    # temporary CONSULTATION probe are not actionable intake hints.
+    actionable_issues = [
+        {key: issue.get(key) for key in ("code", "file_name", "message")}
+        for issue in inspection.get("issues") or []
+        if str(issue.get("code") or "") != "MISSING_DOCUMENT"
+    ]
     return {
         "suggestions": suggestions,
-        "detected_document_types": sorted({str(document.get("actual_type") or "UNKNOWN") for document in documents}),
-        "issues": [
-            {key: issue.get(key) for key in ("code", "file_name", "message")}
-            for issue in inspection.get("issues") or []
-        ],
+        "detected_document_types": sorted(document_types),
+        "issues": actionable_issues,
         "metrics": inspection.get("metrics") or {},
     }
 
@@ -1322,7 +1342,7 @@ def process_claim(claim_id: str) -> None:
                 unconfirmed_risk_issues.append(issue)
         if unconfirmed_risk_issues:
             result = _document_risk_review_result(unconfirmed_risk_issues, inspection.get("metrics", {}))
-            result["trace"].extend(gemini_trace)
+            result["trace"] = [document_evidence_trace(documents)] + result.get("trace", []) + gemini_trace
             _set_state(claim_id, "MANUAL_REVIEW", result=result, detail={"document_risk_signal_count": len(result["reasons"])})
             return
         if risk_issues:
@@ -1688,3 +1708,68 @@ def retry_claim(claim_id: str, background_tasks: BackgroundTasks) -> JSONRespons
     _set_state(claim_id, "QUEUED", detail={"message": "Retry requested"})
     background_tasks.add_task(process_claim, claim_id)
     return JSONResponse({"id": claim_id, "state": "QUEUED", "url": f"/claims/{claim_id}"}, status_code=202)
+
+
+@app.post("/api/claims/{claim_id}/add-documents", status_code=202)
+async def add_documents_to_claim(
+    claim_id: str,
+    background_tasks: BackgroundTasks,
+    files: Annotated[list[UploadFile], File()],
+) -> JSONResponse:
+    """Add additional documents to an existing claim and reprocess it."""
+    claim = _load_claim(claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    
+    # Check if claim can accept new documents
+    if claim["state"] in {"PAID", "RELEASED"}:
+        raise HTTPException(status_code=409, detail="Cannot add documents to settled claims.")
+    
+    current_doc_count = len(claim.get("documents", []))
+    if current_doc_count + len(files) > MAX_FILES:
+        raise HTTPException(status_code=400, detail=f"Cannot exceed {MAX_FILES} total documents per claim.")
+    
+    # Process and store new files
+    _, upload_root = _paths()
+    claim_root = upload_root / claim_id
+    if not claim_root.exists():
+        claim_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    
+    checked = [await _read_upload(file) for file in files]
+    if sum(len(data) for _, _, data in checked) > MAX_TOTAL_BYTES:
+        raise HTTPException(status_code=400, detail="The combined upload exceeds the 30 MB limit.")
+    
+    stored: list[tuple[str, str, str, int, str, str]] = []
+    for name, media_type, data in checked:
+        file_id = uuid.uuid4().hex
+        path = claim_root / file_id
+        path.write_bytes(data)
+        path.chmod(0o600)
+        stored.append((file_id, name, media_type, len(data), hashlib.sha256(data).hexdigest(), f"{claim_id}/{file_id}"))
+    
+    # Add documents to database
+    with _connect() as connection:
+        connection.executemany(
+            "INSERT INTO documents (id, claim_id, original_name, media_type, size_bytes, sha256, storage_path) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [(file_id, claim_id, name, media_type, size, digest, path) for file_id, name, media_type, size, digest, path in stored],
+        )
+        
+        # Reset claim state to QUEUED for reprocessing
+        now = _now()
+        connection.execute(
+            "UPDATE claims SET state = ?, updated_at = ? WHERE id = ?",
+            ("QUEUED", now, claim_id),
+        )
+        _record_event(connection, claim_id, "DOCUMENTS_ADDED", {
+            "count": len(stored),
+            "files": [name for _, name, _, _, _, _ in stored]
+        })
+    
+    # Reprocess the claim with new documents
+    background_tasks.add_task(process_claim, claim_id)
+    return JSONResponse({
+        "id": claim_id, 
+        "state": "QUEUED", 
+        "url": f"/claims/{claim_id}",
+        "added_documents": len(stored)
+    }, status_code=202)

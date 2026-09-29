@@ -198,12 +198,24 @@
         const suggestions = result.suggestions || {};
         ["member_id", "claim_category", "treatment_date", "claimed_amount", "pre_authorization_obtained", "pre_authorization_issued_date", "pre_authorization_reference"].forEach((name) => {
           const input = form.elements.namedItem(name);
-          if (input && suggestions[name] && !input.value) input.value = suggestions[name];
+          if (!(input && suggestions[name])) return;
+          // Always apply document-backed values the member can still edit.
+          input.value = suggestions[name];
+          if (input.value !== String(suggestions[name])) {
+            input.dispatchEvent(new Event("change", { bubbles: true }));
+          }
         });
         const fields = Object.keys(suggestions).filter((name) => name !== "member_name");
-        readStatus.textContent = fields.length
-          ? `Suggested ${fields.map((field) => friendlyLabel(field)).join(", ")}. Please review before submitting.`
-          : "No unambiguous form details were found. Select the claim details and submit when ready.";
+        const issues = Array.isArray(result.issues)
+          ? result.issues.map((issue) => issue && issue.message).filter(Boolean)
+          : [];
+        if (fields.length) {
+          readStatus.textContent = `Suggested ${fields.map((field) => friendlyLabel(field)).join(", ")}. Please review before submitting.`;
+        } else if (issues.length) {
+          readStatus.textContent = issues[0];
+        } else {
+          readStatus.textContent = "No unambiguous form details were found. Select the claim details and submit when ready.";
+        }
       } catch (cause) {
         error.textContent = friendlyRequestError(cause);
         error.hidden = false;
@@ -476,6 +488,55 @@
         button.disabled = false;
       }
     });
+
+    // Setup add documents form
+    const addDocsForm = byId("add-documents-form");
+    const addDocsStatus = byId("add-documents-status");
+    if (addDocsForm) {
+      addDocsForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const fileInput = byId("additional-files");
+        if (!fileInput.files.length) {
+          addDocsStatus.textContent = "Please select at least one document.";
+          addDocsStatus.hidden = false;
+          addDocsStatus.className = "notice notice--error";
+          return;
+        }
+
+        const submitButton = addDocsForm.querySelector("button[type='submit']");
+        submitButton.disabled = true;
+        submitButton.textContent = "Adding documents…";
+        addDocsStatus.hidden = true;
+
+        try {
+          const formData = new FormData();
+          Array.from(fileInput.files).forEach((file) => formData.append("files", file));
+
+          const response = await fetch(`/api/claims/${encodeURIComponent(claimId)}/add-documents`, {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) throw new Error(await messageFromError(response));
+
+          const result = await response.json();
+          addDocsStatus.textContent = `Successfully added ${result.added_documents} document(s). Reprocessing claim...`;
+          addDocsStatus.hidden = false;
+          addDocsStatus.className = "notice notice--success";
+          
+          // Reset form and refresh claim
+          addDocsForm.reset();
+          setTimeout(refresh, 1000);
+        } catch (cause) {
+          addDocsStatus.textContent = cause.message || "Failed to add documents. Try again.";
+          addDocsStatus.hidden = false;
+          addDocsStatus.className = "notice notice--error";
+        } finally {
+          submitButton.disabled = false;
+          submitButton.textContent = "Add documents & reprocess";
+        }
+      });
+    }
     window.addEventListener("pagehide", () => window.clearTimeout(timer));
     refresh();
   }

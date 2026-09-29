@@ -904,8 +904,49 @@ def test_document_prefill_suggests_only_document_backed_values_without_persistin
         "member_name": "Rajesh Kumar",
         "treatment_date": "2024-11-01",
         "claimed_amount": "1500.00",
+        "claim_category": "CONSULTATION",
     }
     assert "private source text" not in json.dumps(result)
+
+
+def test_document_prefill_surfaces_read_issues_without_matrix_noise(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        web,
+        "process_uploads",
+        lambda *_args, **_kwargs: {
+            "documents": [],
+            "issues": [
+                {
+                    "code": "UNREADABLE_IMAGE",
+                    "file_name": "scan.jpg",
+                    "message": "scan.jpg: Image has too little contrast to read; retake the photo in even light.",
+                },
+                {
+                    "code": "MISSING_DOCUMENT",
+                    "file_name": "",
+                    "message": "This consultation claim needs a prescription. Upload that document.",
+                },
+            ],
+            "metrics": {"provider_calls": 0},
+        },
+    )
+    with _client(tmp_path, monkeypatch) as client:
+        response = client.post("/api/claims/prefill", files=[("files", ("scan.jpg", PDF, "image/jpeg"))])
+    assert response.status_code == 200
+    result = response.json()
+    assert result["suggestions"] == {}
+    assert result["issues"] == [
+        {
+            "code": "UNREADABLE_IMAGE",
+            "file_name": "scan.jpg",
+            "message": "scan.jpg: Image has too little contrast to read; retake the photo in even light.",
+        }
+    ]
+
+
+def test_prefill_date_accepts_trailing_clock_time():
+    assert web._prefill_date("01-Nov-2024 10:30 AM") == "2024-11-01"
+    assert web._prefill_date("2024-11-01T14:05:00") == "2024-11-01"
 
 
 def test_review_pages_render(tmp_path, monkeypatch):
